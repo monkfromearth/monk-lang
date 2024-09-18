@@ -1,0 +1,146 @@
+{
+	"scopeName": "source.monk",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#functions"
+		},
+		{
+			"include": "#variables"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#operators"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.monk",
+					"begin": "//",
+					"end": "$",
+					"patterns": [
+						{
+							"include": "#jsdoc"
+						}
+					]
+				}
+			]
+		},
+		"jsdoc": {
+			"patterns": [
+				{
+					"name": "storage.type.class.jsdoc",
+					"match": "(?<=^\\s*\\/\\/)\\s*(@\\w+)"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.monk",
+					"match": "\\b(if|else|else if|for|while|return|const|let|use|export|from|ref)\\b"
+				},
+				{
+					"name": "storage.type.monk",
+					"match": "\\b(int|string|float|bool|void)\\b"
+				},
+				{
+					"name": "constant.language.boolean.monk",
+					"match": "\\b(true|false)\\b"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"name": "string.quoted.double.monk",
+					"begin": "\"",
+					"end": "\""
+				},
+				{
+					"name": "string.quoted.template.monk",
+					"begin": "`",
+					"end": "`",
+					"patterns": [
+						{
+							"name": "entity.name.tag.monk",
+							"begin": "\\${",
+							"end": "}",
+							"patterns": [
+								{
+									"include": "$self"
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		"functions": {
+			"patterns": [
+				{
+					"name": "entity.name.function.monk",
+					"match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+				},
+				{
+					"name": "support.function.builtin.monk",
+					"match": "\\b(print|input|exit)\\b"
+				}
+			]
+		},
+		"variables": {
+			"patterns": [
+				{
+					"name": "variable.other.monk",
+					"match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.monk",
+					"match": "\\b([0-9]+(?:\\.[0-9]+)?)\\b"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.assignment.monk",
+					"match": "=|\\+=|-=|\\*=|/=|%="
+				},
+				{
+					"name": "keyword.operator.arithmetic.monk",
+					"match": "\\+|-|\\*|/|%"
+				},
+				{
+					"name": "keyword.operator.logical.monk",
+					"match": "&&|\\|\\||!"
+				},
+				{
+					"name": "keyword.operator.comparison.monk",
+					"match": "==|!=|<=|>=|<|>"
+				},
+				{
+					"name": "keyword.operator.borrowing.monk",
+					"match": "&"
+				}
+			]
+		}
+	},
+	"foldingStartMarker": "\\{",
+	"foldingStopMarker": "\\}"
+}

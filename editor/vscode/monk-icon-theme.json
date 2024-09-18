@@ -1,0 +1,10 @@
+{
+    "iconDefinitions": {
+        "file-icon": {
+            "iconPath": "./icons/candle-2.png"
+        }
+    },
+    "fileExtensions": {
+        "monk": "file-icon"
+    }
+}

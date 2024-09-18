@@ -1,0 +1,52 @@
+{
+  "name": "monk",
+  "displayName": "Monk",
+  "description": "Language support for Monk, a programming language for the modern age",
+  "publisher": "monkfromearth",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.54.0"
+  },
+  "icon": "icons/candle-2.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/monkfromearth/monk-lang"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "bugs": {
+    "url": "https://github.com/monkfromearth/monk-lang/issues",
+    "email": "hi@monkfrom.earth"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "monk",
+        "aliases": [
+          "Monk",
+          "monk"
+        ],
+        "extensions": [
+          ".monk",
+          ".mnk"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "monk",
+        "scopeName": "source.monk",
+        "path": "./syntaxes/monk.tmLanguage.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "monk-icons",
+        "label": "Monk Icons",
+        "path": "./monk-icon-theme.json"
+      }
+    ]
+  }
+}

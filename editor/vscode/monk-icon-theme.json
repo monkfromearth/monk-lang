@@ -1,7 +1,7 @@
 {
     "iconDefinitions": {
         "file-icon": {
-            "iconPath": "./icons/candle-2.png"
+            "iconPath": "./icons/icon.png"
         }
     },
     "fileExtensions": {

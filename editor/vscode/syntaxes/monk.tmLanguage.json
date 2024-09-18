@@ -54,7 +54,7 @@
 				},
 				{
 					"name": "storage.type.monk",
-					"match": "\\b(int|string|float|bool|void)\\b"
+					"match": "\\b(int|string|float|bool|none)\\b"
 				},
 				{
 					"name": "constant.language.boolean.monk",
@@ -96,7 +96,7 @@
 				},
 				{
 					"name": "support.function.builtin.monk",
-					"match": "\\b(print|input|exit)\\b"
+					"match": "\\b(print|input|exit|typeof)\\b"
 				}
 			]
 		},

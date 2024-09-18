@@ -1,13 +1,20 @@
 {
-  "name": "monk",
-  "displayName": "Monk",
+  "name": "monk-lang",
+  "displayName": "Monk Lang",
   "description": "Language support for Monk, a programming language for the modern age",
   "publisher": "monkfromearth",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.54.0"
   },
-  "icon": "icons/candle-2.png",
+  "author": {
+    "name": "Sameer Khan",
+    "email": "hi@monkfrom.earth",
+    "url": "https://github.com/monkfromearth"
+  },
+  "pricing": "Free",
+  "license": "MIT",
+  "icon": "icons/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/monkfromearth/monk-lang"
@@ -19,6 +26,7 @@
     "url": "https://github.com/monkfromearth/monk-lang/issues",
     "email": "hi@monkfrom.earth"
   },
+  "homepage": "https://github.com/monkfromearth/monk-lang/blob/main/README.md",
   "contributes": {
     "languages": [
       {

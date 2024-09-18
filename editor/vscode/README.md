@@ -21,7 +21,7 @@ Welcome to the Monk Language Support extension for Visual Studio Code! This exte
 
 1. Open Visual Studio Code
 2. Press `Ctrl+P` to open the Quick Open dialog
-3. Type `ext install monk` to find the extension
+3. Type `ext install monkfromearth.monk-lang` to find the extension
 4. Click the Install button, then the Enable button
 
 ## Usage

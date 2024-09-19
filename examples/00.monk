@@ -1,3 +1,4 @@
-universe
-true
-none
+(10 +  1) / 5
+1 + 2 * 3 - 4
+// some complex expression
+((1 + 2) * 3 - 4) / (6 - (2 * 2))

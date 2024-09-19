@@ -7,6 +7,7 @@ const (
 	NumberToken
 	StringToken
 	IdentifierToken
+	NewlineToken           // \n
 	OpenParenthesisToken   // (
 	CloseParenthesisToken  // )
 	OpenCurlyBraceToken    // {

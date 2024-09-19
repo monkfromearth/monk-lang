@@ -27,6 +27,7 @@ func Tokenize(input string) []Token {
 			column = 0 // Reset column to 0
 			// Move i forward by the number of bytes the rune occupies
 			i += size
+			output = append(output, Token{Kind: NewlineToken, Value: string(char), Line: line, Column: column})
 			continue
 		}
 
@@ -237,7 +238,7 @@ func Tokenize(input string) []Token {
 			output = append(output, Token{Kind: GreaterThanToken, Value: string(char), Line: line, Column: column})
 		} else if char == '&' {
 
-			// Check if the next character is `=`
+			// Check if the next character is `&`
 			if i+1 < length {
 				nextChar, nextSize := utf8.DecodeRuneInString(input[i+1:])
 
@@ -320,7 +321,7 @@ func Tokenize(input string) []Token {
 
 				continue
 			} else {
-				panic(fmt.Sprintf("Unexpected character: %s", string(char)))
+				panic(fmt.Sprintf("Unexpected character: %s (%d:%d)", string(char), line, column))
 			}
 
 		}

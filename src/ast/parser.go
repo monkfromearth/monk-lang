@@ -1,7 +1,11 @@
 package ast
 
 import (
+	"fmt"
+	"strconv"
+
 	"github.com/monkfromearth/monk-lang/src/lexer"
+	"github.com/monkfromearth/monk-lang/src/utils"
 )
 
 var CurrentTokens []lexer.Token = []lexer.Token{}
@@ -12,16 +16,36 @@ func GetCurrentToken() lexer.Token {
 	return CurrentTokens[CurrentIndex]
 }
 
+func GetNextToken() lexer.Token {
+	return CurrentTokens[CurrentIndex+1]
+}
+
 func MoveToNextToken() {
+	fmt.Println("Moved to Next Token")
+	if CurrentIndex+1 >= len(CurrentTokens) {
+		return
+	}
 	CurrentIndex++
 }
 
-func MoveWithExpect(kind lexer.TokenKind, message string) {
-	token := GetCurrentToken()
+func PanicWithDetails(token lexer.Token, message string) {
+	panic(message + " (" + strconv.Itoa(token.Line) + ":" + strconv.Itoa(token.Column) + ")")
+}
+
+func MoveNextWith(kind lexer.TokenKind, message string) lexer.Token {
+	token := GetNextToken()
+	fmt.Println("Next token")
+	utils.PrettyPrint(token)
 	if token.Kind != kind {
-		panic(message)
+		PanicWithDetails(token, message)
 	}
 	MoveToNextToken()
+	return GetCurrentToken()
+}
+
+func IsNextToken(kind lexer.TokenKind) bool {
+	token := GetNextToken()
+	return token.Kind == kind
 }
 
 func IsNotEOF() bool {

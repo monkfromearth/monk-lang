@@ -1,9 +1,9 @@
 package runtime
 
 type RuntimeScope struct {
-	Parent    *RuntimeScope
-	Symbols   map[string]RuntimeValue
-	Constants map[string]RuntimeValue
+	Parent    *RuntimeScope           `json:"parent"`
+	Symbols   map[string]RuntimeValue `json:"symbols"`
+	Constants map[string]bool         `json:"constants"`
 }
 
 // DeclareSymbol declares a symbol in the current scope and returns the value
@@ -15,7 +15,7 @@ func (scope *RuntimeScope) DeclareSymbol(name string, value RuntimeValue, isCons
 	scope.Symbols[name] = value
 
 	if isConstant {
-		scope.Constants[name] = value
+		scope.Constants[name] = true
 	}
 
 	return value, true
@@ -28,7 +28,7 @@ func (scope *RuntimeScope) AssignSymbol(name string, value RuntimeValue) (Runtim
 	applicable := scope.ResolveScope(name)
 
 	if _, exists := applicable.Constants[name]; exists {
-		panic("Cannot assign to a constant")
+		return value, false
 	}
 
 	applicable.Symbols[name] = value

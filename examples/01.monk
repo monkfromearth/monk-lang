@@ -1,0 +1,5 @@
+const a = 42
+let b = a + 1
+const c = none
+const d = true
+let e = false

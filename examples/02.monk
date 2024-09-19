@@ -1,0 +1,6 @@
+let a = 1
+// should assign to `a`
+a = 2
+
+let c = a
+c = c + 1

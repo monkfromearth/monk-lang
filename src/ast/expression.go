@@ -5,67 +5,42 @@ import (
 	"strconv"
 
 	"github.com/monkfromearth/monk-lang/src/lexer"
+	"github.com/monkfromearth/monk-lang/src/utils"
 )
 
+// Precedence:
+// 1. PrimaryExpression
+// 2. UnaryExpression
+// 3. MultiplicativeExpression
+// 4. AdditiveExpression
+// 5. AssignmentExpression
 func ParseExpression() interface{} {
-	return ParseAdditiveExpression()
+	result := ParseAssignmentExpression()
+	return result
 }
 
-func ParsePrimaryExpression() interface{} {
+// ParseAssignmentExpression parses an assignment expression
+// e.g.: a = 1
+func ParseAssignmentExpression() interface{} {
+	fmt.Println("Left - Current Token in ParseAssignmentExpression")
+	utils.PrettyPrint(GetCurrentToken())
 
-	token := GetCurrentToken()
+	left := ParseAdditiveExpression()
 
-	switch token.Kind {
+	for IsNextToken(lexer.AssignmentToken) {
+		MoveToNextToken() // To the `=` token
 
-	case lexer.NumberToken:
-		return ParseNumericLiteral()
+		MoveToNextToken() // Skip the `=` token
 
-	case lexer.IdentifierToken:
-		return ParseIdentifier()
+		right := ParseAdditiveExpression()
 
-	case lexer.OpenParenthesisToken:
-		{
-			// Skip the opening parenthesis
-			MoveToNextToken()
-
-			// Parse the expression inside the parenthesis
-			expression := ParseExpression()
-
-			// Expect closing parenthesis
-			MoveWithExpect(lexer.CloseParenthesisToken, "Expected ')' after expression")
-
-			return expression
-		}
-	default:
-		fmt.Println("Unexpected token:", token.Value)
-		MoveToNextToken()
-		return nil
-	}
-
-}
-
-// ParseMultiplicativeExpression parses a multiplicative expression
-// e.g. 1 * 2
-// e.g. (1 * 2) * 3
-func ParseMultiplicativeExpression() interface{} {
-	left := ParsePrimaryExpression()
-
-	for GetCurrentToken().Kind == lexer.MultiplyToken || GetCurrentToken().Kind == lexer.DivideToken || GetCurrentToken().Kind == lexer.ModuloToken {
-		token := GetCurrentToken()
-		operator := token.Value
-
-		MoveToNextToken()
-
-		right := ParsePrimaryExpression()
-
-		expression := BinaryExpression{
+		expression := AssignmentExpression{
 			Expression: Expression{
-				NodeType: BinaryExpressionNode,
-				NodeName: NodeTypeNames[BinaryExpressionNode],
+				NodeType: AssignmentExpressionNode,
+				NodeName: NodeTypeNames[AssignmentExpressionNode],
 			},
-			Operator: operator,
-			Left:     left,
-			Right:    right,
+			Symbol: left.(IdentifierExpression).Symbol,
+			Value:  right,
 		}
 
 		left = expression
@@ -78,9 +53,17 @@ func ParseMultiplicativeExpression() interface{} {
 // e.g.: 1 + 2
 // e.g.: (1 + 2) - 3
 func ParseAdditiveExpression() interface{} {
+	fmt.Println("Left - Current Token in ParseAdditiveExpression")
+	utils.PrettyPrint(GetCurrentToken())
+
 	left := ParseMultiplicativeExpression()
 
-	for GetCurrentToken().Kind == lexer.PlusToken || GetCurrentToken().Kind == lexer.MinusToken {
+	for IsNextToken(lexer.PlusToken) || IsNextToken(lexer.MinusToken) {
+		MoveToNextToken()
+
+		fmt.Println("Operator - Current Token in ParseAdditiveExpression")
+		utils.PrettyPrint(GetCurrentToken())
+
 		token := GetCurrentToken()
 		operator := token.Value
 
@@ -104,6 +87,89 @@ func ParseAdditiveExpression() interface{} {
 	return left
 }
 
+// ParseMultiplicativeExpression parses a multiplicative expression
+// e.g. 1 * 2
+// e.g. (1 * 2) * 3
+func ParseMultiplicativeExpression() interface{} {
+	fmt.Println("Left - Current Token in ParseMultiplicativeExpression")
+	utils.PrettyPrint(GetCurrentToken())
+
+	left := ParsePrimaryExpression()
+
+	for IsNextToken(lexer.MultiplyToken) || IsNextToken(lexer.DivideToken) || IsNextToken(lexer.ModuloToken) {
+		MoveToNextToken()
+
+		fmt.Println("Operator - Current Token in ParseMultiplicativeExpression")
+		utils.PrettyPrint(GetCurrentToken())
+
+		token := GetCurrentToken()
+		operator := token.Value
+
+		MoveToNextToken()
+
+		fmt.Println("Right - Current Token in ParseMultiplicativeExpression")
+		utils.PrettyPrint(GetCurrentToken())
+
+		right := ParsePrimaryExpression()
+
+		expression := BinaryExpression{
+			Expression: Expression{
+				NodeType: BinaryExpressionNode,
+				NodeName: NodeTypeNames[BinaryExpressionNode],
+			},
+			Operator: operator,
+			Left:     left,
+			Right:    right,
+		}
+
+		left = expression
+	}
+
+	return left
+}
+
+func ParsePrimaryExpression() interface{} {
+
+	token := GetCurrentToken()
+	fmt.Println("Current Token in ParsePrimaryExpression")
+	utils.PrettyPrint(token)
+
+	switch token.Kind {
+
+	case lexer.NumberToken:
+		{
+			result := ParseNumericLiteral()
+			return result
+		}
+
+	case lexer.IdentifierToken:
+		{
+			result := ParseIdentifier()
+			return result
+		}
+
+	case lexer.OpenParenthesisToken:
+		{
+			// Skip the opening parenthesis
+			MoveToNextToken()
+
+			// Parse the expression inside the parenthesis
+			expression := ParseExpression()
+
+			fmt.Println("Expression Inside Parenthesis", utils.JSONStringify(expression))
+
+			// Expect closing parenthesis
+			MoveNextWith(lexer.CloseParenthesisToken, "Expected ')' after expression")
+
+			return expression
+		}
+	default:
+		fmt.Println("Unexpected token:", utils.JSONStringify(token))
+		return nil
+	}
+
+}
+
 // ParseNumericLiteral parses a numeric literal expression
 // e.g. 42
 func ParseNumericLiteral() NumericLiteralExpression {
@@ -111,18 +177,16 @@ func ParseNumericLiteral() NumericLiteralExpression {
 
 	value, err := strconv.Atoi(token.Value)
 	if err != nil {
-		panic(err)
+		PanicWithDetails(token, err.Error())
 	}
 
 	expression := NumericLiteralExpression{
 		Expression: Expression{
-			NodeType: NumericLiteralNode,
-			NodeName: NodeTypeNames[NumericLiteralNode],
+			NodeType: NumericLiteralExpressionNode,
+			NodeName: NodeTypeNames[NumericLiteralExpressionNode],
 		},
 		Value: value,
 	}
-
-	MoveToNextToken()
 
 	return expression
 }
@@ -134,13 +198,11 @@ func ParseIdentifier() IdentifierExpression {
 
 	expression := IdentifierExpression{
 		Expression: Expression{
-			NodeType: IdentifierNode,
-			NodeName: NodeTypeNames[IdentifierNode],
+			NodeType: IdentifierExpressionNode,
+			NodeName: NodeTypeNames[IdentifierExpressionNode],
 		},
-		Name: token.Value,
+		Symbol: token.Value,
 	}
-
-	MoveToNextToken()
 
 	return expression
 }

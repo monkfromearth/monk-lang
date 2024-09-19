@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/monkfromearth/monk-lang/src/ast"
+	"github.com/monkfromearth/monk-lang/src/utils"
 )
 
 func evaluateBinaryExpression(node ast.BinaryExpression, scope RuntimeScope) RuntimeValue {
@@ -64,10 +65,38 @@ func evaluateBinaryExpression(node ast.BinaryExpression, scope RuntimeScope) Run
 
 func evaluateIdentifierExpress(node ast.IdentifierExpression, scope RuntimeScope) RuntimeValue {
 
-	value, exists := scope.GetSymbol(node.Name)
+	value, exists := scope.GetSymbol(node.Symbol)
 
 	if !exists {
-		panic(fmt.Sprintf("Symbol `%s` does not exist", node.Name))
+		panic(fmt.Sprintf("Symbol `%s` does not exist", node.Symbol))
+	}
+
+	return value
+}
+
+func evaluateVariableDeclarationStatement(node ast.VariableDeclarationStatement, scope RuntimeScope) RuntimeValue {
+	symbol := node.Symbol
+
+	value := EvaluateAst(node.Value, scope)
+
+	_, success := scope.DeclareSymbol(symbol, value, node.IsConstant)
+
+	if !success {
+		panic("Cannot declare a variable with the same name twice for variable `" + symbol + "`")
+	}
+
+	return value
+}
+
+func evaluateAssignmentExpression(node ast.AssignmentExpression, scope RuntimeScope) RuntimeValue {
+	symbol := node.Symbol
+
+	value := EvaluateAst(node.Value, scope)
+
+	_, success := scope.AssignSymbol(symbol, value)
+
+	if !success {
+		panic("Cannot assign to a constant")
 	}
 
 	return value
@@ -86,23 +115,20 @@ func EvaluateAst(tree interface{}, scope RuntimeScope) RuntimeValue {
 			}
 		}
 
-	case ast.NoneLiteralExpression:
-		{
-			return RuntimeValue{
-				Type:  NoneValue,
-				Name:  "None",
-				Value: nil,
-			}
-		}
-
 	case ast.BinaryExpression:
 		return evaluateBinaryExpression(node, scope)
 
 	case ast.IdentifierExpression:
 		return evaluateIdentifierExpress(node, scope)
 
+	case ast.VariableDeclarationStatement:
+		return evaluateVariableDeclarationStatement(node, scope)
+
+	case ast.AssignmentExpression:
+		return evaluateAssignmentExpression(node, scope)
+
 	default:
-		panic(fmt.Sprintf("Unknown node type: %T", node))
+		panic("Unknown node type: " + utils.JSONStringify(node))
 	}
 
 }

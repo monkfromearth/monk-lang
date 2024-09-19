@@ -9,18 +9,22 @@ type Node struct {
 
 const (
 	ProgramNode = iota
-	IdentifierNode
-	NumericLiteralNode
+	IdentifierExpressionNode
+	NumericLiteralExpressionNode
+	UnaryExpressionNode
 	BinaryExpressionNode
-	NoneLiteralNode
+	AssignmentExpressionNode
+	VariableDeclarationStatementNode
 )
 
 var NodeTypeNames = map[int]string{
-	ProgramNode:          "ProgramNode",
-	IdentifierNode:       "IdentifierNode",
-	NumericLiteralNode:   "NumericLiteralNode",
-	BinaryExpressionNode: "BinaryExpressionNode",
-	NoneLiteralNode:      "NoneLiteralNode",
+	ProgramNode:                      "ProgramNode",
+	IdentifierExpressionNode:         "IdentifierExpressionNode",
+	UnaryExpressionNode:              "UnaryExpressionNode",
+	NumericLiteralExpressionNode:     "NumericLiteralExpressionNode",
+	BinaryExpressionNode:             "BinaryExpressionNode",
+	AssignmentExpressionNode:         "AssignmentExpressionNode",
+	VariableDeclarationStatementNode: "VariableDeclarationStatementNode",
 }
 
 type Program struct {
@@ -35,10 +39,36 @@ type Statement struct {
 	NodeName string `json:"nodeName"`
 }
 
+type VariableDeclarationStatement struct {
+	Statement
+	Symbol     string      `json:"symbol"`
+	Value      interface{} `json:"value"`
+	IsConstant bool        `json:"isConstant"`
+}
+
 // Expression is a generic expression node that can be used as a base for more specific expression types
 type Expression struct {
 	NodeType int    `json:"nodeType"`
 	NodeName string `json:"nodeName"`
+}
+
+// AssignmentExpression is an assignment expression node that can be used to assign a value to a variable
+// e.g. foo = 42
+type AssignmentExpression struct {
+	Expression
+	Symbol string      `json:"symbol"`
+	Value  interface{} `json:"value"`
+}
+
+// UnaryExpression is a unary expression node that can be used to represent unary operations
+// e.g. -42 - Unary Minus (-): This operation negates the value of a number, changing its sign
+// e.g. !foo - Boolean Not (!): This operation inverts the boolean value of its operand
+// e.g. &foo - Address-of (&): This operation returns the memory address of its operand
+// e.g. *foo - Dereference (*): This operation accesses the value stored at a pointer's address
+type UnaryExpression struct {
+	Expression
+	Operator string      `json:"operator"`
+	Right    interface{} `json:"right"`
 }
 
 // BinaryExpression is a binary expression node that can be used to represent arithmetic operations and comparisons
@@ -54,7 +84,7 @@ type BinaryExpression struct {
 // e.g. foo
 type IdentifierExpression struct {
 	Expression
-	Name string `json:"name"`
+	Symbol string `json:"symbol"`
 }
 
 // NumericLiteral is a numeric literal node that represents a numeric value
@@ -62,10 +92,4 @@ type IdentifierExpression struct {
 type NumericLiteralExpression struct {
 	Expression
 	Value int `json:"value"`
-}
-
-// NoneLiteral is a none literal node that represents the absence of a value
-// e.g. none
-type NoneLiteralExpression struct {
-	Expression
 }

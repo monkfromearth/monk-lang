@@ -1,12 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/monkfromearth/monk-lang/src/ast"
 	"github.com/monkfromearth/monk-lang/src/runtime"
+	"github.com/monkfromearth/monk-lang/src/utils"
 )
 
 func main() {
@@ -28,57 +28,44 @@ func main() {
 
 	tree := ast.GenerateAst(string(content))
 
-	data, err := json.MarshalIndent(tree, "", "  ")
-
-	if err != nil {
-		fmt.Printf("Error marshaling JSON: %v\n", err)
-		return
-	}
-
-	fmt.Println(string(data))
+	utils.PrettyPrint(tree)
 
 	globalScope := runtime.RuntimeScope{
 		Symbols: map[string]runtime.RuntimeValue{
-			"universe": {
-				Type:     runtime.NumberValue,
-				Name:     runtime.ValueNames[runtime.NumberValue],
-				Value:    42,
-				Constant: true,
-			},
 			"true": {
-				Type:     runtime.BooleanValue,
-				Name:     runtime.ValueNames[runtime.BooleanValue],
-				Value:    true,
-				Constant: true,
+				Type:  runtime.BooleanValue,
+				Name:  runtime.ValueNames[runtime.BooleanValue],
+				Value: true,
 			},
 			"false": {
-				Type:     runtime.BooleanValue,
-				Name:     runtime.ValueNames[runtime.BooleanValue],
-				Value:    false,
-				Constant: true,
+				Type:  runtime.BooleanValue,
+				Name:  runtime.ValueNames[runtime.BooleanValue],
+				Value: false,
 			},
 			"none": {
-				Type:     runtime.NoneValue,
-				Name:     runtime.ValueNames[runtime.NoneValue],
-				Value:    nil,
-				Constant: true,
+				Type:  runtime.NoneValue,
+				Name:  runtime.ValueNames[runtime.NoneValue],
+				Value: nil,
 			},
 		},
-		Parent:    nil,
-		Constants: make(map[string]runtime.RuntimeValue),
+		Parent: nil,
+		Constants: map[string]bool{
+			"true":  true,
+			"false": true,
+			"none":  true,
+		},
 	}
 
 	for _, statement := range tree.Statements {
 
-		result := runtime.EvaluateAst(statement, globalScope)
-
-		data, err = json.MarshalIndent(result, "", "  ")
-
-		if err != nil {
-			fmt.Printf("Error marshaling JSON: %v\n", err)
-			return
+		if statement == nil {
+			continue
 		}
 
-		fmt.Println(string(data))
+		result := runtime.EvaluateAst(statement, globalScope)
+
+		utils.PrettyPrint(result)
 	}
+
+	utils.PrettyPrint(globalScope)
 }

@@ -13,8 +13,7 @@ var ValueNames = map[int]string{
 }
 
 type RuntimeValue struct {
-	Type     int         `json:"type"`
-	Name     string      `json:"name"`
-	Value    interface{} `json:"value"`
-	Constant bool
+	Type  int         `json:"type"`
+	Name  string      `json:"name"`
+	Value interface{} `json:"value"`
 }

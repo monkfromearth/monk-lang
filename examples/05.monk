@@ -1,0 +1,2 @@
+// Expected variable name after 'let' or 'const' 
+let 2 = 3

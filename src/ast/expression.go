@@ -34,12 +34,23 @@ func ParseAssignmentExpression() interface{} {
 
 		right := ParseAdditiveExpression()
 
+		var symbol string
+
+		switch left := left.(type) {
+		case IdentifierExpression:
+			{
+				symbol = left.Symbol
+			}
+		default:
+			PanicWithDetails(GetCurrentToken(), "Expected identifier for assignment")
+		}
+
 		expression := AssignmentExpression{
 			Expression: Expression{
 				NodeType: AssignmentExpressionNode,
 				NodeName: NodeTypeNames[AssignmentExpressionNode],
 			},
-			Symbol: left.(IdentifierExpression).Symbol,
+			Symbol: symbol,
 			Value:  right,
 		}
 

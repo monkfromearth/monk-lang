@@ -230,12 +230,13 @@ Static analysis pass over the AST, before or during evaluation.
 
 ## Phase 7: C FFI
 
-- [ ] `use extern "header.h" { ... }` syntax — declare external C functions
-- [ ] `link "libname"` clause — pass `-l` flags to cc
-- [ ] Type mapping: Monk int → `int64_t`, float → `double`, string → `const char*`, boolean → `bool`
-- [ ] String marshaling: Monk strings copied to/from C strings at FFI boundary
+> Syntax TBD — to be designed before implementation.
+
+- [ ] Design FFI syntax (discuss options, pick one)
+- [ ] Declare external C functions from Monk
+- [ ] Type mapping at FFI boundary (int → int64_t, float → double, string → const char*, bool → bool)
 - [ ] Emit `#include` directives in generated C
-- [ ] Extern functions cannot throw (no guard/against wrapping)
+- [ ] Library linking flags passed to cc
 - [ ] Compile-time type checking of extern call sites
 
 **Done when:** Monk programs can call C standard library functions and link external C libraries.

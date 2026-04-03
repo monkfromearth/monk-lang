@@ -1,0 +1,110 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import ChecklistItem from '../../components/ChecklistItem.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Setting Up" lessonNumber="0.2" section="Foundations">
+
+    <LessonHeader lessonNumber="0.2" title="Setting Up" description="Install Go, create the project, run a test. Five minutes, then we start building.">
+        <TagBadge variant="default">5 min</TagBadge>
+        <TagBadge variant="exercise">exercise</TagBadge>
+    </LessonHeader>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Install Go</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Go 1.22 or later. Check if you already have it:</p>
+
+        <Code code={`go version
+# go1.22.0 or higher`} lang="bash" />
+
+        <p class="text-monk-muted text-sm mt-4">If not: <a href="https://go.dev/dl/" class="text-monk-accent hover:underline">go.dev/dl</a> — download, install, done. One binary, no dependencies.</p>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Create the project</h2>
+
+        <Code code={`mkdir monk-lang && cd monk-lang
+go mod init github.com/yourname/monk-lang`} lang="bash" />
+
+        <p class="text-monk-muted text-sm mt-4">This creates <code class="bg-stone-100 px-1 rounded text-xs">go.mod</code> — Go's dependency file. That's the entire setup. No build config, no bundler, no package manager ceremony.</p>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Write the first test</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Create <code class="bg-stone-100 px-1 rounded text-xs">lexer/lexer_test.go</code>:</p>
+
+        <Code code={`package lexer
+
+import "testing"
+
+func TestPlaceholder(t *testing.T) {
+    // This test exists to verify your setup works.
+    // It gets replaced in Phase 1.
+    if 1+1 != 2 {
+        t.Fatal("math is broken")
+    }
+}`} lang="go" />
+
+        <p class="text-monk-muted text-sm mt-4 mb-4">Run it:</p>
+
+        <Code code={`go test ./lexer/
+# ok  github.com/yourname/monk-lang/lexer  0.001s`} lang="bash" />
+
+        <div class="mt-6">
+            <InsightBox>
+                <p class="text-sm"><strong>This is the TDD loop you'll use for the entire compiler.</strong> Write a failing test. Make it pass. Refactor. Every phase starts with a test file.</p>
+            </InsightBox>
+        </div>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Project structure</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">The compiler will grow into this shape:</p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm font-mono">
+            <div class="divide-y divide-monk-border">
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-muted">go.mod</span><span class="font-sans text-monk-muted text-xs">Module definition</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-blue">lexer/</span><span class="font-sans text-monk-muted text-xs">Phase 1: text to tokens</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-teal">parser/</span><span class="font-sans text-monk-muted text-xs">Phase 2: tokens to AST</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-teal">ast/</span><span class="font-sans text-monk-muted text-xs">AST node type definitions</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-green">eval/</span><span class="font-sans text-monk-muted text-xs">Phase 3: tree-walking interpreter</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-amber">codegen/</span><span class="font-sans text-monk-muted text-xs">Phase 7: AST to C source</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-stone-500">cmd/monk/</span><span class="font-sans text-monk-muted text-xs">CLI entry point</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-amber">runtime/</span><span class="font-sans text-monk-muted text-xs">Small C library linked into compiled programs</span></div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm mt-4">Each directory is a Go package. Tests live next to the code they test (<code class="bg-stone-100 px-1 rounded text-xs">lexer/lexer_test.go</code>). No separate test directory.</p>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Checkpoint</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden">
+            <div class="divide-y divide-monk-border text-sm">
+                <ChecklistItem>Go 1.22+ installed and on your PATH</ChecklistItem>
+                <ChecklistItem><code class="bg-stone-100 px-1 rounded text-xs">go test ./lexer/</code> passes</ChecklistItem>
+                <ChecklistItem>You understand the project structure</ChecklistItem>
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm mt-4">You're ready for Phase 1. Next: the lexer.</p>
+    </section>
+
+    <LessonNav
+        prevHref="/foundations/how-compilers-work"
+        prevLabel="Prev: How Compilers Work"
+        nextHref="/phase-1-lexer/what-is-a-lexer"
+        nextLabel="Start Phase 1: The Lexer"
+    />
+
+</LessonLayout>

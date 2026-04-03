@@ -75,10 +75,12 @@ func evalStmt(stmt syntax.Stmt, env *Environment) (Value, error) {
 }
 
 func evalVarDecl(s *syntax.VarDeclStmt, env *Environment) (Value, error) {
-	// For function values: snapshot the env (closure captures by copy),
-	// then inject the function's own name into the snapshot so it can
-	// call itself recursively. This gives us recursion WITHOUT sharing
-	// the live environment.
+	// Design decision: closures capture by copy (value semantics).
+	// But named functions need to call themselves (recursion). Solution:
+	// snapshot the env, then inject the function's own name into the
+	// snapshot. The closure sees itself but NOT the live outer scope.
+	// This means `let f = () { x = 1 }` does NOT modify outer x.
+	// See spec/REFERENCE.md "Closures" section.
 	if fnExpr, isFn := s.Value.(*syntax.FuncExpr); isFn {
 		capturedEnv := env.Snapshot()
 		val := makeFuncValue(fnExpr, capturedEnv)
@@ -318,7 +320,9 @@ func evalUnary(e *syntax.UnaryExpr, env *Environment) (Value, error) {
 }
 
 func evalBinary(e *syntax.BinaryExpr, env *Environment) (Value, error) {
-	// Short-circuit for logical operators
+	// Design decision: and/or always return boolean (not the deciding value).
+	// Unlike Python where `0 or 5` returns 5, Monk returns true.
+	// See spec "Logical" section: "always return boolean."
 	if e.Op == syntax.And || e.Op == syntax.AmpAmp {
 		left, err := evalExpr(e.Left, env)
 		if err != nil {
@@ -358,7 +362,9 @@ func evalBinary(e *syntax.BinaryExpr, env *Environment) (Value, error) {
 		return MonkNone, err
 	}
 
-	// String concatenation
+	// String concatenation: string + string only.
+	// Design decision: no auto-coercion. "hello" + 42 is an error.
+	// Use to_string() explicitly. See spec "Explicit Over Implicit."
 	if e.Op == syntax.Plus && left.Kind == StringValue && right.Kind == StringValue {
 		return StringVal(left.Str + right.Str), nil
 	}
@@ -652,10 +658,13 @@ func evalIndex(e *syntax.IndexExpr, env *Environment) (Value, error) {
 	}
 	idx := index.Int
 
+	// Design decision: read out-of-bounds returns none (graceful on reads).
+	// Write out-of-bounds is an error (strict on operations).
+	// See spec "Design Philosophy" rule 2.
 	switch object.Kind {
 	case ArrayValue:
 		if idx < 0 || idx >= int64(len(object.Array)) {
-			return MonkNone, nil // graceful on reads
+			return MonkNone, nil
 		}
 		return object.Array[idx].DeepCopy(), nil
 
@@ -756,7 +765,9 @@ func evalPropertyAssign(target *syntax.PropertyExpr, val Value, op syntax.TokenK
 		return MonkNone, fmt.Errorf("cannot set property on %s", object.TypeName())
 	}
 
-	// Find existing field (records have fixed shape — no adding new fields)
+	// Design decision: records have fixed shape from creation. Cannot add new
+	// fields. Writing to a non-existent field is an error (strict on operations).
+	// See spec "Records are shapes, not bags."
 	found := false
 	for i, entry := range object.Record {
 		if entry.Key == target.Property {

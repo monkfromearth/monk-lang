@@ -68,7 +68,9 @@ func BoolVal(b bool) Value        { if b { return MonkTrue }; return MonkFalse }
 func ArrayVal(elems []Value) Value { return Value{Kind: ArrayValue, Array: elems} }
 func RecordVal(entries []RecordEntry) Value { return Value{Kind: RecordValue, Record: entries} }
 
-// DeepCopy returns an independent copy of the value (value semantics).
+// DeepCopy returns an independent copy of the value.
+// Design decision: Monk uses value semantics everywhere. Assignment copies,
+// function arguments copy. No shared state. See spec "Values, Not References."
 func (v Value) DeepCopy() Value {
 	switch v.Kind {
 	case ArrayValue:
@@ -88,7 +90,11 @@ func (v Value) DeepCopy() Value {
 	}
 }
 
-// IsTruthy implements Monk's truthiness rules: false, none, 0 are falsy.
+// IsTruthy implements Monk's truthiness rules.
+// Design decision: only false, none, and 0 are falsy.
+// Empty string "" and empty array [] are TRUTHY (unlike Python/JS).
+// This is the one implicit conversion in the language.
+// See spec "Design Philosophy" — truthiness exception.
 func (v Value) IsTruthy() bool {
 	switch v.Kind {
 	case BoolValue:

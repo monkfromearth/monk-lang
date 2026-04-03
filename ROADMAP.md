@@ -181,6 +181,10 @@ Register native functions in the global scope.
 - [ ] `is_number`, `is_string`, `is_boolean`
 - [ ] `is_array`, `is_record`, `is_function`, `is_none`
 
+### File System & Environment
+- [ ] `file_read`, `file_write`, `file_exists`
+- [ ] `env_get`, `exit`, `args`
+
 **Done when:** Every built-in from the spec works with correct signatures. All built-in tests green.
 
 ---
@@ -224,11 +228,25 @@ Static analysis pass over the AST, before or during evaluation.
 
 ---
 
-## Phase 7: CLI
+## Phase 7: C FFI
 
-- [ ] `monk run <file>` — execute a `.monk` file (script-style, top-level code runs directly)
-- [ ] `monk repl` — interactive REPL with multiline support
-- [ ] `monk check <file>` — type check without running
+- [ ] `use extern "header.h" { ... }` syntax — declare external C functions
+- [ ] `link "libname"` clause — pass `-l` flags to cc
+- [ ] Type mapping: Monk int → `int64_t`, float → `double`, string → `const char*`, boolean → `bool`
+- [ ] String marshaling: Monk strings copied to/from C strings at FFI boundary
+- [ ] Emit `#include` directives in generated C
+- [ ] Extern functions cannot throw (no guard/against wrapping)
+- [ ] Compile-time type checking of extern call sites
+
+**Done when:** Monk programs can call C standard library functions and link external C libraries.
+
+---
+
+## Phase 8: CLI
+
+- [ ] `monk build <file>` — compile a `.monk` file to native binary
+- [ ] `monk run <file>` — compile and run in one step (cache binary, recompile on change)
+- [ ] `monk check <file>` — type check without compiling
 - [ ] `monk lint <file>` — code quality checks
 - [ ] `monk format <file>` — code formatting
 
@@ -258,7 +276,7 @@ Static analysis pass over the AST, before or during evaluation.
 
 ---
 
-## Phase 8: LSP + Editor Support
+## Phase 9: LSP + Editor Support
 
 - [ ] LSP server with TextDocument sync
 - [ ] Completions (keywords, built-ins, scope variables)
@@ -275,7 +293,7 @@ Static analysis pass over the AST, before or during evaluation.
 
 ---
 
-## Phase 9: Distribution
+## Phase 10: Distribution
 
 - [ ] Single-binary packaging
 - [ ] Homebrew formula (update `homebrew-monk-lang` repo)

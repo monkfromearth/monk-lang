@@ -174,14 +174,13 @@ monk run hello.monk         # Compile and run in one step
 monk check hello.monk       # Type check without compiling
 monk lint hello.monk        # Code quality
 monk format hello.monk      # Code formatting
-monk repl                   # Interactive (interpreted mode, tree-walking for REPL only)
 ```
 
 ### What Lives Where
 
 | Component | Written in | Purpose |
 |-----------|-----------|---------|
-| Monk compiler | Go | Lexer, parser, type checker, C codegen, CLI, REPL |
+| Monk compiler | Go | Lexer, parser, type checker, C codegen, CLI |
 | Monk runtime library | C | Built-in functions (show, math, string ops, array ops) |
 | Generated code | C | The user's Monk program, compiled to C |
 | Final binary | Native | Linked: generated code + runtime library |
@@ -229,7 +228,7 @@ These are real problems other compile-to-C languages have hit. Our mitigations:
 
 ### 6. Two-phase compile time
 **Problem:** Monk→C is fast, but C→binary adds 500ms-1s.
-**Our mitigation:** For `monk run`, cache the compiled binary. Re-compile only when source changes (like `go run`). The REPL uses a tree-walking interpreter (no C compilation needed for interactive use).
+**Our mitigation:** For `monk run`, cache the compiled binary. Re-compile only when source changes (like `go run`).
 
 ### 7. Optimization ceiling vs LLVM
 **Problem:** C as an intermediate layer obscures language semantics from the optimizer.
@@ -242,7 +241,6 @@ These are real problems other compile-to-C languages have hit. Our mitigations:
 | Decision | Current | Future option | Trigger |
 |----------|---------|--------------|---------|
 | Backend | Compile to C | LLVM or Cranelift | When optimization matters more than build simplicity |
-| REPL | Tree-walking interpreter | Bytecode VM | When REPL performance matters |
 | Impl language | Go | Zig/Rust (for native backend) or self-hosted | When adding LLVM or custom codegen |
 | Memory model | Value semantics + COW | Add `ref` parameters | When return-value-only style proves too limiting |
 | String encoding | UTF-8 + O(n) indexing | Cached offsets or rope data structure | When string-heavy workloads show up |

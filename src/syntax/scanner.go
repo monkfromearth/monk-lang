@@ -257,8 +257,8 @@ func (s *Scanner) scanOperator(line, col int) Token {
 
 // --- helpers ---
 
-func (s *Scanner) current() byte    { return s.source[s.pos] }
-func (s *Scanner) atEnd() bool      { return s.pos >= len(s.source) }
+func (s *Scanner) current() byte { return s.source[s.pos] }
+func (s *Scanner) atEnd() bool   { return s.pos >= len(s.source) }
 
 func (s *Scanner) advance() {
 	if s.pos < len(s.source) {

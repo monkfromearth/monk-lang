@@ -5,225 +5,155 @@ type TokenKind int
 
 const (
 	// Special
-	ILLEGAL TokenKind = iota
-	EOF
+	Illegal TokenKind = iota
+	Eof
+	Identifier
 
 	// Literals
-	INT    // 42, 0xFF, 0b1010
-	FLOAT  // 3.14, 1.23e5
-	STRING // "hello"
-	TMPL   // `template literal`
-
-	// Identifiers
-	IDENT // variable_name
+	IntLiteral
+	FloatLiteral
+	StringLiteral
+	TemplateLiteral
 
 	// Keywords
-	LET
-	CONST
-	IF
-	ELSE
-	FOR
-	IN
-	WHILE
-	BREAK
-	CONTINUE
-	RETURN
-	GUARD
-	AGAINST
-	THROW
-	TYPE
-	USE
-	EXPORT
-	FROM
-	AS
-	IS
-	NOT
-	AND
-	OR
-	TRUE
-	FALSE
-	NONE
+	Let
+	Const
+	If
+	Else
+	For
+	In
+	While
+	Break
+	Continue
+	Return
+	Guard
+	Against
+	Throw
+	Type
+	Use
+	Export
+	From
+	As
+	Is
+	Not
+	And
+	Or
+	True
+	False
+	None
 
-	// Arithmetic operators
-	PLUS     // +
-	MINUS    // -
-	STAR     // *
-	SLASH    // /
-	PERCENT  // %
+	// Arithmetic
+	Plus    // +
+	Minus   // -
+	Star    // *
+	Slash   // /
+	Percent // %
 
-	// Comparison operators
-	EQ    // ==
-	NEQ   // !=
-	LT    // <
-	GT    // >
-	LTEQ  // <=
-	GTEQ  // >=
+	// Comparison
+	EqualEqual   // ==
+	BangEqual    // !=
+	Less         // <
+	Greater      // >
+	LessEqual    // <=
+	GreaterEqual // >=
 
-	// Logical operators
-	AMPAMP  // &&
-	PIPEPIPE // ||
-	BANG    // !
+	// Logical
+	AmpAmp   // &&
+	PipePipe // ||
+	Bang     // !
 
-	// Bitwise operators
-	AMP   // &
-	PIPE  // |
-	CARET // ^
-	TILDE // ~
-	SHL   // <<
-	SHR   // >>
+	// Bitwise
+	Amp        // &
+	Pipe       // |
+	Caret      // ^
+	Tilde      // ~
+	ShiftLeft  // <<
+	ShiftRight // >>
 
-	// Assignment operators
-	ASSIGN     // =
-	PLUSEQ     // +=
-	MINUSEQ    // -=
-	STAREQ     // *=
-	SLASHEQ    // /=
-	PERCENTEQ  // %=
+	// Assignment
+	Equal        // =
+	PlusEqual    // +=
+	MinusEqual   // -=
+	StarEqual    // *=
+	SlashEqual   // /=
+	PercentEqual // %=
 
 	// Delimiters
-	LPAREN // (
-	RPAREN // )
-	LBRACE // {
-	RBRACE // }
-	LBRACK // [
-	RBRACK // ]
-	COLON  // :
-	COMMA  // ,
-	DOT    // .
-	QMARK  // ?
-	ARROW  // ->
+	LeftParen    // (
+	RightParen   // )
+	LeftBrace    // {
+	RightBrace   // }
+	LeftBracket  // [
+	RightBracket // ]
+	Colon        // :
+	Comma        // ,
+	Dot          // .
+	Question     // ?
+	Arrow        // ->
 )
 
-var tokenNames = [...]string{
-	ILLEGAL: "ILLEGAL",
-	EOF:     "EOF",
-
-	INT:    "INT",
-	FLOAT:  "FLOAT",
-	STRING: "STRING",
-	TMPL:   "TMPL",
-
-	IDENT: "IDENT",
-
-	LET:      "let",
-	CONST:    "const",
-	IF:       "if",
-	ELSE:     "else",
-	FOR:      "for",
-	IN:       "in",
-	WHILE:    "while",
-	BREAK:    "break",
-	CONTINUE: "continue",
-	RETURN:   "return",
-	GUARD:    "guard",
-	AGAINST:  "against",
-	THROW:    "throw",
-	TYPE:     "type",
-	USE:      "use",
-	EXPORT:   "export",
-	FROM:     "from",
-	AS:       "as",
-	IS:       "is",
-	NOT:      "not",
-	AND:      "and",
-	OR:       "or",
-	TRUE:     "true",
-	FALSE:    "false",
-	NONE:     "none",
-
-	PLUS:    "+",
-	MINUS:   "-",
-	STAR:    "*",
-	SLASH:   "/",
-	PERCENT: "%",
-
-	EQ:   "==",
-	NEQ:  "!=",
-	LT:   "<",
-	GT:   ">",
-	LTEQ: "<=",
-	GTEQ: ">=",
-
-	AMPAMP:   "&&",
-	PIPEPIPE: "||",
-	BANG:     "!",
-
-	AMP:   "&",
-	PIPE:  "|",
-	CARET: "^",
-	TILDE: "~",
-	SHL:   "<<",
-	SHR:   ">>",
-
-	ASSIGN:    "=",
-	PLUSEQ:    "+=",
-	MINUSEQ:   "-=",
-	STAREQ:    "*=",
-	SLASHEQ:   "/=",
-	PERCENTEQ: "%=",
-
-	LPAREN: "(",
-	RPAREN: ")",
-	LBRACE: "{",
-	RBRACE: "}",
-	LBRACK: "[",
-	RBRACK: "]",
-	COLON:  ":",
-	COMMA:  ",",
-	DOT:    ".",
-	QMARK:  "?",
-	ARROW:  "->",
-}
-
+// String returns a human-readable name for the token kind.
 func (k TokenKind) String() string {
-	if int(k) < len(tokenNames) {
-		return tokenNames[k]
+	if name, ok := kindNames[k]; ok {
+		return name
 	}
 	return "UNKNOWN"
 }
 
-// keywords maps identifier strings to keyword token kinds.
+// kindNames provides display names only for non-obvious token kinds.
+// Keyword and operator tokens use their source text directly via Token.Text.
+var kindNames = map[TokenKind]string{
+	Illegal:         "ILLEGAL",
+	Eof:             "EOF",
+	Identifier:      "IDENT",
+	IntLiteral:      "INT",
+	FloatLiteral:    "FLOAT",
+	StringLiteral:   "STRING",
+	TemplateLiteral: "TEMPLATE",
+}
+
+// keywords maps source text to keyword token kinds.
 var keywords = map[string]TokenKind{
-	"let":      LET,
-	"const":    CONST,
-	"if":       IF,
-	"else":     ELSE,
-	"for":      FOR,
-	"in":       IN,
-	"while":    WHILE,
-	"break":    BREAK,
-	"continue": CONTINUE,
-	"return":   RETURN,
-	"guard":    GUARD,
-	"against":  AGAINST,
-	"throw":    THROW,
-	"type":     TYPE,
-	"use":      USE,
-	"export":   EXPORT,
-	"from":     FROM,
-	"as":       AS,
-	"is":       IS,
-	"not":      NOT,
-	"and":      AND,
-	"or":       OR,
-	"true":     TRUE,
-	"false":    FALSE,
-	"none":     NONE,
+	"let":      Let,
+	"const":    Const,
+	"if":       If,
+	"else":     Else,
+	"for":      For,
+	"in":       In,
+	"while":    While,
+	"break":    Break,
+	"continue": Continue,
+	"return":   Return,
+	"guard":    Guard,
+	"against":  Against,
+	"throw":    Throw,
+	"type":     Type,
+	"use":      Use,
+	"export":   Export,
+	"from":     From,
+	"as":       As,
+	"is":       Is,
+	"not":      Not,
+	"and":      And,
+	"or":       Or,
+	"true":     True,
+	"false":    False,
+	"none":     None,
 }
 
 // LookupIdent returns the keyword TokenKind for ident if it is a keyword,
-// or IDENT if it is a regular identifier.
+// or Identifier if it is a regular identifier.
 func LookupIdent(ident string) TokenKind {
 	if kind, ok := keywords[ident]; ok {
 		return kind
 	}
-	return IDENT
+	return Identifier
 }
 
-// Token represents a single lexical token with its position in the source.
+// Token represents a single lexical token with its position in source.
 type Token struct {
 	Kind   TokenKind
-	Text   string
+	Text   string // the actual source text
 	Line   int
 	Column int
 }

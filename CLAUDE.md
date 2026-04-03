@@ -137,8 +137,18 @@ Do NOT read MEMORY_MODEL_DISCUSSION.md unless specifically discussing memory des
 If working on the learning course (`knowledge/`):
 - NO emojis anywhere. Use SVG icons (Heroicons outline).
 - NO purple, violet, or indigo colors.
-- Light-theme code blocks only (bg: `#FAFAF9`, border: `#E8E4DF`).
+- Dark code blocks (Shiki, `#1C1917` background, monk-dark theme in `astro.config.mjs`).
 - See `knowledge/ASTRO_MIGRATION_PROMPT.md` for full design system.
+
+## Keeping knowledge/ in sync
+
+The learning course (`knowledge/`) teaches how the compiler is built. When any of the following change, update the affected knowledge pages:
+- **spec/REFERENCE.md** — token set, syntax, semantics changes affect lessons 1.2 (Monk's Token Set) and any lesson referencing Monk syntax.
+- **spec/ARCHITECTURE_DECISIONS.md** — changes to implementation language, execution model, or project structure affect lessons 0.1 (How Compilers Work), 0.2 (Setting Up), and the course map (index).
+- **Build phase order** — adding/removing/reordering phases affects the course map and lesson navigation links.
+- **Key decisions** — any decision change (e.g. error handling strategy, type system rules) that contradicts content in a lesson must be fixed in the lesson.
+
+Rule: if you change the spec or architecture and a knowledge/ page now says something wrong, fix the page in the same commit.
 
 ## Related Repos
 

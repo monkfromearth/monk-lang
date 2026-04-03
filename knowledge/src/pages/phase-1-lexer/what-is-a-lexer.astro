@@ -1,0 +1,266 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="What Is a Lexer?" lessonNumber="1.1" section="Phase 1">
+
+    <LessonHeader lessonNumber="1.1" title="What Is a Lexer?" description="The compiler's first step. Raw text goes in, meaningful chunks come out. This is where every programming language begins.">
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="default">12 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The analogy -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Reading before understanding.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When you read a sentence, your brain does two things. First, it identifies words — the letters "c-a-t" become the word "cat." Then it understands what "cat" means in context. These are separate processes, and your brain is so fast you don't notice the split.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A compiler does the same thing, but slower and more deliberately. The lexer handles the first step: <strong>recognizing words</strong>. It doesn't know what the program means — that's the parser's job. The lexer just reads characters and groups them into tokens.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Token:</strong> the smallest meaningful unit in source code. A keyword like <code class="bg-stone-100 px-1 rounded text-xs">let</code>, a number like <code class="bg-stone-100 px-1 rounded text-xs">42</code>, an operator like <code class="bg-stone-100 px-1 rounded text-xs">+</code>. Each one is a token.</p>
+        </InsightBox>
+    </section>
+
+    <!-- What the lexer sees -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What the lexer sees.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">To you, this is a variable declaration:</p>
+
+        <Code code={`let name = "Monk"`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">To the lexer, it's a stream of 16 characters:</p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-5 mb-4">
+            <div class="flex flex-wrap gap-1 font-mono text-sm justify-center">
+                {['l','e','t',' ','n','a','m','e',' ','=',' ','"','M','o','n','k','"'].map(c => (
+                    <div class={`w-8 h-10 flex items-center justify-center rounded border ${c === ' ' ? 'bg-monk-bg border-monk-border text-monk-muted text-xs' : 'bg-white border-monk-border'}`}>
+                        {c === ' ' ? '·' : c}
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">The lexer scans left to right, grouping characters into tokens:</p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-5">
+            <div class="flex flex-wrap gap-2">
+                <span class="font-mono text-xs bg-monk-accentLight text-monk-accent px-3 py-1.5 rounded-lg border border-monk-accent/20 font-semibold">LET</span>
+                <span class="font-mono text-xs bg-stone-100 text-stone-700 px-3 py-1.5 rounded-lg border border-stone-200">IDENT "name"</span>
+                <span class="font-mono text-xs bg-monk-amberLight text-monk-amber px-3 py-1.5 rounded-lg border border-amber-200">ASSIGN</span>
+                <span class="font-mono text-xs bg-monk-greenLight text-monk-green px-3 py-1.5 rounded-lg border border-green-200">STRING "Monk"</span>
+            </div>
+            <p class="text-xs text-monk-muted mt-3">Whitespace is consumed but produces no token. It's just a separator.</p>
+        </div>
+    </section>
+
+    <!-- How scanning works -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">How scanning works.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The lexer keeps a cursor — a position in the source string. It looks at the current character and decides what kind of token is starting. Then it advances the cursor until the token is complete.
+        </p>
+
+        <div class="space-y-4 mb-6">
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-accent font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Letter?</p>
+                    <p class="text-monk-muted text-sm">Keep reading letters and digits. When you stop, check if it's a keyword (<code class="bg-stone-100 px-1 rounded text-xs">let</code>, <code class="bg-stone-100 px-1 rounded text-xs">if</code>, <code class="bg-stone-100 px-1 rounded text-xs">return</code>). If not, it's an identifier.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-blueLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-blue font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Digit?</p>
+                    <p class="text-monk-muted text-sm">Keep reading digits (and maybe a dot for floats, or <code class="bg-stone-100 px-1 rounded text-xs">0x</code>/<code class="bg-stone-100 px-1 rounded text-xs">0b</code> prefixes). Produce a number token.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-greenLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-green font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Quote?</p>
+                    <p class="text-monk-muted text-sm">Read everything until the matching closing quote. Handle escape sequences (<code class="bg-stone-100 px-1 rounded text-xs">\n</code>, <code class="bg-stone-100 px-1 rounded text-xs">\"</code>). Produce a string token.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-amberLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-amber font-bold text-sm">4</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Symbol?</p>
+                    <p class="text-monk-muted text-sm">Check if the next character extends it (<code class="bg-stone-100 px-1 rounded text-xs">=</code> could become <code class="bg-stone-100 px-1 rounded text-xs">==</code>, <code class="bg-stone-100 px-1 rounded text-xs">-</code> could become <code class="bg-stone-100 px-1 rounded text-xs">-></code>). Produce the longest matching operator.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0">
+                    <span class="text-stone-500 font-bold text-sm">5</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Whitespace or comment?</p>
+                    <p class="text-monk-muted text-sm">Skip it. Advance the cursor. No token produced.</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">That's the entire algorithm. A big <code class="bg-stone-100 px-1 rounded text-xs">switch</code> on the current character, repeated until you hit the end of the file (then emit an <code class="bg-stone-100 px-1 rounded text-xs">EOF</code> token).</p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Maximal munch.</strong> The lexer always reads the longest possible token. When it sees <code class="bg-stone-100 px-1 rounded text-xs"><=</code>, it produces one LESS_EQUAL token, not a LESS followed by an ASSIGN. This is called the "maximal munch" rule and every real lexer uses it.</p>
+        </InsightBox>
+    </section>
+
+    <!-- A complete example -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A complete example.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Here's a small Monk program:</p>
+
+        <Code code={`const add = (a int, b int) int {
+    return a + b
+}
+let result = add(3, 4)  // 7`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">The lexer produces this token stream:</p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-5 overflow-x-auto">
+            <div class="flex flex-wrap gap-1.5">
+                {[
+                    ['CONST', 'bg-monk-accentLight text-monk-accent border-monk-accent/20'],
+                    ['IDENT "add"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['ASSIGN', 'bg-monk-amberLight text-monk-amber border-amber-200'],
+                    ['LPAREN', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['IDENT "a"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['IDENT "int"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['COMMA', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['IDENT "b"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['IDENT "int"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['RPAREN', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['IDENT "int"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['LBRACE', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['RETURN', 'bg-monk-accentLight text-monk-accent border-monk-accent/20'],
+                    ['IDENT "a"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['PLUS', 'bg-monk-amberLight text-monk-amber border-amber-200'],
+                    ['IDENT "b"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['RBRACE', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['LET', 'bg-monk-accentLight text-monk-accent border-monk-accent/20'],
+                    ['IDENT "result"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['ASSIGN', 'bg-monk-amberLight text-monk-amber border-amber-200'],
+                    ['IDENT "add"', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['LPAREN', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['INT 3', 'bg-monk-greenLight text-monk-green border-green-200'],
+                    ['COMMA', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['INT 4', 'bg-monk-greenLight text-monk-green border-green-200'],
+                    ['RPAREN', 'bg-stone-100 text-stone-700 border-stone-200'],
+                    ['EOF', 'bg-stone-100 text-stone-700 border-stone-200'],
+                ].map(([label, classes]) => (
+                    <span class={`font-mono text-[10px] px-2 py-1 rounded border ${classes}`}>{label}</span>
+                ))}
+            </div>
+            <p class="text-xs text-monk-muted mt-3">The comment <code class="bg-stone-100 px-1 rounded text-xs">// 7</code> is discarded. It carries no meaning for the compiler.</p>
+        </div>
+    </section>
+
+    <!-- What the lexer does NOT do -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What the lexer does NOT do.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <svg class="w-5 h-5 text-monk-muted flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                <div>
+                    <p class="font-semibold text-sm">No grammar.</p>
+                    <p class="text-monk-muted text-xs">It doesn't know that <code class="bg-stone-100 px-1 rounded text-xs">let x =</code> starts a variable declaration. That's parsing.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <svg class="w-5 h-5 text-monk-muted flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                <div>
+                    <p class="font-semibold text-sm">No type checking.</p>
+                    <p class="text-monk-muted text-xs"><code class="bg-stone-100 px-1 rounded text-xs">let x int = "hello"</code> lexes just fine. The lexer doesn't know types are wrong.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <svg class="w-5 h-5 text-monk-muted flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                <div>
+                    <p class="font-semibold text-sm">No scope.</p>
+                    <p class="text-monk-muted text-xs">It doesn't know if a variable has been declared. <code class="bg-stone-100 px-1 rounded text-xs">foobar</code> is just an identifier, even if nothing named <code class="bg-stone-100 px-1 rounded text-xs">foobar</code> exists.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6">
+            <InsightBox>
+                <p class="text-sm"><strong>The lexer's only concern:</strong> is this sequence of characters a valid token? If not, report an error with the line and column number. That's it. Everything else is someone else's problem.</p>
+            </InsightBox>
+        </div>
+    </section>
+
+    <!-- Line and column tracking -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Line and column tracking.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every token remembers where it came from — the line number and column in the source file. When the parser or type checker finds an error later, it uses this position to print a useful error message:
+        </p>
+
+        <Code code={`error: undefined variable "nme"
+  --> main.monk:3:12
+  |
+3 | let x = nme + 1
+  |         ^^^`} lang="text" />
+
+        <p class="text-monk-muted text-sm mt-4">
+            The lexer tracks this by counting newlines (increment line, reset column) and incrementing the column for every other character. Cheap to do, invaluable for debugging.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">A lexer turns a string of characters into a stream of tokens. Characters in, tokens out.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">It works by scanning left to right with a cursor, matching the longest possible token at each position.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Whitespace and comments are consumed but don't produce tokens.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Every token carries its position (line, column) for error reporting downstream.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/foundations/setting-up"
+        prevLabel="Prev: Setting Up"
+        nextHref="/phase-1-lexer/monks-tokens"
+        nextLabel="Next: Monk's Token Set"
+    />
+
+</LessonLayout>

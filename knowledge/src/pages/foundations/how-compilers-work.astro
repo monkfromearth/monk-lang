@@ -73,7 +73,7 @@ import TagBadge from '../../components/TagBadge.astro';
 
         <p class="text-monk-muted leading-relaxed mb-6">Let's follow a single line of Monk code through the entire compiler:</p>
 
-        <Code code={`let x = 1 + 2 * 3`} lang="text" />
+        <Code code={`let x = 1 + 2 * 3`} lang="javascript" />
 
         <!-- Step 1: Lexer -->
         <div class="mb-10 mt-8">
@@ -245,7 +245,7 @@ import TagBadge from '../../components/TagBadge.astro';
                 <div class="grid md:grid-cols-2 gap-4">
                     <div>
                         <p class="text-xs text-monk-accent font-semibold uppercase tracking-wider mb-2">Monk</p>
-                        <Code code={`let x = 1 + 2 * 3`} lang="text" />
+                        <Code code={`let x = 1 + 2 * 3`} lang="javascript" />
                     </div>
                     <div>
                         <p class="text-xs text-monk-amber font-semibold uppercase tracking-wider mb-2">Generated C</p>
@@ -263,7 +263,7 @@ import TagBadge from '../../components/TagBadge.astro';
                         <Code code={`const add = (a int, b int) int {
     return a + b
 }
-show(add(3, 4))`} lang="text" />
+show(add(3, 4))`} lang="javascript" />
                     </div>
                     <div>
                         <p class="text-xs text-monk-amber font-semibold uppercase tracking-wider mb-2">Generated C</p>

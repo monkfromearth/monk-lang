@@ -4,23 +4,23 @@ import tailwind from '@astrojs/tailwind';
 
 /** @type {import('shiki').ThemeRegistration} */
 const monkTheme = {
-  name: 'monk-light',
-  type: 'light',
+  name: 'monk-dark',
+  type: 'dark',
   colors: {
-    'editor.background': '#FAFAF9',
-    'editor.foreground': '#1A1A1A',
+    'editor.background': '#1C1917',
+    'editor.foreground': '#E7E5E4',
   },
   tokenColors: [
-    { scope: ['keyword', 'storage.type', 'storage.modifier'], settings: { foreground: '#E8590C' } },
-    { scope: ['entity.name.type', 'support.type'], settings: { foreground: '#0D9488' } },
-    { scope: ['entity.name.function', 'support.function'], settings: { foreground: '#2563EB' } },
-    { scope: ['string', 'string.quoted'], settings: { foreground: '#16A34A' } },
-    { scope: ['constant.numeric'], settings: { foreground: '#2563EB' } },
-    { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: '#9C9590' } },
-    { scope: ['keyword.operator'], settings: { foreground: '#D97706' } },
-    { scope: ['support.function.builtin', 'entity.name.tag'], settings: { foreground: '#E8590C' } },
-    { scope: ['variable', 'meta.definition.variable'], settings: { foreground: '#1A1A1A' } },
-    { scope: ['punctuation'], settings: { foreground: '#1A1A1A' } },
+    { scope: ['keyword', 'storage.type', 'storage.modifier'], settings: { foreground: '#FB923C', fontStyle: 'bold' } },
+    { scope: ['entity.name.type', 'support.type'], settings: { foreground: '#5EEAD4' } },
+    { scope: ['entity.name.function', 'support.function'], settings: { foreground: '#93C5FD' } },
+    { scope: ['string', 'string.quoted'], settings: { foreground: '#86EFAC' } },
+    { scope: ['constant.numeric'], settings: { foreground: '#93C5FD' } },
+    { scope: ['comment', 'punctuation.definition.comment'], settings: { foreground: '#78716C', fontStyle: 'italic' } },
+    { scope: ['keyword.operator', 'keyword.operator.assignment', 'keyword.operator.arithmetic'], settings: { foreground: '#FCD34D' } },
+    { scope: ['support.function.builtin', 'entity.name.tag'], settings: { foreground: '#FB923C' } },
+    { scope: ['variable', 'variable.other', 'meta.definition.variable', 'variable.other.readwrite'], settings: { foreground: '#E7E5E4' } },
+    { scope: ['punctuation', 'meta.brace'], settings: { foreground: '#A8A29E' } },
   ],
 };
 

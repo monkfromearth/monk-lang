@@ -1,0 +1,323 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Designing Monk's Token Set" lessonNumber="1.2" section="Phase 1">
+
+    <LessonHeader lessonNumber="1.2" title="Designing Monk's Token Set" description="Every keyword, operator, and delimiter in the language, mapped to a token type. This is the contract between the lexer and the parser.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Why design tokens first -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Why define tokens before writing the lexer.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The token set is a contract. The lexer promises to produce these types. The parser promises to consume them. If you get this list right, the lexer and parser can be built independently — even by different people.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk has ~60 token types. That sounds like a lot, but most are single characters (<code class="bg-stone-100 px-1 rounded text-xs">+</code>, <code class="bg-stone-100 px-1 rounded text-xs">(</code>, <code class="bg-stone-100 px-1 rounded text-xs">,</code>) or reserved words (<code class="bg-stone-100 px-1 rounded text-xs">let</code>, <code class="bg-stone-100 px-1 rounded text-xs">if</code>, <code class="bg-stone-100 px-1 rounded text-xs">return</code>). The interesting ones are the literals — numbers, strings, identifiers.
+        </p>
+    </section>
+
+    <!-- Keywords -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Keywords.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Reserved words that cannot be used as variable names. The lexer reads an identifier, then checks: is it in the keyword table? If yes, emit the keyword token. If no, emit an identifier.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6">
+            <div class="divide-y divide-monk-border text-sm">
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Declarations & control flow</span>
+                </div>
+                <div class="px-5 py-3 flex flex-wrap gap-2">
+                    {['let', 'const', 'if', 'else', 'for', 'in', 'while', 'break', 'continue', 'return'].map(kw => (
+                        <code class="bg-monk-accentLight text-monk-accent px-2 py-0.5 rounded text-xs font-mono">{kw}</code>
+                    ))}
+                </div>
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Error handling</span>
+                </div>
+                <div class="px-5 py-3 flex flex-wrap gap-2">
+                    {['guard', 'against', 'throw'].map(kw => (
+                        <code class="bg-monk-accentLight text-monk-accent px-2 py-0.5 rounded text-xs font-mono">{kw}</code>
+                    ))}
+                </div>
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Modules & types</span>
+                </div>
+                <div class="px-5 py-3 flex flex-wrap gap-2">
+                    {['type', 'use', 'export', 'from', 'as'].map(kw => (
+                        <code class="bg-monk-accentLight text-monk-accent px-2 py-0.5 rounded text-xs font-mono">{kw}</code>
+                    ))}
+                </div>
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Logical operators (keyword form)</span>
+                </div>
+                <div class="px-5 py-3 flex flex-wrap gap-2">
+                    {['and', 'or', 'not', 'is'].map(kw => (
+                        <code class="bg-monk-accentLight text-monk-accent px-2 py-0.5 rounded text-xs font-mono">{kw}</code>
+                    ))}
+                </div>
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Literals (also keywords)</span>
+                </div>
+                <div class="px-5 py-3 flex flex-wrap gap-2">
+                    {['true', 'false', 'none'].map(kw => (
+                        <code class="bg-monk-greenLight text-monk-green px-2 py-0.5 rounded text-xs font-mono">{kw}</code>
+                    ))}
+                </div>
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Reserved for future</span>
+                </div>
+                <div class="px-5 py-3 flex flex-wrap gap-2">
+                    {['ref', 'async', 'await'].map(kw => (
+                        <code class="bg-stone-100 text-monk-muted px-2 py-0.5 rounded text-xs font-mono">{kw}</code>
+                    ))}
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Keywords vs identifiers.</strong> The lexer doesn't hardcode each keyword in the scanner. It reads a word, then does a lookup in a map. This keeps the scanner simple — the only decision is "letter? keep reading." The keyword check happens once, at the end.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Operators -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Operators.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The tricky part: multi-character operators. When the lexer sees <code class="bg-stone-100 px-1 rounded text-xs">=</code>, it needs to peek at the next character. Is it <code class="bg-stone-100 px-1 rounded text-xs">==</code>? Or just <code class="bg-stone-100 px-1 rounded text-xs">=</code>?
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl overflow-hidden">
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Arithmetic</span>
+                </div>
+                <div class="divide-y divide-monk-border text-sm">
+                    {[
+                        ['+', 'PLUS'], ['-', 'MINUS'], ['*', 'STAR'], ['/', 'SLASH'], ['%', 'PERCENT']
+                    ].map(([sym, name]) => (
+                        <div class="flex px-5 py-2">
+                            <code class="font-mono text-monk-amber w-12">{sym}</code>
+                            <span class="text-monk-muted text-xs font-mono">{name}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl overflow-hidden">
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Comparison</span>
+                </div>
+                <div class="divide-y divide-monk-border text-sm">
+                    {[
+                        ['==', 'EQUAL_EQUAL'], ['!=', 'BANG_EQUAL'],
+                        ['<', 'LESS'], ['>', 'GREATER'],
+                        ['<=', 'LESS_EQUAL'], ['>=', 'GREATER_EQUAL']
+                    ].map(([sym, name]) => (
+                        <div class="flex px-5 py-2">
+                            <code class="font-mono text-monk-amber w-12">{sym}</code>
+                            <span class="text-monk-muted text-xs font-mono">{name}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl overflow-hidden">
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Assignment</span>
+                </div>
+                <div class="divide-y divide-monk-border text-sm">
+                    {[
+                        ['=', 'ASSIGN'], ['+=', 'PLUS_ASSIGN'], ['-=', 'MINUS_ASSIGN'],
+                        ['*=', 'STAR_ASSIGN'], ['/=', 'SLASH_ASSIGN'], ['%=', 'PERCENT_ASSIGN']
+                    ].map(([sym, name]) => (
+                        <div class="flex px-5 py-2">
+                            <code class="font-mono text-monk-amber w-12">{sym}</code>
+                            <span class="text-monk-muted text-xs font-mono">{name}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl overflow-hidden">
+                <div class="px-5 py-3 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Logical & bitwise</span>
+                </div>
+                <div class="divide-y divide-monk-border text-sm">
+                    {[
+                        ['&&', 'AND_AND'], ['||', 'OR_OR'], ['!', 'BANG'],
+                        ['&', 'AMP'], ['|', 'PIPE'], ['^', 'CARET'],
+                        ['~', 'TILDE'], ['<<', 'SHIFT_LEFT'], ['>>', 'SHIFT_RIGHT']
+                    ].map(([sym, name]) => (
+                        <div class="flex px-5 py-2">
+                            <code class="font-mono text-monk-amber w-12">{sym}</code>
+                            <span class="text-monk-muted text-xs font-mono">{name}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6">
+            <div class="px-5 py-3 bg-monk-bg">
+                <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Special</span>
+            </div>
+            <div class="divide-y divide-monk-border text-sm">
+                <div class="flex px-5 py-2"><code class="font-mono text-monk-amber w-12">{'->'}</code><span class="text-monk-muted text-xs font-mono">ARROW</span><span class="text-monk-muted text-xs ml-3">function type signature</span></div>
+                <div class="flex px-5 py-2"><code class="font-mono text-monk-amber w-12">?</code><span class="text-monk-muted text-xs font-mono">QUESTION</span><span class="text-monk-muted text-xs ml-3">optional type suffix</span></div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Maximal munch in practice.</strong> When the lexer sees <code class="bg-stone-100 px-1 rounded text-xs">-</code>, it peeks ahead. Next char is <code class="bg-stone-100 px-1 rounded text-xs">></code>? Emit ARROW. Next char is <code class="bg-stone-100 px-1 rounded text-xs">=</code>? Emit MINUS_ASSIGN. Otherwise, just MINUS. Two-character operators always beat one-character operators.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Delimiters -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Delimiters.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Simple. One character, one token. No ambiguity.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden">
+            <div class="divide-y divide-monk-border text-sm">
+                {[
+                    ['( )', 'LPAREN / RPAREN', 'params, calls, grouping'],
+                    ['{ }', 'LBRACE / RBRACE', 'blocks, record literals'],
+                    ['[ ]', 'LBRACKET / RBRACKET', 'arrays, index access'],
+                    [',', 'COMMA', 'separators (trailing allowed)'],
+                    ['.', 'DOT', 'record field access'],
+                    [':', 'COLON', 'record field definitions'],
+                ].map(([sym, name, usage]) => (
+                    <div class="flex px-5 py-2.5">
+                        <code class="font-mono text-stone-700 w-14 flex-shrink-0">{sym}</code>
+                        <span class="text-monk-muted text-xs font-mono w-48 flex-shrink-0">{name}</span>
+                        <span class="text-monk-muted text-xs">{usage}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    </section>
+
+    <!-- Literals -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Literals.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            These are the tokens that carry a value, not just a type.
+        </p>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2">Integers</p>
+                <p class="text-monk-muted text-sm mb-3">64-bit signed. Multiple bases. Underscore separators for readability.</p>
+                <div class="flex flex-wrap gap-2">
+                    {['42', '0xFF', '0b1010', '0o77', '1_000_000'].map(v => (
+                        <code class="bg-monk-blueLight text-monk-blue px-2 py-0.5 rounded text-xs font-mono">{v}</code>
+                    ))}
+                </div>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2">Floats</p>
+                <p class="text-monk-muted text-sm mb-3">64-bit. Decimal point or scientific notation.</p>
+                <div class="flex flex-wrap gap-2">
+                    {['3.14', '-0.5', '1.23e5', '1e-3'].map(v => (
+                        <code class="bg-monk-blueLight text-monk-blue px-2 py-0.5 rounded text-xs font-mono">{v}</code>
+                    ))}
+                </div>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2">Strings</p>
+                <p class="text-monk-muted text-sm mb-3">Double-quoted. Escape sequences: <code class="bg-stone-100 px-1 rounded text-xs">\n</code> <code class="bg-stone-100 px-1 rounded text-xs">\t</code> <code class="bg-stone-100 px-1 rounded text-xs">\"</code> <code class="bg-stone-100 px-1 rounded text-xs">\\</code></p>
+                <div class="flex flex-wrap gap-2">
+                    <code class="bg-monk-greenLight text-monk-green px-2 py-0.5 rounded text-xs font-mono">"Hello, world!"</code>
+                    <code class="bg-monk-greenLight text-monk-green px-2 py-0.5 rounded text-xs font-mono">"line\nbreak"</code>
+                    <code class="bg-monk-greenLight text-monk-green px-2 py-0.5 rounded text-xs font-mono">""</code>
+                </div>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2">Template literals</p>
+                <p class="text-monk-muted text-sm mb-3">Backtick-delimited. Multiline. No interpolation. Same type as string.</p>
+                <Code code={'`This is a\nmultiline string`'} lang="javascript" />
+            </div>
+        </div>
+    </section>
+
+    <!-- The Token struct -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What a token looks like in code.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every token the lexer produces carries three things:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm">
+            <div class="divide-y divide-monk-border">
+                <div class="flex px-5 py-3">
+                    <span class="font-semibold w-24">Type</span>
+                    <span class="text-monk-muted">What kind of token — <code class="bg-stone-100 px-1 rounded text-xs">LET</code>, <code class="bg-stone-100 px-1 rounded text-xs">PLUS</code>, <code class="bg-stone-100 px-1 rounded text-xs">INT</code>, etc.</span>
+                </div>
+                <div class="flex px-5 py-3">
+                    <span class="font-semibold w-24">Literal</span>
+                    <span class="text-monk-muted">The raw text — <code class="bg-stone-100 px-1 rounded text-xs">"let"</code>, <code class="bg-stone-100 px-1 rounded text-xs">"+"</code>, <code class="bg-stone-100 px-1 rounded text-xs">"42"</code>, <code class="bg-stone-100 px-1 rounded text-xs">"hello"</code></span>
+                </div>
+                <div class="flex px-5 py-3">
+                    <span class="font-semibold w-24">Position</span>
+                    <span class="text-monk-muted">Line and column — <code class="bg-stone-100 px-1 rounded text-xs">line 3, col 12</code></span>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm mt-4">
+            The parser never looks at the source string again. Everything it needs is in the token stream.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Monk has ~60 token types: 27 keywords, ~26 operators, 9 delimiters, plus identifiers and literals.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Keywords are just identifiers that happen to match a reserved word table. The scanner doesn't special-case them.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Multi-character operators use peek-ahead. Longest match wins (maximal munch).</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Every token carries its type, literal text, and source position.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-1-lexer/what-is-a-lexer"
+        prevLabel="Prev: What Is a Lexer?"
+        nextHref="/phase-1-lexer/building-the-lexer"
+        nextLabel="Next: Building the Lexer"
+    />
+
+</LessonLayout>

@@ -73,15 +73,18 @@ Word bank (pick when shipping, not planned ahead):
 
 ## Current Status
 
-**Phases 1-3 complete.** Lexer, parser, and interpreter are working with 363 passing tests. Next step: Phase 4 (built-in functions).
+**Phases 1-4 complete.** Lexer, parser, interpreter, and 48 built-in functions working with 445 passing tests. Next step: Phase 5 (type system).
 
-Remaining items from Phases 1-3 (deferred to later phases):
+Remaining items from earlier phases (deferred):
 - Default parameter values (parser + interpreter)
 - Typed record field enforcement (requires type checker, Phase 5)
 - Return type validation (requires type checker, Phase 5)
 - Reject assignment in conditions (parser validation)
 - Reject break/continue outside loops (parser validation)
 - Function type signatures `(int, int) -> int` in parameter position (parser)
+- File system builtins: file_read, file_write, file_exists (Phase 4 remainder)
+- Environment builtins: env_get, exit, args (Phase 4 remainder)
+- map/filter/reduce with user-defined Monk functions (needs evaluator integration)
 
 Go 1.22+ required. Standard `go test` for TDD.
 

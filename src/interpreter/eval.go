@@ -7,7 +7,10 @@ import (
 	"github.com/monkfromearth/monk-lang/src/syntax"
 )
 
-// Signal types for control flow.
+// Control flow signals. These implement error so they propagate through
+// the call stack. The evaluator catches them at the appropriate level:
+// returnSignal at function call boundaries, breakSignal/continueSignal
+// at loop boundaries, throwSignal at guard/against boundaries.
 type returnSignal struct{ value Value }
 type breakSignal struct{}
 type continueSignal struct{}

@@ -73,7 +73,15 @@ Word bank (pick when shipping, not planned ahead):
 
 ## Current Status
 
-**No code written yet.** The spec, architecture, and learning materials are complete. Next step: set up the Go project and write the first failing lexer test.
+**Phases 1-3 complete.** Lexer, parser, and interpreter are working with 363 passing tests. Next step: Phase 4 (built-in functions).
+
+Remaining items from Phases 1-3 (deferred to later phases):
+- Default parameter values (parser + interpreter)
+- Typed record field enforcement (requires type checker, Phase 5)
+- Return type validation (requires type checker, Phase 5)
+- Reject assignment in conditions (parser validation)
+- Reject break/continue outside loops (parser validation)
+- Function type signatures `(int, int) -> int` in parameter position (parser)
 
 Go 1.22+ required. Standard `go test` for TDD.
 

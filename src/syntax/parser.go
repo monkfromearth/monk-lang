@@ -55,9 +55,10 @@ func (p *Parser) parseStmt() (Stmt, error) {
 		return p.parseUse()
 	case Export:
 		return p.parseExport()
-	// No case for LeftBrace here — bare { at statement level is a record expression.
+	// Design decision: bare { at statement level is a record expression, not a block.
 	// Blocks only exist inside if/while/for/guard/function bodies (parseBlock is
-	// called explicitly by those parsers). This avoids the block-vs-record ambiguity.
+	// called explicitly by those parsers). This avoids the block-vs-record ambiguity
+	// without fragile peek-ahead heuristics. Standalone blocks removed from language.
 	default:
 		return p.parseExprStmt()
 	}

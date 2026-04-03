@@ -73,7 +73,7 @@ Word bank (pick when shipping, not planned ahead):
 
 ## Current Status
 
-**Phases 1-2 complete.** Lexer and parser working with 219 passing tests. Next step: Phase 3 (C runtime library) then Phase 4 (C code generation).
+**Phases 1-3 complete.** Lexer, parser (237 Go tests), and C runtime library (146 C tests) all done. Next step: Phase 4 (C code generation).
 
 **Interpreter/builtins deleted.** We built a tree-walking interpreter (Phase 3) and Go builtins (Phase 4) before realizing: Monk is a compiler, not an interpreter. There is no REPL. Those packages don't ship. They were deleted. The language semantics they validated will be re-tested as integration tests (compile .monk → run binary → check output).
 
@@ -127,7 +127,7 @@ Phases must be completed in order (each depends on the one before):
 
 1. Lexer ✅
 2. Parser ✅
-3. C Runtime Library (runtime.c — MonkValue, builtins, error handling)
+3. C Runtime Library ✅
 4. C Code Generation (AST → .c file)
 5. CLI (monk build, monk run, monk check)
 6. Type System (static analysis)

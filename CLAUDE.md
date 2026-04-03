@@ -60,17 +60,16 @@ No code without a test. No test without a spec reference.
 - `0.x.y` — pre-1.0, breaking changes expected
 - `1.0.0` — first stable release (language spec is frozen)
 
-**Release names:** Each minor version gets a codename. Convention: **Sanskrit/Pali words related to clarity, knowledge, and simplicity** — fitting for a language called Monk.
+**Release names:** Each minor version gets a codename. Convention: **Urdu/Hindi single words** — personal, distinctive, meaningful.
 
-Examples:
-- `0.1.0` — *"Bodhi"* (awakening)
-- `0.2.0` — *"Dharma"* (truth, natural law)
-- `0.3.0` — *"Prajna"* (wisdom, insight)
-- `0.4.0` — *"Karuna"* (compassion)
-- `0.5.0` — *"Shunyata"* (emptiness, simplicity)
-- `1.0.0` — *"Nirvana"* (liberation)
+Names are chosen when the release is ready. The word should reflect what the release achieves.
 
-Names are chosen when the release is ready, not planned ahead. The name should reflect what the release achieves.
+Word bank (pick when shipping, not planned ahead):
+- *Safar* (journey) · *Noor* (light) · *Umeed* (hope)
+- *Fikr* (thought) · *Sukoon* (peace) · *Irada* (will, intent)
+- *Khoj* (search, discovery) · *Raasta* (path) · *Buniyaad* (foundation)
+- *Dastak* (knock, arrival) · *Ehsaas* (feeling, awareness) · *Amal* (action)
+- *Soch* (thought) · *Zariya* (means, medium) · *Wujood* (existence)
 
 ## Current Status
 

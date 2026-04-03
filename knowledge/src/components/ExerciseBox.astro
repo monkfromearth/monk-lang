@@ -1,0 +1,15 @@
+---
+/**
+ * Green left-border exercise prompt box.
+ */
+interface Props {
+  title?: string;
+}
+
+const { title = "Your task" } = Astro.props;
+---
+
+<div class="exercise-box bg-monk-greenLight/50 rounded-r-xl px-5 py-4">
+    <p class="text-sm font-semibold mb-1">{title}</p>
+    <slot />
+</div>

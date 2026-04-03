@@ -1,0 +1,20 @@
+---
+/**
+ * Numbered circle used for walkthrough steps.
+ */
+interface Props {
+  number: number | string;
+  color?: 'accent' | 'green';
+}
+
+const { number, color = 'accent' } = Astro.props;
+
+const colorClasses = {
+  accent: 'bg-monk-accentLight text-monk-accent',
+  green: 'bg-monk-greenLight text-monk-green',
+};
+---
+
+<div class={`step-number ${colorClasses[color]}`}>
+    {number}
+</div>

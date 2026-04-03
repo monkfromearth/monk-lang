@@ -1,4 +1,4 @@
-# Monk Lang v2
+# Monk Lang
 
 ## What This Is
 
@@ -9,7 +9,7 @@ The v1 (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](h
 
 - **Language spec:** `spec/REFERENCE.md` — defines what Monk IS. If the code disagrees with the spec, one of them has a bug.
 - **Roadmap:** `ROADMAP.md` — phased rebuild plan with checkboxes. No timelines.
-- **Architecture decisions:** `spec/ARCHITECTURE_DECISIONS.md` — why Zig, why compile-to-C, what can change later.
+- **Architecture decisions:** `spec/ARCHITECTURE_DECISIONS.md` — why Go, why compile-to-C, what can change later.
 - **Memory model discussion:** `spec/MEMORY_MODEL_DISCUSSION.md` — ongoing design for ref/borrowing/memory.
 - **This file:** project rules and decisions.
 
@@ -35,7 +35,7 @@ No code without a test. No test without a spec reference.
 
 ## Key Decisions
 
-- **Implementation language:** Zig. Chosen for millisecond builds (TDD), tiny binaries, explicit allocators matching "explicit over implicit."
+- **Implementation language:** Go. Chosen for fast builds (TDD), easy tree manipulation, first-class strings, single-binary output. Zig/Rust deferred to future backend work (LLVM, custom codegen).
 - **Execution model:** Compile to C. Monk is a compiler, not an interpreter. `monk build` → native binary. REPL uses tree-walking for interactivity.
 - **Runtime:** Small C library (~2-5 KB) linked into every compiled program. Provides MonkValue, built-in functions, error handling.
 - **Architecture restart:** Clean break from v1. No code carried over.
@@ -53,26 +53,45 @@ No code without a test. No test without a spec reference.
 - **No `function` type:** Dropped. Use typed signatures `(int, int) -> int`.
 - **Truthiness:** `false`, `none`, `0` only. `""` and `[]` are truthy.
 
+## Versioning and Releases
+
+**Semantic versioning:** `MAJOR.MINOR.PATCH` (e.g., `0.1.0`, `0.2.0`, `1.0.0`)
+
+- `0.x.y` — pre-1.0, breaking changes expected
+- `1.0.0` — first stable release (language spec is frozen)
+
+**Release names:** Each minor version gets a codename. Convention: **Sanskrit/Pali words related to clarity, knowledge, and simplicity** — fitting for a language called Monk.
+
+Examples:
+- `0.1.0` — *"Bodhi"* (awakening)
+- `0.2.0` — *"Dharma"* (truth, natural law)
+- `0.3.0` — *"Prajna"* (wisdom, insight)
+- `0.4.0` — *"Karuna"* (compassion)
+- `0.5.0` — *"Shunyata"* (emptiness, simplicity)
+- `1.0.0` — *"Nirvana"* (liberation)
+
+Names are chosen when the release is ready, not planned ahead. The name should reflect what the release achieves.
+
 ## Current Status
 
-**No code written yet.** The spec, architecture, and learning materials are complete. Next step: set up the Zig project and write the first failing lexer test.
+**No code written yet.** The spec, architecture, and learning materials are complete. Next step: set up the Go project and write the first failing lexer test.
 
-Pin **Zig 0.13 or 0.14** (stable-ish). Don't chase latest nightly — pre-1.0 breaking changes.
+Go 1.22+ required. Standard `go test` for TDD.
 
 ## Project Structure
 
 ```
 spec/                — Language specification
   REFERENCE.md           — THE source of truth for syntax and semantics
-  ARCHITECTURE_DECISIONS.md — Why Zig, why compile-to-C, implementation plans
+  ARCHITECTURE_DECISIONS.md — Why Go, why compile-to-C, implementation plans
   MEMORY_MODEL_DISCUSSION.md — Design history for memory management
 knowledge/           — Learning course (Brilliant.org style, migrating to Astro)
   ASTRO_MIGRATION_PROMPT.md — Full prompt for migrating to Astro + Solid
   index.html             — Course map landing page
-  foundations/           — Unit 0 lessons (how compilers work, Zig basics)
+  foundations/           — Unit 0 lessons (how compilers work, Go/C basics)
 tests/               — Test suite (contract for the implementation)
 examples/            — Example .monk programs
-src/                 — Zig implementation (not yet created)
+src/                 — Go implementation (not yet created)
 runtime/             — C runtime library (not yet created)
 editor/              — VS Code extension, LSP
 scripts/             — Build and automation
@@ -125,7 +144,7 @@ If working on the learning course (`knowledge/`):
 
 | Repo | Purpose | Status |
 |------|---------|--------|
-| `monkfromearth/monk-lang` | This repo — v2 compiler | Active |
+| `monkfromearth/monk-lang` | This repo — the compiler | Active |
 | `monkfromearth/monk-lang-v1` | Archived v1 (TS/Bun interpreter) | Archived |
 | `monkfromearth/homebrew-monk-lang` | Homebrew tap formula | Update in Phase 9 |
 | `monkfromearth/monklore` | Docs site (Next.js) | Separate |

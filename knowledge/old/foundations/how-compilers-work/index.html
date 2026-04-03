@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0.1 — How Compilers Work</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        monk: {
+                            bg: '#FAF8F5', card: '#FFFFFF', border: '#E8E4DF',
+                            text: '#1A1A1A', muted: '#6B6560',
+                            accent: '#E8590C', accentLight: '#FFF4ED',
+                            green: '#16A34A', greenLight: '#F0FDF4',
+                            blue: '#2563EB', blueLight: '#EFF6FF',
+                            teal: '#0D9488', tealLight: '#F0FDFA',
+                            amber: '#D97706', amberLight: '#FFFBEB',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body { background: #FAF8F5; }
+        .step-card { transition: all 0.2s ease; }
+        .step-card:hover { box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+        .code-block { background: #FAFAF9; border: 1px solid #E8E4DF; border-radius: 12px; color: #1A1A1A; }
+        .code-block .keyword { color: #E8590C; }
+        .code-block .string { color: #16A34A; }
+        .code-block .number { color: #2563EB; }
+        .code-block .comment { color: #9C9590; }
+        .code-block .type { color: #0D9488; }
+        .code-block .op { color: #D97706; }
+
+        /* Animated pipeline */
+        .pipeline-animated .node { opacity: 0; transform: translateY(10px); }
+        .pipeline-animated.active .node { opacity: 1; transform: translateY(0); transition: all 0.4s ease; }
+        .pipeline-animated.active .node:nth-child(1) { transition-delay: 0s; }
+        .pipeline-animated.active .node:nth-child(2) { transition-delay: 0.15s; }
+        .pipeline-animated.active .node:nth-child(3) { transition-delay: 0.3s; }
+        .pipeline-animated.active .node:nth-child(4) { transition-delay: 0.45s; }
+
+        /* Token animation */
+        .token-stream .token {
+            display: inline-block;
+            opacity: 0;
+            transform: scale(0.8);
+            transition: all 0.3s ease;
+        }
+        .token-stream.active .token {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* AST tree lines */
+        .tree-line {
+            stroke-dasharray: 100;
+            stroke-dashoffset: 100;
+            transition: stroke-dashoffset 0.6s ease;
+        }
+        .tree-active .tree-line { stroke-dashoffset: 0; }
+
+        .insight-box { border-left: 3px solid #E8590C; }
+    </style>
+</head>
+<body class="font-sans text-monk-text min-h-screen">
+
+    <!-- Nav -->
+    <nav class="border-b border-monk-border bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div class="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between">
+            <a href="../../index.html" class="flex items-center gap-2 text-monk-muted hover:text-monk-text transition-colors text-sm">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                Course Map
+            </a>
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-mono text-monk-muted">0.1</span>
+                <span class="text-xs text-monk-muted">/</span>
+                <span class="text-xs text-monk-accent font-semibold">FOUNDATIONS</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-3xl mx-auto px-6 py-12">
+
+        <!-- Title -->
+        <header class="mb-12">
+            <p class="text-monk-accent font-semibold text-sm mb-2">Lesson 0.1</p>
+            <h1 class="text-3xl font-extrabold tracking-tight mb-3">How Compilers Work</h1>
+            <p class="text-monk-muted text-lg leading-relaxed">The 10-minute mental model. After this, you'll understand every step your code goes through to become a running program.</p>
+            <div class="flex gap-3 mt-4 text-xs text-monk-muted">
+                <span class="bg-stone-100 px-2 py-0.5 rounded-full">10 min read</span>
+                <span class="bg-stone-100 px-2 py-0.5 rounded-full">No code required</span>
+            </div>
+        </header>
+
+        <!-- Section 1: The Analogy -->
+        <section class="mb-14">
+            <h2 class="text-xl font-bold mb-4">A compiler is a translator.</h2>
+
+            <p class="text-monk-muted leading-relaxed mb-6">
+                Think about translating a book from Urdu to English. You'd do it in steps:
+            </p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                <div class="step-card bg-white border border-monk-border rounded-xl p-5">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-8 h-8 rounded-lg bg-monk-blueLight flex items-center justify-center">
+                            <span class="text-monk-blue font-bold text-sm">1</span>
+                        </div>
+                        <h3 class="font-semibold">Read the words</h3>
+                    </div>
+                    <p class="text-monk-muted text-sm">Break text into individual words and punctuation. You don't care about meaning yet — just identifying each piece.</p>
+                </div>
+                <div class="step-card bg-white border border-monk-border rounded-xl p-5">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-8 h-8 rounded-lg bg-monk-tealLight flex items-center justify-center">
+                            <span class="text-monk-teal font-bold text-sm">2</span>
+                        </div>
+                        <h3 class="font-semibold">Understand grammar</h3>
+                    </div>
+                    <p class="text-monk-muted text-sm">Figure out which words form sentences. Which is the subject, which is the verb, which modifies what.</p>
+                </div>
+                <div class="step-card bg-white border border-monk-border rounded-xl p-5">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-8 h-8 rounded-lg bg-monk-greenLight flex items-center justify-center">
+                            <span class="text-monk-green font-bold text-sm">3</span>
+                        </div>
+                        <h3 class="font-semibold">Check meaning</h3>
+                    </div>
+                    <p class="text-monk-muted text-sm">Does this sentence make sense? Can the subject actually do this action? Are there contradictions?</p>
+                </div>
+                <div class="step-card bg-white border border-monk-border rounded-xl p-5">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-8 h-8 rounded-lg bg-monk-amberLight flex items-center justify-center">
+                            <span class="text-monk-amber font-bold text-sm">4</span>
+                        </div>
+                        <h3 class="font-semibold">Write in English</h3>
+                    </div>
+                    <p class="text-monk-muted text-sm">Express the same meaning in the target language. Same ideas, different words.</p>
+                </div>
+            </div>
+
+            <div class="insight-box bg-monk-accentLight/50 rounded-r-xl px-5 py-4 mb-6">
+                <p class="text-sm"><strong>That's a compiler.</strong> These four steps, applied to programming languages instead of human languages. Monk source goes in, C source comes out. Same ideas, different syntax.</p>
+            </div>
+        </section>
+
+        <!-- Section 2: The Four Steps -->
+        <section class="mb-14">
+            <h2 class="text-xl font-bold mb-6">The four steps, concretely</h2>
+
+            <p class="text-monk-muted leading-relaxed mb-6">Let's follow a single line of Monk code through the entire compiler:</p>
+
+            <div class="code-block px-5 py-4 mb-8 font-mono text-sm">
+                <span class="keyword">let</span> x <span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="number">2</span> <span class="op">*</span> <span class="number">3</span>
+            </div>
+
+            <!-- Step 1: Lexer -->
+            <div class="mb-10">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-monk-blueLight flex items-center justify-center">
+                        <svg class="w-5 h-5 text-monk-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M12 17.25h8.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg">Step 1: Lexer</h3>
+                        <p class="text-monk-muted text-sm">Read characters, produce tokens</p>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted leading-relaxed mb-4">The lexer reads the source code character by character and groups them into <strong>tokens</strong> — the smallest meaningful units. It's like reading a sentence and identifying each word.</p>
+
+                <div class="bg-white border border-monk-border rounded-xl p-5 mb-4">
+                    <p class="text-xs text-monk-muted font-semibold uppercase tracking-wider mb-3">Input: raw text</p>
+                    <div class="font-mono text-sm bg-monk-bg rounded-lg px-4 py-3 mb-4 tracking-wider">
+                        l e t &nbsp; x &nbsp; = &nbsp; 1 &nbsp; + &nbsp; 2 &nbsp; * &nbsp; 3
+                    </div>
+
+                    <div class="flex items-center justify-center my-3">
+                        <svg class="w-5 h-5 text-monk-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+                    </div>
+
+                    <p class="text-xs text-monk-muted font-semibold uppercase tracking-wider mb-3">Output: tokens</p>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="font-mono text-xs bg-monk-blueLight text-monk-blue px-3 py-1.5 rounded-lg border border-blue-200">LET</span>
+                        <span class="font-mono text-xs bg-stone-100 text-stone-600 px-3 py-1.5 rounded-lg border border-stone-200">IDENT: x</span>
+                        <span class="font-mono text-xs bg-monk-amberLight text-monk-amber px-3 py-1.5 rounded-lg border border-amber-200">EQUALS</span>
+                        <span class="font-mono text-xs bg-monk-greenLight text-monk-green px-3 py-1.5 rounded-lg border border-green-200">NUM: 1</span>
+                        <span class="font-mono text-xs bg-monk-amberLight text-monk-amber px-3 py-1.5 rounded-lg border border-amber-200">PLUS</span>
+                        <span class="font-mono text-xs bg-monk-greenLight text-monk-green px-3 py-1.5 rounded-lg border border-green-200">NUM: 2</span>
+                        <span class="font-mono text-xs bg-monk-amberLight text-monk-amber px-3 py-1.5 rounded-lg border border-amber-200">STAR</span>
+                        <span class="font-mono text-xs bg-monk-greenLight text-monk-green px-3 py-1.5 rounded-lg border border-green-200">NUM: 3</span>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted text-sm">The lexer doesn't care about meaning. It just knows <code class="text-xs bg-stone-100 px-1 rounded">let</code> is a keyword, <code class="text-xs bg-stone-100 px-1 rounded">x</code> is a name, <code class="text-xs bg-stone-100 px-1 rounded">1</code> is a number, and <code class="text-xs bg-stone-100 px-1 rounded">+</code> is an operator. Whitespace and comments are discarded.</p>
+            </div>
+
+            <!-- Step 2: Parser -->
+            <div class="mb-10">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-monk-tealLight flex items-center justify-center">
+                        <svg class="w-5 h-5 text-monk-teal" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg">Step 2: Parser</h3>
+                        <p class="text-monk-muted text-sm">Read tokens, produce a tree</p>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted leading-relaxed mb-4">The parser reads the token stream and builds a <strong>tree</strong> that represents the structure of the program. This is called an Abstract Syntax Tree (AST).</p>
+
+                <p class="text-monk-muted leading-relaxed mb-4">The critical job: <strong>operator precedence</strong>. The parser knows that <code class="text-xs bg-stone-100 px-1 rounded">2 * 3</code> must be computed before <code class="text-xs bg-stone-100 px-1 rounded">1 + ...</code>. The tree's shape encodes this.</p>
+
+                <div class="bg-white border border-monk-border rounded-xl p-6 mb-4">
+                    <p class="text-xs text-monk-muted font-semibold uppercase tracking-wider mb-4">Output: Abstract Syntax Tree</p>
+
+                    <!-- AST diagram using SVG -->
+                    <svg viewBox="0 0 400 220" class="w-full max-w-md mx-auto" fill="none">
+                        <!-- Lines -->
+                        <line x1="200" y1="30" x2="100" y2="90" stroke="#E8E4DF" stroke-width="2"/>
+                        <line x1="200" y1="30" x2="300" y2="90" stroke="#E8E4DF" stroke-width="2"/>
+                        <line x1="300" y1="90" x2="230" y2="160" stroke="#E8E4DF" stroke-width="2"/>
+                        <line x1="300" y1="90" x2="300" y2="160" stroke="#E8E4DF" stroke-width="2"/>
+                        <line x1="300" y1="90" x2="370" y2="160" stroke="#E8E4DF" stroke-width="2"/>
+                        <line x1="200" y1="30" x2="200" y2="0" stroke="none"/>
+
+                        <!-- Root: VariableDecl -->
+                        <rect x="130" y="5" width="140" height="30" rx="8" fill="#FFF4ED" stroke="#E8590C" stroke-width="1.5"/>
+                        <text x="200" y="25" text-anchor="middle" fill="#E8590C" font-size="12" font-weight="600" font-family="Inter, sans-serif">VariableDecl "x"</text>
+
+                        <!-- Left: name -->
+                        <rect x="50" y="75" width="100" height="30" rx="8" fill="#EFF6FF" stroke="#2563EB" stroke-width="1.5"/>
+                        <text x="100" y="95" text-anchor="middle" fill="#2563EB" font-size="12" font-weight="600" font-family="Inter, sans-serif">Ident "x"</text>
+
+                        <!-- Right: BinaryExpr + -->
+                        <rect x="240" y="75" width="120" height="30" rx="8" fill="#FFFBEB" stroke="#D97706" stroke-width="1.5"/>
+                        <text x="300" y="95" text-anchor="middle" fill="#D97706" font-size="12" font-weight="600" font-family="Inter, sans-serif">Add (+)</text>
+
+                        <!-- Bottom left: 1 -->
+                        <rect x="195" y="150" width="70" height="28" rx="8" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.5"/>
+                        <text x="230" y="168" text-anchor="middle" fill="#16A34A" font-size="12" font-weight="600" font-family="Inter, sans-serif">Num 1</text>
+
+                        <!-- Bottom mid: Multiply -->
+                        <rect x="250" y="140" width="100" height="28" rx="8" fill="#FFFBEB" stroke="#D97706" stroke-width="1.5"/>
+                        <text x="300" y="158" text-anchor="middle" fill="#D97706" font-size="12" font-weight="600" font-family="Inter, sans-serif">Multiply (*)</text>
+
+                        <!-- Bottom right leaves -->
+                        <line x1="275" y1="168" x2="255" y2="200" stroke="#E8E4DF" stroke-width="2"/>
+                        <line x1="325" y1="168" x2="345" y2="200" stroke="#E8E4DF" stroke-width="2"/>
+
+                        <rect x="220" y="195" width="70" height="24" rx="6" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.5"/>
+                        <text x="255" y="211" text-anchor="middle" fill="#16A34A" font-size="11" font-weight="600" font-family="Inter, sans-serif">Num 2</text>
+
+                        <rect x="310" y="195" width="70" height="24" rx="6" fill="#F0FDF4" stroke="#16A34A" stroke-width="1.5"/>
+                        <text x="345" y="211" text-anchor="middle" fill="#16A34A" font-size="11" font-weight="600" font-family="Inter, sans-serif">Num 3</text>
+                    </svg>
+                </div>
+
+                <div class="insight-box bg-monk-accentLight/50 rounded-r-xl px-5 py-4">
+                    <p class="text-sm"><strong>Notice the tree shape.</strong> Multiply is nested inside Add, deeper in the tree. When we evaluate bottom-up, <code class="text-xs bg-stone-100 px-1 rounded">2 * 3 = 6</code> happens first, then <code class="text-xs bg-stone-100 px-1 rounded">1 + 6 = 7</code>. The tree structure IS the precedence.</p>
+                </div>
+            </div>
+
+            <!-- Step 3: Type Checker -->
+            <div class="mb-10">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-monk-greenLight flex items-center justify-center">
+                        <svg class="w-5 h-5 text-monk-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg">Step 3: Type Checker</h3>
+                        <p class="text-monk-muted text-sm">Walk the tree, verify types make sense</p>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted leading-relaxed mb-4">The type checker walks the AST and verifies that every operation is valid. It annotates each node with its type.</p>
+
+                <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-4">
+                    <div class="divide-y divide-monk-border">
+                        <div class="flex items-center gap-4 px-5 py-3">
+                            <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                            <p class="text-sm"><code class="text-xs bg-stone-100 px-1 rounded">2 * 3</code> — int * int = <strong class="text-monk-teal">int</strong>. Valid.</p>
+                        </div>
+                        <div class="flex items-center gap-4 px-5 py-3">
+                            <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                            <p class="text-sm"><code class="text-xs bg-stone-100 px-1 rounded">1 + 6</code> — int + int = <strong class="text-monk-teal">int</strong>. Valid.</p>
+                        </div>
+                        <div class="flex items-center gap-4 px-5 py-3">
+                            <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                            <p class="text-sm"><code class="text-xs bg-stone-100 px-1 rounded">let x = ...</code> — x has no annotation, inferred as <strong class="text-monk-teal">int</strong>. Valid.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted text-sm mb-4">Now imagine a mistake:</p>
+
+                <div class="bg-white border border-red-200 rounded-xl overflow-hidden mb-4">
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <svg class="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        <div>
+                            <code class="text-xs font-mono bg-stone-100 px-2 py-1 rounded"><span class="keyword">let</span> x <span class="type">int</span> <span class="op">=</span> <span class="string">"hello"</span></code>
+                            <p class="text-sm text-red-600">Error: cannot assign string to int variable</p>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted text-sm">The type checker catches this <em>before the program runs</em>. Better to find the bug now than in production.</p>
+            </div>
+
+            <!-- Step 4: Code Generator -->
+            <div class="mb-10">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-monk-amberLight flex items-center justify-center">
+                        <svg class="w-5 h-5 text-monk-amber" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-lg">Step 4: Code Generator</h3>
+                        <p class="text-monk-muted text-sm">Walk the tree, write C</p>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted leading-relaxed mb-4">The code generator walks the type-checked AST and outputs C source code. Each node type has a translation rule.</p>
+
+                <div class="bg-white border border-monk-border rounded-xl p-5 mb-4">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-xs text-monk-accent font-semibold uppercase tracking-wider mb-2">Monk</p>
+                            <div class="code-block px-4 py-3 font-mono text-sm">
+                                <span class="keyword">let</span> x <span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="number">2</span> <span class="op">*</span> <span class="number">3</span>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-xs text-monk-amber font-semibold uppercase tracking-wider mb-2">Generated C</p>
+                            <div class="code-block px-4 py-3 font-mono text-sm">
+                                <span class="type">int64_t</span> x <span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="number">2</span> <span class="op">*</span> <span class="number">3</span>;
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted text-sm mb-4">A more complex example — a function:</p>
+
+                <div class="bg-white border border-monk-border rounded-xl p-5 mb-4">
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-xs text-monk-accent font-semibold uppercase tracking-wider mb-2">Monk</p>
+                            <div class="code-block px-4 py-3 font-mono text-sm leading-relaxed">
+<span class="keyword">const</span> add <span class="op">=</span> (a <span class="type">int</span>, b <span class="type">int</span>) <span class="type">int</span> {
+    <span class="keyword">return</span> a <span class="op">+</span> b
+}
+<span class="keyword">show</span>(add(<span class="number">3</span>, <span class="number">4</span>))
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-xs text-monk-amber font-semibold uppercase tracking-wider mb-2">Generated C</p>
+                            <div class="code-block px-4 py-3 font-mono text-sm leading-relaxed">
+<span class="type">int64_t</span> add(<span class="type">int64_t</span> a, <span class="type">int64_t</span> b) {
+    <span class="keyword">return</span> a <span class="op">+</span> b;
+}
+monk_show(add(<span class="number">3</span>, <span class="number">4</span>));
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="text-monk-muted text-sm">The generated C is compiled by your system's C compiler (GCC, Clang) into a native binary. Done.</p>
+            </div>
+        </section>
+
+        <!-- Section 3: The Full Pipeline -->
+        <section class="mb-14">
+            <h2 class="text-xl font-bold mb-4">The complete picture</h2>
+
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-20 flex-shrink-0 text-right">
+                            <span class="text-xs font-mono text-monk-muted">you write</span>
+                        </div>
+                        <div class="flex-1 bg-monk-accentLight rounded-lg px-4 py-2 font-mono text-sm text-monk-accent">
+                            hello.monk
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-20 flex-shrink-0 text-right">
+                            <span class="text-xs font-mono text-monk-muted">lexer</span>
+                        </div>
+                        <div class="flex-1 bg-monk-blueLight rounded-lg px-4 py-2 text-sm text-monk-blue">
+                            Stream of tokens: <span class="font-mono text-xs">LET, IDENT, EQUALS, NUM, ...</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-20 flex-shrink-0 text-right">
+                            <span class="text-xs font-mono text-monk-muted">parser</span>
+                        </div>
+                        <div class="flex-1 bg-monk-tealLight rounded-lg px-4 py-2 text-sm text-monk-teal">
+                            Tree of nodes: <span class="font-mono text-xs">VariableDecl → BinaryExpr → ...</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-20 flex-shrink-0 text-right">
+                            <span class="text-xs font-mono text-monk-muted">checker</span>
+                        </div>
+                        <div class="flex-1 bg-monk-greenLight rounded-lg px-4 py-2 text-sm text-monk-green">
+                            Same tree, now every node knows its type
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-20 flex-shrink-0 text-right">
+                            <span class="text-xs font-mono text-monk-muted">codegen</span>
+                        </div>
+                        <div class="flex-1 bg-monk-amberLight rounded-lg px-4 py-2 font-mono text-sm text-monk-amber">
+                            hello.c
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="w-20 flex-shrink-0 text-right">
+                            <span class="text-xs font-mono text-monk-muted">cc</span>
+                        </div>
+                        <div class="flex-1 bg-stone-100 rounded-lg px-4 py-2 font-mono text-sm text-stone-600">
+                            hello <span class="text-monk-muted text-xs">(native binary)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section 4: What Monk doesn't do -->
+        <section class="mb-14">
+            <h2 class="text-xl font-bold mb-4">What Monk does NOT do</h2>
+
+            <div class="space-y-3">
+                <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                    <svg class="w-5 h-5 text-monk-muted flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    <div>
+                        <p class="font-semibold text-sm">No bytecode or virtual machine.</p>
+                        <p class="text-monk-muted text-xs">Source goes straight to C. No intermediate bytecode format. No VM to maintain.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                    <svg class="w-5 h-5 text-monk-muted flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    <div>
+                        <p class="font-semibold text-sm">No runtime interpreter.</p>
+                        <p class="text-monk-muted text-xs">The output is a standalone native binary. No Monk runtime needed to execute it.</p>
+                    </div>
+                </div>
+                <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                    <svg class="w-5 h-5 text-monk-muted flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    <div>
+                        <p class="font-semibold text-sm">No LLVM.</p>
+                        <p class="text-monk-muted text-xs">LLVM is a 100+ MB dependency. We generate C instead and let your system's C compiler do the heavy lifting. LLVM can be added later as an optional optimization backend.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="insight-box bg-monk-accentLight/50 rounded-r-xl px-5 py-4 mt-6">
+                <p class="text-sm"><strong>One exception:</strong> the REPL (<code class="text-xs bg-stone-100 px-1 rounded">monk repl</code>) uses a tree-walking interpreter for interactive use. You can't compile and link a binary for every line you type. But compiled output is the primary mode.</p>
+            </div>
+        </section>
+
+        <!-- Section 5: The files you'll write -->
+        <section class="mb-14">
+            <h2 class="text-xl font-bold mb-4">The files you'll write</h2>
+
+            <p class="text-monk-muted leading-relaxed mb-4">The Monk compiler is built in Zig. Here's what each file does:</p>
+
+            <div class="bg-white border border-monk-border rounded-xl overflow-hidden font-mono text-sm">
+                <div class="divide-y divide-monk-border">
+                    <div class="flex items-center gap-4 px-5 py-3 bg-monk-bg">
+                        <span class="text-monk-muted w-40">src/</span>
+                        <span class="font-sans text-monk-muted text-xs">The compiler</span>
+                    </div>
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <span class="text-monk-blue w-40">&nbsp;&nbsp;lexer.zig</span>
+                        <span class="font-sans text-monk-muted text-xs">Step 1: text to tokens</span>
+                    </div>
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <span class="text-monk-teal w-40">&nbsp;&nbsp;parser.zig</span>
+                        <span class="font-sans text-monk-muted text-xs">Step 2: tokens to AST</span>
+                    </div>
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <span class="text-monk-teal w-40">&nbsp;&nbsp;ast.zig</span>
+                        <span class="font-sans text-monk-muted text-xs">AST node type definitions</span>
+                    </div>
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <span class="text-monk-green w-40">&nbsp;&nbsp;checker.zig</span>
+                        <span class="font-sans text-monk-muted text-xs">Step 3: type checking</span>
+                    </div>
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <span class="text-monk-amber w-40">&nbsp;&nbsp;codegen.zig</span>
+                        <span class="font-sans text-monk-muted text-xs">Step 4: AST to C source</span>
+                    </div>
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <span class="text-stone-500 w-40">&nbsp;&nbsp;main.zig</span>
+                        <span class="font-sans text-monk-muted text-xs">CLI entry point (monk build, monk run)</span>
+                    </div>
+                    <div class="flex items-center gap-4 px-5 py-3 bg-monk-bg">
+                        <span class="text-monk-muted w-40">runtime/</span>
+                        <span class="font-sans text-monk-muted text-xs">Small C library linked into every Monk program</span>
+                    </div>
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <span class="text-monk-amber w-40">&nbsp;&nbsp;runtime.c</span>
+                        <span class="font-sans text-monk-muted text-xs">show(), math, string ops, array ops, error handling</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Key Takeaways -->
+        <section class="mb-14">
+            <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+            <div class="space-y-3">
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="text-monk-accent font-bold text-xs">1</span>
+                    </div>
+                    <p class="text-sm">A compiler is four steps: <strong>lex</strong> (words), <strong>parse</strong> (grammar), <strong>check</strong> (meaning), <strong>generate</strong> (translate).</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="text-monk-accent font-bold text-xs">2</span>
+                    </div>
+                    <p class="text-sm">Each step transforms a simpler representation into a richer one. Characters to tokens to trees to typed trees to C code.</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="text-monk-accent font-bold text-xs">3</span>
+                    </div>
+                    <p class="text-sm">The AST's tree shape encodes operator precedence. Deeper nodes are evaluated first.</p>
+                </div>
+                <div class="flex items-start gap-3">
+                    <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="text-monk-accent font-bold text-xs">4</span>
+                    </div>
+                    <p class="text-sm">Monk compiles to C, then C compiles to native. No VM, no GC, no runtime.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Navigation -->
+        <nav class="flex items-center justify-between pt-8 border-t border-monk-border">
+            <a href="../../index.html" class="flex items-center gap-2 text-monk-muted hover:text-monk-text transition-colors text-sm">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                Course Map
+            </a>
+            <a href="../zig-first-30/index.html" class="flex items-center gap-2 text-monk-accent hover:text-monk-accent/80 transition-colors text-sm font-semibold">
+                Next: Zig in 30 Minutes
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </a>
+        </nav>
+
+    </main>
+
+    <footer class="border-t border-monk-border py-6 mt-12 text-center text-monk-muted text-xs">
+        <p>Monk Lang &middot; <a href="https://github.com/monkfromearth/monk-lang" class="text-monk-accent hover:underline">GitHub</a></p>
+    </footer>
+
+</body>
+</html>

@@ -12,7 +12,7 @@ Inside `knowledge/` there's a **learning course** (like Brilliant.org) that teac
 
 - `knowledge/index.html` — course map / landing page
 - `knowledge/foundations/how-compilers-work/index.html` — lesson 0.1
-- `knowledge/foundations/zig-first-30/index.html` — lesson 0.2
+- `knowledge/foundations/zig-first-30/index.html` — lesson 0.2 (note: will be reworked for Go, but content structure is the reference)
 - `knowledge/foundations/first-program/index.html` — lesson 0.3
 
 These work (open in browser) but are extremely verbose — each page is 400+ lines of HTML with duplicated layout, nav, footer, code block styling, and Tailwind config.
@@ -41,7 +41,7 @@ Migrate `knowledge/` to an **Astro project** with **Solid** for any interactive 
    - `<StepNumber>` — numbered circle (used for walkthrough steps)
    - `<LessonNav>` — prev/next navigation at bottom of lessons
    - `<ChecklistItem>` — green checkmark + text (for checkpoint sections)
-   - `<TagBadge>` — the small colored tags (concepts, zig, monk, exercise, build, links)
+   - `<TagBadge>` — the small colored tags (concepts, go, c, monk, exercise, build, links)
 
 4. **Content as Astro pages** (or MDX if it makes content authoring easier) — migrate the 4 existing pages. The content stays identical, just uses components instead of raw HTML.
 
@@ -70,7 +70,7 @@ knowledge/
 │   │   ├── index.astro              ← course map
 │   │   └── foundations/
 │   │       ├── how-compilers-work.astro
-│   │       ├── zig-first-30.astro
+│   │       ├── go-first-30.astro
 │   │       └── first-program.astro
 │   └── styles/
 │       └── global.css               ← code block colors, animations
@@ -153,6 +153,12 @@ Every lesson page follows this pattern:
 - Progressive disclosure — simple first, details revealed as needed.
 - `<details>` tags for solutions (don't show the answer immediately).
 - Every concept ties back to Monk — "this is what the lexer will use."
+
+## Important: Implementation language changed
+
+The compiler is written in **Go** (not Zig — that was changed). The knowledge/ course needs to teach Go basics instead of Zig basics. However, during this Astro migration, just migrate the existing HTML content as-is. The content will be reworked for Go in a separate pass. Focus on the component system, not the content words.
+
+The generated output is still C. The course still teaches C (from Phase 7 onward).
 
 ## What NOT to do
 

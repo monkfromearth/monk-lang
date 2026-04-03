@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0.3 — Your First Zig Program</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        monk: {
+                            bg: '#FAF8F5', card: '#FFFFFF', border: '#E8E4DF',
+                            text: '#1A1A1A', muted: '#6B6560',
+                            accent: '#E8590C', accentLight: '#FFF4ED',
+                            green: '#16A34A', greenLight: '#F0FDF4',
+                            blue: '#2563EB', blueLight: '#EFF6FF',
+                            teal: '#0D9488', tealLight: '#F0FDFA',
+                            amber: '#D97706', amberLight: '#FFFBEB',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body { background: #FAF8F5; }
+        .code-block { background: #FAFAF9; border: 1px solid #E8E4DF; border-radius: 12px; color: #1A1A1A; }
+        .code-block .kw { color: #E8590C; }
+        .code-block .str { color: #16A34A; }
+        .code-block .num { color: #2563EB; }
+        .code-block .cm { color: #9C9590; }
+        .code-block .ty { color: #0D9488; }
+        .code-block .op { color: #D97706; }
+        .code-block .fn { color: #2563EB; }
+        .code-block .builtin { color: #E8590C; }
+        .insight-box { border-left: 3px solid #E8590C; }
+        .exercise-box { border-left: 3px solid #16A34A; }
+        .step-number { width: 2rem; height: 2rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; flex-shrink: 0; }
+    </style>
+</head>
+<body class="font-sans text-monk-text min-h-screen">
+
+    <nav class="border-b border-monk-border bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div class="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between">
+            <a href="../../index.html" class="flex items-center gap-2 text-monk-muted hover:text-monk-text transition-colors text-sm">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                Course Map
+            </a>
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-mono text-monk-muted">0.3</span>
+                <span class="text-xs text-monk-muted">/</span>
+                <span class="text-xs text-monk-accent font-semibold">FOUNDATIONS</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-3xl mx-auto px-6 py-12">
+
+        <header class="mb-12">
+            <p class="text-monk-accent font-semibold text-sm mb-2">Lesson 0.3</p>
+            <h1 class="text-3xl font-extrabold tracking-tight mb-3">Your First Zig Program</h1>
+            <p class="text-monk-muted text-lg leading-relaxed">Hands-on: set up Zig, write a small program, run the tests. By the end, your tools work and you've written real Zig.</p>
+            <div class="flex gap-3 mt-4 text-xs text-monk-muted">
+                <span class="bg-monk-blueLight text-monk-blue px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider" style="font-size:0.65rem;">zig</span>
+                <span class="bg-monk-greenLight text-monk-green px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider" style="font-size:0.65rem;">exercise</span>
+                <span class="bg-stone-100 px-2 py-0.5 rounded-full">20 min</span>
+            </div>
+        </header>
+
+        <!-- Step 1: Install -->
+        <section class="mb-14">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="step-number bg-monk-accentLight text-monk-accent">1</div>
+                <h2 class="text-xl font-bold">Install Zig</h2>
+            </div>
+
+            <div class="code-block px-5 py-4 mb-4 font-mono text-sm leading-relaxed">
+<span class="cm"># macOS</span>
+brew install zig
+
+<span class="cm"># Or download directly from ziglang.org/download</span>
+<span class="cm"># Pick your platform, unzip, add to PATH</span>
+            </div>
+
+            <p class="text-monk-muted text-sm mb-4">Verify it works:</p>
+
+            <div class="code-block px-5 py-4 mb-4 font-mono text-sm leading-relaxed">
+$ zig version
+<span class="cm">0.14.0</span>
+            </div>
+
+            <p class="text-monk-muted text-sm">Any 0.13+ version works. Don't chase the latest nightly.</p>
+        </section>
+
+        <!-- Step 2: Create project -->
+        <section class="mb-14">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="step-number bg-monk-accentLight text-monk-accent">2</div>
+                <h2 class="text-xl font-bold">Create a scratch project</h2>
+            </div>
+
+            <p class="text-monk-muted leading-relaxed mb-4">This is a throwaway project for learning. We'll set up the real Monk project structure later.</p>
+
+            <div class="code-block px-5 py-4 mb-4 font-mono text-sm leading-relaxed">
+mkdir zig-scratch && cd zig-scratch
+zig init
+            </div>
+
+            <p class="text-monk-muted text-sm mb-4">This creates:</p>
+
+            <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm font-mono">
+                <div class="divide-y divide-monk-border">
+                    <div class="flex px-5 py-2.5"><span class="w-40 text-monk-muted">build.zig</span><span class="font-sans text-monk-muted text-xs">Build configuration</span></div>
+                    <div class="flex px-5 py-2.5"><span class="w-40 text-monk-blue">src/main.zig</span><span class="font-sans text-monk-muted text-xs">Your code goes here</span></div>
+                    <div class="flex px-5 py-2.5"><span class="w-40 text-monk-muted">src/root.zig</span><span class="font-sans text-monk-muted text-xs">Library entry (can ignore)</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Step 3: Hello world -->
+        <section class="mb-14">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="step-number bg-monk-accentLight text-monk-accent">3</div>
+                <h2 class="text-xl font-bold">Hello world</h2>
+            </div>
+
+            <p class="text-monk-muted leading-relaxed mb-4">Replace the contents of <code class="bg-stone-100 px-1 rounded text-xs">src/main.zig</code> with:</p>
+
+            <div class="code-block px-5 py-4 mb-4 font-mono text-sm leading-relaxed">
+<span class="kw">const</span> std = <span class="builtin">@import</span>(<span class="str">"std"</span>);
+
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="fn">main</span>() <span class="ty">void</span> {
+    std.debug.<span class="fn">print</span>(<span class="str">"Hello from Zig!\n"</span>, .{});
+}
+            </div>
+
+            <div class="code-block px-5 py-4 mb-4 font-mono text-sm leading-relaxed">
+$ zig build run
+<span class="cm">Hello from Zig!</span>
+            </div>
+
+            <div class="insight-box bg-monk-accentLight/50 rounded-r-xl px-5 py-4">
+                <p class="text-sm"><strong>What you're seeing:</strong> <code class="bg-stone-100 px-1 rounded text-xs">@import("std")</code> loads Zig's standard library. <code class="bg-stone-100 px-1 rounded text-xs">pub fn main()</code> is the entry point. <code class="bg-stone-100 px-1 rounded text-xs">.{}</code> is an empty tuple — the format arguments (none needed here).</p>
+            </div>
+        </section>
+
+        <!-- Step 4: Exercise 1 — count vowels -->
+        <section class="mb-14">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="step-number bg-monk-greenLight text-monk-green">4</div>
+                <h2 class="text-xl font-bold">Exercise: Count vowels</h2>
+            </div>
+
+            <div class="exercise-box bg-monk-greenLight/50 rounded-r-xl px-5 py-4 mb-6">
+                <p class="text-sm font-semibold mb-1">Your task</p>
+                <p class="text-sm text-monk-muted">Write a function <code class="bg-stone-100 px-1 rounded text-xs">count_vowels</code> that takes a string and returns how many vowels (a, e, i, o, u) it contains. Write a test first (TDD!), then make it pass.</p>
+            </div>
+
+            <p class="text-monk-muted text-sm mb-4">This exercises: string iteration, conditionals, functions, and testing. These are the same patterns the lexer will use.</p>
+
+            <p class="font-semibold text-sm mb-3">Step 1: Write the test first (Red)</p>
+
+            <p class="text-monk-muted text-sm mb-4">Create a new file <code class="bg-stone-100 px-1 rounded text-xs">src/vowels.zig</code>:</p>
+
+            <div class="code-block px-5 py-4 mb-4 font-mono text-sm leading-relaxed">
+<span class="kw">const</span> std = <span class="builtin">@import</span>(<span class="str">"std"</span>);
+
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="fn">countVowels</span>(input: []<span class="kw">const</span> <span class="ty">u8</span>) <span class="ty">usize</span> {
+    <span class="cm">// TODO: implement</span>
+    _ = input;
+    <span class="kw">return</span> <span class="num">0</span>;
+}
+
+<span class="kw">test</span> <span class="str">"empty string"</span> {
+    <span class="kw">try</span> std.testing.<span class="fn">expectEqual</span>(<span class="builtin">@as</span>(<span class="ty">usize</span>, <span class="num">0</span>), countVowels(<span class="str">""</span>));
+}
+
+<span class="kw">test</span> <span class="str">"hello has 2 vowels"</span> {
+    <span class="kw">try</span> std.testing.<span class="fn">expectEqual</span>(<span class="builtin">@as</span>(<span class="ty">usize</span>, <span class="num">2</span>), countVowels(<span class="str">"hello"</span>));
+}
+
+<span class="kw">test</span> <span class="str">"all vowels"</span> {
+    <span class="kw">try</span> std.testing.<span class="fn">expectEqual</span>(<span class="builtin">@as</span>(<span class="ty">usize</span>, <span class="num">5</span>), countVowels(<span class="str">"aeiou"</span>));
+}
+
+<span class="kw">test</span> <span class="str">"no vowels"</span> {
+    <span class="kw">try</span> std.testing.<span class="fn">expectEqual</span>(<span class="builtin">@as</span>(<span class="ty">usize</span>, <span class="num">0</span>), countVowels(<span class="str">"xyz"</span>));
+}
+
+<span class="kw">test</span> <span class="str">"uppercase vowels"</span> {
+    <span class="kw">try</span> std.testing.<span class="fn">expectEqual</span>(<span class="builtin">@as</span>(<span class="ty">usize</span>, <span class="num">3</span>), countVowels(<span class="str">"HELLO WORLD"</span>));
+}
+            </div>
+
+            <p class="text-monk-muted text-sm mb-4">Run the tests — they should fail (all expect non-zero but the function returns 0):</p>
+
+            <div class="code-block px-5 py-4 mb-6 font-mono text-sm leading-relaxed">
+$ zig build test
+<span class="cm">2/5 passed, 3 failed.</span>
+            </div>
+
+            <p class="font-semibold text-sm mb-3">Step 2: Make it pass (Green)</p>
+            <p class="text-monk-muted text-sm mb-4">Now implement the function. Try it yourself before looking at the solution.</p>
+
+            <details class="mb-6">
+                <summary class="cursor-pointer text-sm text-monk-accent font-semibold hover:text-monk-accent/80">Show solution</summary>
+                <div class="mt-3 code-block px-5 py-4 font-mono text-sm leading-relaxed">
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="fn">countVowels</span>(input: []<span class="kw">const</span> <span class="ty">u8</span>) <span class="ty">usize</span> {
+    <span class="kw">var</span> count: <span class="ty">usize</span> = <span class="num">0</span>;
+    <span class="kw">for</span> (input) |char| {
+        <span class="kw">switch</span> (char) {
+            <span class="str">'a'</span>, <span class="str">'e'</span>, <span class="str">'i'</span>, <span class="str">'o'</span>, <span class="str">'u'</span>,
+            <span class="str">'A'</span>, <span class="str">'E'</span>, <span class="str">'I'</span>, <span class="str">'O'</span>, <span class="str">'U'</span> => {
+                count += <span class="num">1</span>;
+            },
+            <span class="kw">else</span> => {},
+        }
+    }
+    <span class="kw">return</span> count;
+}
+                </div>
+            </details>
+
+            <div class="code-block px-5 py-4 mb-4 font-mono text-sm leading-relaxed">
+$ zig build test
+<span class="cm">All 5 tests passed.</span>
+            </div>
+
+            <div class="insight-box bg-monk-accentLight/50 rounded-r-xl px-5 py-4">
+                <p class="text-sm"><strong>What you just learned:</strong></p>
+                <ul class="text-sm text-monk-muted mt-2 space-y-1">
+                    <li>Iterating over a byte slice with <code class="bg-stone-100 px-1 rounded text-xs">for (input) |char|</code></li>
+                    <li>Pattern matching with <code class="bg-stone-100 px-1 rounded text-xs">switch</code> (multiple values in one arm)</li>
+                    <li>Mutable variable with <code class="bg-stone-100 px-1 rounded text-xs">var</code></li>
+                    <li>TDD: test first, fail, implement, pass</li>
+                </ul>
+                <p class="text-sm text-monk-muted mt-2">These are exactly the patterns the lexer uses. Iterate characters, match patterns, accumulate results.</p>
+            </div>
+        </section>
+
+        <!-- Step 5: Exercise 2 — is_digit -->
+        <section class="mb-14">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="step-number bg-monk-greenLight text-monk-green">5</div>
+                <h2 class="text-xl font-bold">Exercise: is_digit and is_alpha</h2>
+            </div>
+
+            <div class="exercise-box bg-monk-greenLight/50 rounded-r-xl px-5 py-4 mb-6">
+                <p class="text-sm font-semibold mb-1">Your task</p>
+                <p class="text-sm text-monk-muted">Write two functions: <code class="bg-stone-100 px-1 rounded text-xs">isDigit(char: u8) bool</code> and <code class="bg-stone-100 px-1 rounded text-xs">isAlpha(char: u8) bool</code>. The lexer will use these to identify numbers and identifiers.</p>
+            </div>
+
+            <p class="text-monk-muted text-sm mb-4">Write tests first. A digit is <code class="bg-stone-100 px-1 rounded text-xs">'0'</code> through <code class="bg-stone-100 px-1 rounded text-xs">'9'</code>. An alpha is <code class="bg-stone-100 px-1 rounded text-xs">'a'-'z'</code>, <code class="bg-stone-100 px-1 rounded text-xs">'A'-'Z'</code>, or <code class="bg-stone-100 px-1 rounded text-xs">'_'</code>.</p>
+
+            <details class="mb-6">
+                <summary class="cursor-pointer text-sm text-monk-accent font-semibold hover:text-monk-accent/80">Show solution</summary>
+                <div class="mt-3 code-block px-5 py-4 font-mono text-sm leading-relaxed">
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="fn">isDigit</span>(c: <span class="ty">u8</span>) <span class="ty">bool</span> {
+    <span class="kw">return</span> c >= <span class="str">'0'</span> <span class="kw">and</span> c <= <span class="str">'9'</span>;
+}
+
+<span class="kw">pub</span> <span class="kw">fn</span> <span class="fn">isAlpha</span>(c: <span class="ty">u8</span>) <span class="ty">bool</span> {
+    <span class="kw">return</span> (c >= <span class="str">'a'</span> <span class="kw">and</span> c <= <span class="str">'z'</span>) <span class="kw">or</span>
+           (c >= <span class="str">'A'</span> <span class="kw">and</span> c <= <span class="str">'Z'</span>) <span class="kw">or</span>
+           (c == <span class="str">'_'</span>);
+}
+
+<span class="kw">test</span> <span class="str">"isDigit"</span> {
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(isDigit(<span class="str">'0'</span>));
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(isDigit(<span class="str">'9'</span>));
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(!isDigit(<span class="str">'a'</span>));
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(!isDigit(<span class="str">' '</span>));
+}
+
+<span class="kw">test</span> <span class="str">"isAlpha"</span> {
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(isAlpha(<span class="str">'a'</span>));
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(isAlpha(<span class="str">'Z'</span>));
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(isAlpha(<span class="str">'_'</span>));
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(!isAlpha(<span class="str">'0'</span>));
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(!isAlpha(<span class="str">' '</span>));
+}
+                </div>
+            </details>
+
+            <div class="insight-box bg-monk-accentLight/50 rounded-r-xl px-5 py-4">
+                <p class="text-sm"><strong>Direct preview of the lexer:</strong> these two functions are literally what the lexer calls to decide "is this the start of a number?" or "is this the start of an identifier?" You're already building compiler infrastructure.</p>
+            </div>
+        </section>
+
+        <!-- Step 6: Exercise 3 — struct + enum -->
+        <section class="mb-14">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="step-number bg-monk-greenLight text-monk-green">6</div>
+                <h2 class="text-xl font-bold">Exercise: A tiny token</h2>
+            </div>
+
+            <div class="exercise-box bg-monk-greenLight/50 rounded-r-xl px-5 py-4 mb-6">
+                <p class="text-sm font-semibold mb-1">Your task</p>
+                <p class="text-sm text-monk-muted">Define a <code class="bg-stone-100 px-1 rounded text-xs">TokenKind</code> enum with variants <code class="bg-stone-100 px-1 rounded text-xs">number</code>, <code class="bg-stone-100 px-1 rounded text-xs">plus</code>, <code class="bg-stone-100 px-1 rounded text-xs">eof</code>. Define a <code class="bg-stone-100 px-1 rounded text-xs">Token</code> struct with fields <code class="bg-stone-100 px-1 rounded text-xs">kind</code> and <code class="bg-stone-100 px-1 rounded text-xs">text</code>. Write a test that creates a token and checks its fields.</p>
+            </div>
+
+            <details class="mb-6">
+                <summary class="cursor-pointer text-sm text-monk-accent font-semibold hover:text-monk-accent/80">Show solution</summary>
+                <div class="mt-3 code-block px-5 py-4 font-mono text-sm leading-relaxed">
+<span class="kw">const</span> std = <span class="builtin">@import</span>(<span class="str">"std"</span>);
+
+<span class="kw">const</span> TokenKind = <span class="kw">enum</span> {
+    number,
+    plus,
+    eof,
+};
+
+<span class="kw">const</span> Token = <span class="kw">struct</span> {
+    kind: TokenKind,
+    text: []<span class="kw">const</span> <span class="ty">u8</span>,
+};
+
+<span class="kw">test</span> <span class="str">"create a token"</span> {
+    <span class="kw">const</span> tok = Token{
+        .kind = .number,
+        .text = <span class="str">"42"</span>,
+    };
+    <span class="kw">try</span> std.testing.<span class="fn">expectEqual</span>(TokenKind.number, tok.kind);
+    <span class="kw">try</span> std.testing.<span class="fn">expect</span>(
+        std.mem.<span class="fn">eql</span>(<span class="ty">u8</span>, <span class="str">"42"</span>, tok.text)
+    );
+}
+
+<span class="kw">test</span> <span class="str">"eof token"</span> {
+    <span class="kw">const</span> tok = Token{
+        .kind = .eof,
+        .text = <span class="str">""</span>,
+    };
+    <span class="kw">try</span> std.testing.<span class="fn">expectEqual</span>(TokenKind.eof, tok.kind);
+}
+                </div>
+            </details>
+
+            <p class="text-monk-muted text-sm">This is a miniature version of Monk's token system. In Phase 1, you'll expand this to 50+ token kinds covering every keyword and operator.</p>
+        </section>
+
+        <!-- Checkpoint -->
+        <section class="mb-14">
+            <h2 class="text-xl font-bold mb-4">Checkpoint</h2>
+
+            <p class="text-monk-muted leading-relaxed mb-4">If you completed all three exercises, you know how to:</p>
+
+            <div class="bg-white border border-monk-border rounded-xl overflow-hidden">
+                <div class="divide-y divide-monk-border text-sm">
+                    <div class="flex items-center gap-3 px-5 py-3">
+                        <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                        <span>Iterate over strings character by character</span>
+                    </div>
+                    <div class="flex items-center gap-3 px-5 py-3">
+                        <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                        <span>Pattern match with <code class="bg-stone-100 px-1 rounded text-xs">switch</code></span>
+                    </div>
+                    <div class="flex items-center gap-3 px-5 py-3">
+                        <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                        <span>Write functions with typed parameters and return values</span>
+                    </div>
+                    <div class="flex items-center gap-3 px-5 py-3">
+                        <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                        <span>Define enums and structs</span>
+                    </div>
+                    <div class="flex items-center gap-3 px-5 py-3">
+                        <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                        <span>Write and run tests with <code class="bg-stone-100 px-1 rounded text-xs">zig build test</code></span>
+                    </div>
+                    <div class="flex items-center gap-3 px-5 py-3">
+                        <svg class="w-5 h-5 text-monk-green flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+                        <span>Compare strings with <code class="bg-stone-100 px-1 rounded text-xs">std.mem.eql</code></span>
+                    </div>
+                </div>
+            </div>
+
+            <p class="text-monk-muted text-sm mt-4">You're ready for Phase 1. Delete the scratch project — we'll set up the real Monk compiler structure next.</p>
+        </section>
+
+        <!-- Cleanup -->
+        <section class="mb-14">
+            <h2 class="text-xl font-bold mb-4">Clean up</h2>
+            <div class="code-block px-5 py-4 font-mono text-sm leading-relaxed">
+<span class="cm"># Delete the scratch project</span>
+cd ..
+rm -rf zig-scratch
+            </div>
+        </section>
+
+        <!-- Nav -->
+        <nav class="flex items-center justify-between pt-8 border-t border-monk-border">
+            <a href="../zig-first-30/index.html" class="flex items-center gap-2 text-monk-muted hover:text-monk-text transition-colors text-sm">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                Prev: Zig in 30 Minutes
+            </a>
+            <a href="../../phase-1-lexer/what-is-a-lexer.html" class="flex items-center gap-2 text-monk-accent hover:text-monk-accent/80 transition-colors text-sm font-semibold">
+                Start Phase 1: The Lexer
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </a>
+        </nav>
+    </main>
+
+    <footer class="border-t border-monk-border py-6 mt-12 text-center text-monk-muted text-xs">
+        <p>Monk Lang &middot; <a href="https://github.com/monkfromearth/monk-lang" class="text-monk-accent hover:underline">GitHub</a></p>
+    </footer>
+</body>
+</html>

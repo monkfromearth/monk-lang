@@ -4,8 +4,9 @@ import "fmt"
 
 // Parser transforms a token stream into an AST.
 type Parser struct {
-	tokens []Token
-	pos    int
+	tokens    []Token
+	pos       int
+	loopDepth int // tracks nesting depth inside loops (for break/continue validation)
 }
 
 // Parse tokenizes source and returns the AST, or an error.
@@ -42,9 +43,15 @@ func (p *Parser) parseStmt() (Stmt, error) {
 	case Return:
 		return p.parseReturn()
 	case Break:
+		if p.loopDepth == 0 {
+			return nil, p.error("'break' can only be used inside a loop")
+		}
 		p.advance()
 		return &BreakStmt{}, nil
 	case Continue:
+		if p.loopDepth == 0 {
+			return nil, p.error("'continue' can only be used inside a loop")
+		}
 		p.advance()
 		return &ContinueStmt{}, nil
 	case Guard:
@@ -146,6 +153,10 @@ func (p *Parser) parseIf() (*IfStmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Design decision: assignment in conditions is forbidden (prevents = vs == bugs)
+	if _, isAssign := condition.(*AssignExpr); isAssign {
+		return nil, p.error("assignment not allowed in condition (use == for comparison)")
+	}
 
 	then, err := p.parseBlock()
 	if err != nil {
@@ -180,8 +191,13 @@ func (p *Parser) parseWhile() (*WhileStmt, error) {
 	if err != nil {
 		return nil, err
 	}
+	if _, isAssign := condition.(*AssignExpr); isAssign {
+		return nil, p.error("assignment not allowed in condition (use == for comparison)")
+	}
 
+	p.loopDepth++
 	body, err := p.parseBlock()
+	p.loopDepth--
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +224,9 @@ func (p *Parser) parseFor() (*ForStmt, error) {
 		return nil, err
 	}
 
+	p.loopDepth++
 	body, err := p.parseBlock()
+	p.loopDepth--
 	if err != nil {
 		return nil, err
 	}

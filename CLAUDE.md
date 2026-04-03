@@ -73,18 +73,15 @@ Word bank (pick when shipping, not planned ahead):
 
 ## Current Status
 
-**Phases 1-4 complete.** Lexer, parser, interpreter, and 48 built-in functions working with 445 passing tests. Next step: Phase 5 (type system).
+**Phases 1-2 complete.** Lexer and parser working with 219 passing tests. Next step: Phase 3 (C runtime library) then Phase 4 (C code generation).
 
-Remaining items from earlier phases (deferred):
-- Default parameter values (parser + interpreter)
-- Typed record field enforcement (requires type checker, Phase 5)
-- Return type validation (requires type checker, Phase 5)
-- Reject assignment in conditions (parser validation)
-- Reject break/continue outside loops (parser validation)
-- Function type signatures `(int, int) -> int` in parameter position (parser)
-- File system builtins: file_read, file_write, file_exists (Phase 4 remainder)
-- Environment builtins: env_get, exit, args (Phase 4 remainder)
-- map/filter/reduce with user-defined Monk functions (needs evaluator integration)
+**Interpreter/builtins deleted.** We built a tree-walking interpreter (Phase 3) and Go builtins (Phase 4) before realizing: Monk is a compiler, not an interpreter. There is no REPL. Those packages don't ship. They were deleted. The language semantics they validated will be re-tested as integration tests (compile .monk → run binary → check output).
+
+Remaining parser items (deferred):
+- Default parameter values (parser handles syntax, codegen will use them)
+- Function type signatures `(int, int) -> int` in parameter position
+- Reject assignment in conditions (added to parser)
+- Reject break/continue outside loops (added to parser)
 
 Go 1.22+ required. Standard `go test` for TDD.
 
@@ -96,24 +93,21 @@ spec/                    — Language specification
   ARCHITECTURE_DECISIONS.md  — Why Go, why compile-to-C, what can change later
   MEMORY_MODEL_DISCUSSION.md — Design history (contains rejected options, read only if needed)
 knowledge/               — Learning course (Brilliant.org style, Astro + Solid)
-  ASTRO_MIGRATION_PROMPT.md  — Full prompt for Astro migration work
-src/                     — Go implementation
-  syntax/                    — Lexer + Parser + AST (Phase 1-2, complete)
+src/                     — Go compiler
+  syntax/                    — Lexer + Parser + AST (Phases 1-2, complete)
     token.go                     token types and keyword lookup
     scanner.go                   lexer: source text → tokens
     scanner_test.go              100 lexer tests
     ast.go                       29 AST node types
     parser.go                    recursive descent parser with 13-level precedence
     parser_test.go               119 parser tests
-  interpreter/               — Tree-walking evaluator (Phase 3, complete)
-    value.go                     MonkValue, DeepCopy, IsTruthy, String
-    env.go                       Environment (scope chain, const enforcement)
-    eval.go                      evaluator: AST → values
-    eval_test.go                 144 interpreter tests
-  cmd/monk/                  — CLI entry point (stubs)
+  codegen/                   — C code generator (Phase 4, not yet created)
+  cmd/monk/                  — CLI entry point
     main.go
   monk.go                    — package-level documentation
-runtime/                 — C runtime library (not yet created)
+runtime/                 — C runtime library (Phase 3, not yet created)
+  runtime.h                  — header for generated C to include
+  runtime.c                  — MonkValue, builtins, error handling
 examples/                — .monk example programs
 go.mod                   — github.com/monkfromearth/monk-lang
 ```
@@ -131,16 +125,17 @@ go.mod                   — github.com/monkfromearth/monk-lang
 
 Phases must be completed in order (each depends on the one before):
 
-1. Lexer
-2. Parser
-3. Interpreter (core runtime)
-4. Built-in functions
-5. Type system
-6. Module system
-7. C FFI
-8. CLI (build, run, lint, format, check)
-9. LSP + editor
-10. Distribution
+1. Lexer ✅
+2. Parser ✅
+3. C Runtime Library (runtime.c — MonkValue, builtins, error handling)
+4. C Code Generation (AST → .c file)
+5. CLI (monk build, monk run, monk check)
+6. Type System (static analysis)
+7. Module System
+8. C FFI (syntax TBD)
+9. Linter & Formatter
+10. LSP + Editor
+11. Distribution
 
 Memory model / `ref` / borrowing will be inserted when the design is finalized.
 

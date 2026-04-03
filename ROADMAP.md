@@ -1,323 +1,203 @@
 # Monk Lang Roadmap
 
-> Ground-up rewrite. Same language, new implementation.
-> No timelines. Each phase ships when it's solid.
+> Monk is a compiler. Source → C → native binary.
+> No interpreter, no VM, no REPL.
 > Methodology: Red-Green-Refactor TDD throughout.
 
-The previous implementation (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](https://github.com/monkfromearth/monk-lang-v1). This roadmap describes the ground-up rebuild.
+The previous implementation (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](https://github.com/monkfromearth/monk-lang-v1).
 
 ---
 
-## Phase 1: Lexer
+## Phase 1: Lexer ✅
 
 Tokenize source code into a stream of tokens.
 
-- [x] Number literals: decimal (`42`, `3.14`, `1.23e5`), hex (`0xFF`), binary (`0b1010`), octal (`0o77`), underscores (`1_000_000`)
-- [x] String literals (double-quoted, escape sequences: `\n`, `\t`, `\"`, `\\`)
-- [x] Template literals (backtick strings, multiline)
-- [x] Identifiers
-- [x] All keywords: `let`, `const`, `if`, `else`, `for`, `in`, `while`, `break`, `continue`, `return`, `guard`, `against`, `throw`, `type`, `use`, `export`, `from`, `as`, `is`, `not`, `and`, `or`, `true`, `false`, `none`
-- [x] Reserved keywords: `ref`, `async`, `await`
-- [x] Arithmetic operators: `+`, `-`, `*`, `/`, `%`
-- [x] Assignment operators: `=`, `+=`, `-=`, `*=`, `/=`, `%=`
-- [x] Comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- [x] Symbolic logical operators: `&&`, `||`, `!`
-- [x] Bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`
-- [x] Delimiters: `(`, `)`, `{`, `}`, `[`, `]`, `:`, `,`, `.`, `?`
-- [x] Arrow: `->`
-- [x] Single-line comments: `//`
-- [x] Newline handling (insignificant, with continuation heuristics)
-- [x] Trailing comma support
+- [x] Number literals: decimal, hex, binary, octal, underscores
+- [x] String literals (double-quoted, escape sequences)
+- [x] Template literals (backtick, multiline)
+- [x] Identifiers and all keywords
+- [x] All operators: arithmetic, comparison, logical, bitwise, assignment
+- [x] All delimiters, arrow (`->`)
+- [x] Single-line comments (`//`)
 - [x] Line and column tracking
-- [x] EOF token
-- [x] Error recovery for invalid tokens
+- [x] EOF and illegal token handling
 
-**Done when:** Every token type from the spec is lexed correctly with position info. All lexer tests green.
+**Status:** 100 tests passing. `src/syntax/scanner.go`
 
 ---
 
-## Phase 2: Parser
+## Phase 2: Parser ✅
 
 Transform token stream into an Abstract Syntax Tree (AST).
 
+- [x] All expression types: literals, unary, binary, call, index, property, array, record, function, throw
+- [x] All statement types: let/const, if/else/else-if, while, for-in, return, break, continue, guard/against, type declarations, use/export
+- [x] Operator precedence (13 levels)
+- [x] Trailing comma support
+- [x] Type annotations on variables
+- [x] Error messages with line/column
+
+**Status:** 119 tests passing. `src/syntax/parser.go`, `src/syntax/ast.go`
+
+---
+
+## Phase 3: C Runtime Library
+
+The small C library linked into every compiled Monk program.
+
+- [ ] `MonkValue` tagged union (int, float, string, bool, none, array, record, function)
+- [ ] Value creation helpers (`monk_int`, `monk_string`, etc.)
+- [ ] `monk_show()` with spec-defined output format
+- [ ] Deep copy for value semantics
+- [ ] Truthiness check (false, none, 0 are falsy)
+- [ ] String operations: length, substring, index_of, split, trim, to_upper, to_lower
+- [ ] Array operations: append, prepend, pop, drop, take, slice, range (all return new arrays, all clamp)
+- [ ] Math functions: abs, floor, ceil, round, sqrt, pow, log, log10, exp, min, max, sin, cos, tan, asin, acos, atan
+- [ ] Conversion: to_string, to_int (strict), to_float
+- [ ] Type checking: typeof, is_number, is_string, is_boolean, is_array, is_record, is_function, is_none
+- [ ] File system: file_read, file_write, file_exists
+- [ ] Environment: env_get, exit, args
+- [ ] Error handling: setjmp/longjmp infrastructure for guard/against/throw
+- [ ] Memory: malloc/free wrappers, deep copy functions
+
+**Done when:** `runtime.c` compiles standalone and all functions work in isolation.
+
+---
+
+## Phase 4: C Code Generation
+
+The compiler core. Walk the AST, emit C source code.
+
 ### Expressions
-- [x] Numeric, string, boolean, none literals
-- [x] Identifier expressions
-- [x] Unary expressions (`-`, `not`, `!`, `~`)
-- [x] Binary expressions with full operator precedence (13 levels)
-- [x] Parenthesized grouping
-- [x] Array literals (with trailing commas)
-- [x] Record literals (with trailing commas)
-- [x] Property access (`obj.prop`)
-- [x] Index access (`arr[i]`, `str[i]`)
-- [x] Function expressions (typed params, optional defaults, return type, block body)
-- [x] Call expressions (with trailing commas)
-- [x] Throw expressions
-- [x] Template literal expressions (multiline)
+- [ ] Numeric, string, boolean, none literals → C values
+- [ ] Arithmetic, comparison, logical, bitwise operators → C operators
+- [ ] String concatenation (string + string only)
+- [ ] Unary operators (-x, !x, ~x, not x)
+- [ ] Array literals → `monk_array_new(...)`
+- [ ] Record literals → `monk_record_new(...)`
+- [ ] Property access → field lookup in record struct
+- [ ] Index access → bounds-checked array/string access
+- [ ] Function calls → C function calls
+- [ ] Throw → `longjmp` to nearest guard
 
 ### Statements
-- [x] Variable declarations (`let`/`const`, optional type annotation)
-- [x] Assignment statements (NOT expressions — forbidden in conditions)
-- [x] Compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`)
-- [x] Index assignment (`arr[i] = val`)
-- [x] Property assignment (`record.field = val`)
-- [x] If/else statements (including else-if chains)
-- [x] While loops
-- [x] For-in loops (arrays and strings only — no bare numbers)
-- [x] Break / continue statements
-- [x] Return statements
-- [x] Block statements (scoped `{ }`)
-- [x] Guard/against statements
-- [x] Type declarations (`type Name = ...` — record types, aliases, function types)
-- [x] Use/export statements
-
-### Parser Quality
-- [x] Clear error messages with line/column
-- [x] Error recovery (don't stop at first error)
-- [ ] Reject assignment in conditions
-- [ ] Reject `break`/`continue` outside loops
-
-**Done when:** Every syntactic construct from the spec parses into the correct AST. All parser tests green.
-
----
-
-## Phase 3: Interpreter (Core Runtime)
-
-Evaluate the AST. This is the heart of the language.
-
-### Values and Evaluation
-- [x] Evaluate literals: int, float, string, boolean, none
-- [x] Arithmetic operations — numeric only, int/int=int (truncating), float involved=float
-- [x] String concatenation via `+` (string + string only, no auto-coercion)
-- [x] Comparison: `==`/`!=` on same-type primitives only (cross-type = error, collections = error)
-- [x] Ordering: `<`/`>`/`<=`/`>=` on numbers and strings (lexicographic). Cross-type = error. `none` = error.
-- [x] Logical operations with truthiness (`false`, `none`, `0` are falsy) — always return `boolean`
-- [x] Unary: `-` (numeric), `not`/`!` (truthiness), `~` (bitwise int)
-- [x] Bitwise operations: `&`, `|`, `^`, `<<`, `>>` (int only, two's complement)
-
-### Variables and Scope
-- [x] Variable declaration and lookup (`let`/`const`)
-- [x] Assignment and compound assignment (`+=`, etc.)
-- [x] Deep const enforcement (no reassign, no element/field mutation)
-- [x] `let` = fully mutable (variable + contents)
-- [x] Value semantics: assignment copies arrays and records
-- [x] Scope chain: nested scopes, parent lookup
-- [x] Variable shadowing
-- [x] Block scope creation
-
-### Control Flow
-- [x] If/else evaluation (truthiness-based conditions)
-- [x] While loops
-- [x] For-in loops: arrays and strings. Loop variable is `const`.
-- [x] Break signal (exits loop)
-- [x] Continue signal (skips to next iteration)
+- [ ] Variable declarations → C variable declarations with deep copy
+- [ ] Assignment (simple + compound) → C assignment with const checking
+- [ ] Index/property assignment → mutation with const/bounds checking
+- [ ] If/else/else-if → C if/else
+- [ ] While loops → C while
+- [ ] For-in loops → iteration over array/string
+- [ ] Break/continue → C break/continue
+- [ ] Return → C return
+- [ ] Guard/against → setjmp/longjmp pattern
+- [ ] Block scoping → C block scoping
 
 ### Functions
-- [x] Function creation with closure capture (closures capture by copy, like C++ `[x]` lambdas)
-- [x] Function calls — arguments are copies (value semantics)
+- [ ] Function expressions → C function definitions + closure struct
+- [ ] Closure capture by copy → snapshot environment into struct
+- [ ] Self-reference for recursion
 - [ ] Default parameter values
-- [x] Return signal
-- [x] Recursion (function name in scope inside own body)
-- [x] Higher-order functions (pass/return functions)
-- [ ] Every code path must return matching type (requires type checker)
 
-### Data Structures
-- [x] Array creation and indexing: read out-of-bounds → `none`, write out-of-bounds → error
-- [x] String indexing: `"hello"[0]` → `"h"`, out-of-bounds → `none`
-- [x] Record creation and property access (dot notation)
-- [x] Record shape is fixed at creation — no adding new fields
-- [ ] Typed record: missing field read/write → error (requires type checker)
-- [x] Untyped record: missing field read → `none`, missing field write → error
-- [x] Index assignment (`arr[i] = val`) on `let` arrays only
-- [x] Property assignment (`record.field = val`) on `let` records only
+### Output
+- [ ] Generate valid, compilable `.c` file
+- [ ] Include `runtime.h` header
+- [ ] Generate `main()` that runs top-level statements
+- [ ] `#line` directives mapping back to `.monk` source
 
-### Error Handling
-- [x] Throw expression (any value)
-- [x] Guard/against evaluation: declares variable in enclosing scope, defaults to `none` if unassigned
-- [x] `guard` with non-throwing expression is valid (against block = dead code)
-- [x] `break`/`continue`/`return` work inside `against` blocks
-- [x] Error propagation through call stack
-- [x] Unhandled `throw` at top level terminates program with error message
-
-**Done when:** Every runtime behavior from the spec works. All interpreter tests green.
+**Done when:** `monk build hello.monk` produces `hello.c` that compiles with `cc` to a working binary.
 
 ---
 
-## Phase 4: Built-in Functions
+## Phase 5: CLI
 
-Register native functions in the global scope.
+- [ ] `monk build <file>` — compile .monk → .c → native binary
+- [ ] `monk run <file>` — compile and run in one step (compile, execute, delete temp files)
+- [ ] `monk check <file>` — parse and validate without compiling
+- [ ] Error reporting with source file, line, column
 
-### Output & Conversion
-- [x] `show` — with defined output format (JSON-ish: strings quoted inside collections, `<function>`)
-- [x] `to_string` — same format as `show`, returns string
-- [x] `to_int` — string→int only, strict (rejects "3.14"), throws on failure
-- [x] `to_float` — string→float, throws on failure
-
-### Math
-- [x] `abs`, `floor`, `ceil`, `round`
-- [x] `sqrt` (throws if x < 0), `pow`, `log` (throws if x <= 0), `log10` (throws if x <= 0), `exp`
-- [x] `min`, `max`
-
-### Trigonometry
-- [x] `sin`, `cos`, `tan`
-- [x] `asin`, `acos`, `atan`
-
-### String
-- [x] `length` (overloaded: string, array, record)
-- [x] `substring` (indices clamp), `index_of`
-- [x] `split`, `trim`
-- [x] `to_upper_case`, `to_lower_case`
-
-### Array
-- [x] `append`, `prepend`
-- [x] `pop` (`pop([])` = `[]`)
-- [x] `drop(arr, n=1)`, `take(arr, n=1)` — both clamp
-- [x] `slice` (indices clamp)
-- [x] `map`, `filter`, `reduce` (`reduce([], fn, x)` = `x`)
-- [x] `range` (`range(0)` = `[]`, `range(-5)` = `[]`)
-
-### Type Checking
-- [x] `typeof` (returns base type strings: "int", "float", "string", "boolean", "none", "array", "record", "function")
-- [x] `is_number`, `is_string`, `is_boolean`
-- [x] `is_array`, `is_record`, `is_function`, `is_none`
-
-### File System & Environment
-- [ ] `file_read`, `file_write`, `file_exists`
-- [ ] `env_get`, `exit`, `args`
-
-**Done when:** Every built-in from the spec works with correct signatures. All built-in tests green.
+**Done when:** You can write a .monk file and run it with `monk run hello.monk`.
 
 ---
 
-## Phase 5: Type System
+## Phase 6: Type System
 
-Static analysis pass over the AST, before or during evaluation.
+Static analysis pass over the AST, before code generation.
 
 - [ ] Type annotations on variables (space-separated syntax)
 - [ ] Array type annotations (`int[]`, `string[]`)
 - [ ] Function type signatures: `(int, int) -> int`
-- [ ] Function parameter + return type enforcement
-- [ ] First-assignment type inference (lock type on first assign)
+- [ ] First-assignment type inference
 - [ ] Type consistency on reassignment
-- [ ] Optional types (`int?`, `string?`) — accepts base type or `none`. `int??` is invalid.
-- [ ] Custom type definitions: record types + type aliases (structural, not nominal)
+- [ ] Optional types (`int?`) — accepts base type or `none`
+- [ ] Custom type definitions: record types + type aliases (structural)
 - [ ] Structural typing validation for records
 - [ ] Element type enforcement in typed arrays
 - [ ] Function return type validation (every code path)
-- [ ] Definite assignment analysis (no reads before writes)
-- [ ] Numeric widening: `int` → `float` implicit, reverse requires explicit conversion
-- [ ] Empty array `[]` type inference from context
-- [ ] Empty record `{}` handling
+- [ ] Definite assignment analysis
+- [ ] Numeric widening: int → float implicit
+- [ ] Typed record field enforcement (missing field = compile error)
 
-**Done when:** Every type rule from the spec is enforced. All type system tests green.
+**Done when:** Type errors are caught at compile time, not at runtime.
 
 ---
 
-## Phase 6: Module System
+## Phase 7: Module System
 
-- [ ] `use X from "./path"` — resolve and load `.monk` files
-- [ ] `use { X, Y } from "./path"` — named imports
-- [ ] `use * from "./path"` — wildcard imports
-- [ ] `export` declarations (functions, constants, types)
+- [ ] `use X from "./path"` — resolve and load .monk files
+- [ ] Named imports, wildcard imports
+- [ ] `export` declarations
 - [ ] Import with alias (`use X as Y`)
 - [ ] Module scope isolation
-- [ ] Module-level code executes once on first import
 - [ ] Circular import detection (compile error)
-
-**Done when:** Modules can import/export functions, constants, and types across files.
+- [ ] Compile multi-file programs to a single .c file (or multiple linked .o files)
 
 ---
 
-## Phase 7: C FFI
+## Phase 8: C FFI
 
 > Syntax TBD — to be designed before implementation.
 
-- [ ] Design FFI syntax (discuss options, pick one)
+- [ ] Design FFI syntax
 - [ ] Declare external C functions from Monk
-- [ ] Type mapping at FFI boundary (int → int64_t, float → double, string → const char*, bool → bool)
-- [ ] Emit `#include` directives in generated C
-- [ ] Library linking flags passed to cc
-- [ ] Compile-time type checking of extern call sites
-
-**Done when:** Monk programs can call C standard library functions and link external C libraries.
+- [ ] Type mapping at FFI boundary
+- [ ] Emit `#include` and linker flags
 
 ---
 
-## Phase 8: CLI
+## Phase 9: Linter & Formatter
 
-- [ ] `monk build <file>` — compile a `.monk` file to native binary
-- [ ] `monk run <file>` — compile and run in one step (cache binary, recompile on change)
-- [ ] `monk check <file>` — type check without compiling
 - [ ] `monk lint <file>` — code quality checks
 - [ ] `monk format <file>` — code formatting
-
-### Linter Rules
-- [ ] `snake_case_variables`
-- [ ] `pascal_case_types`
-- [ ] `const_case_constants`
-- [ ] `descriptive_names`
-- [ ] `consistent_indentation`
-- [ ] `trailing_whitespace`
-- [ ] `explicit_types_public`
-- [ ] `consistent_optional_syntax`
-- [ ] `max_parameters`
-- [ ] `max_function_length`
-- [ ] `const_vs_let_preference`
-
-### Formatter
-- [ ] Indentation normalization
-- [ ] Operator spacing
-- [ ] Brace style
-- [ ] Trailing commas (multi-line)
-- [ ] Newline at EOF
-- [ ] Trailing whitespace removal
-- [ ] Max consecutive empty lines
-
-**Done when:** All CLI commands work. Linter and formatter match v1 behavior.
+- [ ] Linter rules: naming conventions, unused variables, const preference, max parameters
+- [ ] Formatter: indentation, spacing, trailing commas, newline at EOF
 
 ---
 
-## Phase 9: LSP + Editor Support
+## Phase 10: LSP + Editor Support
 
-- [ ] LSP server with TextDocument sync
-- [ ] Completions (keywords, built-ins, scope variables)
-- [ ] Hover (type info, signatures)
-- [ ] Go to definition
-- [ ] Find references
-- [ ] Rename
-- [ ] Signature help
-- [ ] Document formatting
-- [ ] Diagnostics (errors, warnings)
+- [ ] LSP server (diagnostics, completions, hover, go-to-definition)
 - [ ] VS Code extension (syntax highlighting, LSP client)
 
-**Done when:** The VS Code extension provides a productive editing experience.
-
 ---
 
-## Phase 10: Distribution
+## Phase 11: Distribution
 
-- [ ] Single-binary packaging
-- [ ] Homebrew formula (update `homebrew-monk-lang` repo)
+- [ ] Single-binary packaging for the compiler
+- [ ] Homebrew formula
 - [ ] Install script
-- [ ] Docker image
 - [ ] CI/CD pipeline
 
 ---
 
 ## Future (Not Scoped)
 
-These are on the radar but not part of the current rebuild:
-
-- Memory model finalization (`ref` parameters, borrowing, reference counting)
-- Native compilation (LLVM backend or similar)
+- Memory model: `ref` parameters, borrowing
+- Native compilation (LLVM backend)
 - Generics / parametric types
-- Pattern matching
-- Destructuring
+- Pattern matching, destructuring
 - Async/await
-- File I/O and system integration
-- Standard library expansion
 - Package manager and registry
 
 ---
 
-**The spec lives at `spec/REFERENCE.md`. The implementation conforms to the spec. The tests prove it. This roadmap tracks what's done.**
+**The spec lives at `spec/REFERENCE.md`. The compiler conforms to the spec. The tests prove it.**

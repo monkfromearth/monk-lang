@@ -832,3 +832,52 @@ func TestParseErrorUnmatchedParen(t *testing.T) {
 		t.Fatal("expected parse error for unmatched paren")
 	}
 }
+
+func TestParseErrorAssignInIfCondition(t *testing.T) {
+	_, err := Parse("if x = 5 { }")
+	if err == nil {
+		t.Fatal("expected error for assignment in if condition")
+	}
+}
+
+func TestParseErrorAssignInWhileCondition(t *testing.T) {
+	_, err := Parse("while x = 5 { }")
+	if err == nil {
+		t.Fatal("expected error for assignment in while condition")
+	}
+}
+
+func TestParseErrorBreakOutsideLoop(t *testing.T) {
+	_, err := Parse("break")
+	if err == nil {
+		t.Fatal("expected error for break outside loop")
+	}
+}
+
+func TestParseErrorContinueOutsideLoop(t *testing.T) {
+	_, err := Parse("continue")
+	if err == nil {
+		t.Fatal("expected error for continue outside loop")
+	}
+}
+
+func TestParseBreakInsideLoopOk(t *testing.T) {
+	_, err := Parse("while true { break }")
+	if err != nil {
+		t.Fatalf("break inside loop should be valid: %v", err)
+	}
+}
+
+func TestParseContinueInsideForOk(t *testing.T) {
+	_, err := Parse("for x in items { continue }")
+	if err != nil {
+		t.Fatalf("continue inside for should be valid: %v", err)
+	}
+}
+
+func TestParseBreakInNestedIfInsideLoop(t *testing.T) {
+	_, err := Parse("while true { if x { break } }")
+	if err != nil {
+		t.Fatalf("break in if inside loop should be valid: %v", err)
+	}
+}

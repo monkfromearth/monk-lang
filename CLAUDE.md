@@ -53,16 +53,29 @@ No code without a test. No test without a spec reference.
 - **No `function` type:** Dropped. Use typed signatures `(int, int) -> int`.
 - **Truthiness:** `false`, `none`, `0` only. `""` and `[]` are truthy.
 
+## Current Status
+
+**No code written yet.** The spec, architecture, and learning materials are complete. Next step: set up the Zig project and write the first failing lexer test.
+
+Pin **Zig 0.13 or 0.14** (stable-ish). Don't chase latest nightly — pre-1.0 breaking changes.
+
 ## Project Structure
 
 ```
-spec/       — Language specification (REFERENCE.md, MEMORY_MODEL_DISCUSSION.md)
-tests/      — Test suite (contract for the implementation)
-examples/   — Example programs
-docs/       — Guides and tutorials
-src/        — Implementation
-editor/     — VS Code extension, LSP
-scripts/    — Build and automation
+spec/                — Language specification
+  REFERENCE.md           — THE source of truth for syntax and semantics
+  ARCHITECTURE_DECISIONS.md — Why Zig, why compile-to-C, implementation plans
+  MEMORY_MODEL_DISCUSSION.md — Design history for memory management
+knowledge/           — Learning course (Brilliant.org style, migrating to Astro)
+  ASTRO_MIGRATION_PROMPT.md — Full prompt for migrating to Astro + Solid
+  index.html             — Course map landing page
+  foundations/           — Unit 0 lessons (how compilers work, Zig basics)
+tests/               — Test suite (contract for the implementation)
+examples/            — Example .monk programs
+src/                 — Zig implementation (not yet created)
+runtime/             — C runtime library (not yet created)
+editor/              — VS Code extension, LSP
+scripts/             — Build and automation
 ```
 
 ## Rules
@@ -89,3 +102,31 @@ Phases must be completed in order (each depends on the one before):
 9. Distribution
 
 Memory model / `ref` / borrowing will be inserted when the design is finalized.
+
+## Reading Order for New Sessions
+
+When starting a new session on this project, read files in this order:
+1. **This file** (CLAUDE.md) — decisions, rules, current status
+2. **spec/REFERENCE.md** — the language spec (read before writing ANY code or tests)
+3. **ROADMAP.md** — what to build next (check the checkboxes)
+4. **spec/ARCHITECTURE_DECISIONS.md** — only if working on codegen, runtime, or infrastructure
+
+Do NOT read MEMORY_MODEL_DISCUSSION.md unless specifically discussing memory design — it contains historical options that were rejected.
+
+## Design Constraints (knowledge/ pages)
+
+If working on the learning course (`knowledge/`):
+- NO emojis anywhere. Use SVG icons (Heroicons outline).
+- NO purple, violet, or indigo colors.
+- Light-theme code blocks only (bg: `#FAFAF9`, border: `#E8E4DF`).
+- See `knowledge/ASTRO_MIGRATION_PROMPT.md` for full design system.
+
+## Related Repos
+
+| Repo | Purpose | Status |
+|------|---------|--------|
+| `monkfromearth/monk-lang` | This repo — v2 compiler | Active |
+| `monkfromearth/monk-lang-v1` | Archived v1 (TS/Bun interpreter) | Archived |
+| `monkfromearth/homebrew-monk-lang` | Homebrew tap formula | Update in Phase 9 |
+| `monkfromearth/monklore` | Docs site (Next.js) | Separate |
+| `projects/monk-examples` | Starter examples (not a git repo) | Absorb later |

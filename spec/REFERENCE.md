@@ -1139,45 +1139,19 @@ Module-level code executes once, when the module is first imported.
 
 ## C Foreign Function Interface (FFI)
 
-Monk compiles to C, so calling C functions is nearly zero-cost. The `use extern` syntax declares external C functions that Monk can call directly.
-
-### Declaring External Functions
-
-```monk
-// Import functions from a C header
-use extern "math.h" {
-    sqrt(x float) float
-    pow(base float, exp float) float
-}
-
-// Use them like any Monk function
-let result = sqrt(16.0)
-show(to_string(result))  // "4"
-```
-
-### Linking External Libraries
-
-```monk
-// The "link" clause tells the compiler to pass -lsqlite3 to cc
-use extern "sqlite3.h" link "sqlite3" {
-    sqlite3_open(filename string, db int) int
-    sqlite3_close(db int) int
-}
-```
-
-### What the Compiler Does
-
-1. `use extern "math.h"` → emits `#include <math.h>` in the generated C
-2. Function signatures → type-checked at compile time in Monk
-3. `link "sqlite3"` → passes `-lsqlite3` to the C compiler/linker
-4. Calls → generated as direct C function calls (zero overhead)
-
-### Rules
-
-- Extern functions cannot throw (no guard/against). If the C function can fail, it returns an error code.
-- Monk strings are passed as `const char*` to C. C strings are copied into Monk strings on return.
-- Monk integers map to `int64_t`, floats to `double`, booleans to `bool`.
-- Arrays and records cannot be passed to extern functions directly (C doesn't have Monk's tagged unions). Use primitive types at the FFI boundary.
+> **Status: PLANNED.** Monk compiles to C, so calling C functions is nearly zero-cost. The FFI syntax is not yet designed — it will be discussed and decided before implementation.
+>
+> **What is decided:**
+> - Monk will have a way to declare and call external C functions
+> - The compiler will emit `#include` directives and linker flags in generated C
+> - Type mapping at the boundary: Monk int → `int64_t`, float → `double`, string → `const char*`, boolean → `bool`
+> - FFI calls will have zero overhead (direct C function calls in generated code)
+>
+> **What is NOT decided:**
+> - The syntax for declaring external functions
+> - How library linking is expressed
+> - Whether arrays/records can cross the FFI boundary
+> - Error handling semantics for extern functions
 
 ---
 
@@ -1351,8 +1325,6 @@ show(some_function)         // <function>
 | `true`     | Boolean literal                      |
 | `false`    | Boolean literal                      |
 | `none`     | Null literal                         |
-| `extern`   | C FFI declaration                    |
-| `link`     | C library linking (in extern block)  |
 
 ### Reserved for Future Use
 

@@ -1,21 +1,25 @@
+// Package syntax provides the lexer, parser, and AST for the Monk language.
+//
+// The pipeline: source text → Scanner → []Token → Parser → *Program (AST).
+// See spec/REFERENCE.md for the language specification.
 package syntax
 
 // TokenKind identifies the type of a lexical token.
 type TokenKind int
 
 const (
-	// Special
-	Illegal TokenKind = iota
-	Eof
-	Identifier
+	// Special tokens
+	Illegal TokenKind = iota // unrecognized character
+	Eof                      // end of input
+	Identifier               // user-defined name (variable, function, type)
 
-	// Literals
-	IntLiteral
-	FloatLiteral
-	StringLiteral
-	TemplateLiteral
+	// Literal tokens
+	IntLiteral      // integer: 42, 0xFF, 0b1010, 0o77, 1_000
+	FloatLiteral    // float: 3.14, 1.23e5, 1e-3
+	StringLiteral   // double-quoted: "hello"
+	TemplateLiteral // backtick: `hello`
 
-	// Keywords
+	// Keyword tokens — each maps to a reserved word in the source
 	Let
 	Const
 	If
@@ -42,14 +46,14 @@ const (
 	False
 	None
 
-	// Arithmetic
+	// Arithmetic operators
 	Plus    // +
 	Minus   // -
 	Star    // *
 	Slash   // /
 	Percent // %
 
-	// Comparison
+	// Comparison operators
 	EqualEqual   // ==
 	BangEqual    // !=
 	Less         // <
@@ -57,12 +61,12 @@ const (
 	LessEqual    // <=
 	GreaterEqual // >=
 
-	// Logical
+	// Logical operators
 	AmpAmp   // &&
 	PipePipe // ||
 	Bang     // !
 
-	// Bitwise
+	// Bitwise operators
 	Amp        // &
 	Pipe       // |
 	Caret      // ^
@@ -70,7 +74,7 @@ const (
 	ShiftLeft  // <<
 	ShiftRight // >>
 
-	// Assignment
+	// Assignment operators
 	Equal        // =
 	PlusEqual    // +=
 	MinusEqual   // -=
@@ -92,16 +96,8 @@ const (
 	Arrow        // ->
 )
 
-// String returns a human-readable name for the token kind.
-func (k TokenKind) String() string {
-	if name, ok := kindNames[k]; ok {
-		return name
-	}
-	return "UNKNOWN"
-}
-
-// kindNames provides display names only for non-obvious token kinds.
-// Keyword and operator tokens use their source text directly via Token.Text.
+// kindNames provides display names for non-obvious token kinds.
+// Keywords and operators use their source text directly via Token.Text.
 var kindNames = map[TokenKind]string{
 	Illegal:         "ILLEGAL",
 	Eof:             "EOF",
@@ -110,6 +106,14 @@ var kindNames = map[TokenKind]string{
 	FloatLiteral:    "FLOAT",
 	StringLiteral:   "STRING",
 	TemplateLiteral: "TEMPLATE",
+}
+
+// String returns a human-readable name for the token kind.
+func (k TokenKind) String() string {
+	if name, ok := kindNames[k]; ok {
+		return name
+	}
+	return "UNKNOWN"
 }
 
 // keywords maps source text to keyword token kinds.

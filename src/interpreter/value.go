@@ -1,3 +1,8 @@
+// Package interpreter provides a tree-walking evaluator for the Monk language.
+//
+// It evaluates an AST produced by the syntax package and returns Monk values.
+// All values follow Monk's value semantics: assignment copies, function
+// arguments copy, closures capture by copy (with self-reference for recursion).
 package interpreter
 
 import (
@@ -47,22 +52,21 @@ type FuncDef struct {
 	Body    any
 }
 
-// Predefined constants.
+// Predefined singleton values.
 var (
 	MonkNone  = Value{Kind: NoneValue}
 	MonkTrue  = Value{Kind: BoolValue, Bool: true}
 	MonkFalse = Value{Kind: BoolValue, Bool: false}
 )
 
-func IntVal(n int64) Value      { return Value{Kind: IntValue, Int: n} }
-func FloatVal(f float64) Value  { return Value{Kind: FloatValue, Float: f} }
-func StringVal(s string) Value  { return Value{Kind: StringValue, Str: s} }
-func BoolVal(b bool) Value      { if b { return MonkTrue }; return MonkFalse }
-func ArrayVal(elems []Value) Value { return Value{Kind: ArrayValue, Array: elems} }
+// Value constructors.
 
-func RecordVal(entries []RecordEntry) Value {
-	return Value{Kind: RecordValue, Record: entries}
-}
+func IntVal(n int64) Value        { return Value{Kind: IntValue, Int: n} }
+func FloatVal(f float64) Value    { return Value{Kind: FloatValue, Float: f} }
+func StringVal(s string) Value    { return Value{Kind: StringValue, Str: s} }
+func BoolVal(b bool) Value        { if b { return MonkTrue }; return MonkFalse }
+func ArrayVal(elems []Value) Value { return Value{Kind: ArrayValue, Array: elems} }
+func RecordVal(entries []RecordEntry) Value { return Value{Kind: RecordValue, Record: entries} }
 
 // DeepCopy returns an independent copy of the value (value semantics).
 func (v Value) DeepCopy() Value {

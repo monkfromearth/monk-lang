@@ -12,25 +12,25 @@ The previous implementation (TypeScript/Bun tree-walking interpreter) is archive
 
 Tokenize source code into a stream of tokens.
 
-- [ ] Number literals: decimal (`42`, `3.14`, `1.23e5`), hex (`0xFF`), binary (`0b1010`), octal (`0o77`), underscores (`1_000_000`)
-- [ ] String literals (double-quoted, escape sequences: `\n`, `\t`, `\"`, `\\`)
-- [ ] Template literals (backtick strings, multiline)
-- [ ] Identifiers
-- [ ] All keywords: `let`, `const`, `if`, `else`, `for`, `in`, `while`, `break`, `continue`, `return`, `guard`, `against`, `throw`, `type`, `use`, `export`, `from`, `as`, `is`, `not`, `and`, `or`, `true`, `false`, `none`
-- [ ] Reserved keywords: `ref`, `async`, `await`
-- [ ] Arithmetic operators: `+`, `-`, `*`, `/`, `%`
-- [ ] Assignment operators: `=`, `+=`, `-=`, `*=`, `/=`, `%=`
-- [ ] Comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
-- [ ] Symbolic logical operators: `&&`, `||`, `!`
-- [ ] Bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`
-- [ ] Delimiters: `(`, `)`, `{`, `}`, `[`, `]`, `:`, `,`, `.`, `?`
-- [ ] Arrow: `->`
-- [ ] Single-line comments: `//`
-- [ ] Newline handling (insignificant, with continuation heuristics)
-- [ ] Trailing comma support
-- [ ] Line and column tracking
-- [ ] EOF token
-- [ ] Error recovery for invalid tokens
+- [x] Number literals: decimal (`42`, `3.14`, `1.23e5`), hex (`0xFF`), binary (`0b1010`), octal (`0o77`), underscores (`1_000_000`)
+- [x] String literals (double-quoted, escape sequences: `\n`, `\t`, `\"`, `\\`)
+- [x] Template literals (backtick strings, multiline)
+- [x] Identifiers
+- [x] All keywords: `let`, `const`, `if`, `else`, `for`, `in`, `while`, `break`, `continue`, `return`, `guard`, `against`, `throw`, `type`, `use`, `export`, `from`, `as`, `is`, `not`, `and`, `or`, `true`, `false`, `none`
+- [x] Reserved keywords: `ref`, `async`, `await`
+- [x] Arithmetic operators: `+`, `-`, `*`, `/`, `%`
+- [x] Assignment operators: `=`, `+=`, `-=`, `*=`, `/=`, `%=`
+- [x] Comparison operators: `==`, `!=`, `<`, `>`, `<=`, `>=`
+- [x] Symbolic logical operators: `&&`, `||`, `!`
+- [x] Bitwise operators: `&`, `|`, `^`, `~`, `<<`, `>>`
+- [x] Delimiters: `(`, `)`, `{`, `}`, `[`, `]`, `:`, `,`, `.`, `?`
+- [x] Arrow: `->`
+- [x] Single-line comments: `//`
+- [x] Newline handling (insignificant, with continuation heuristics)
+- [x] Trailing comma support
+- [x] Line and column tracking
+- [x] EOF token
+- [x] Error recovery for invalid tokens
 
 **Done when:** Every token type from the spec is lexed correctly with position info. All lexer tests green.
 
@@ -41,39 +41,39 @@ Tokenize source code into a stream of tokens.
 Transform token stream into an Abstract Syntax Tree (AST).
 
 ### Expressions
-- [ ] Numeric, string, boolean, none literals
-- [ ] Identifier expressions
-- [ ] Unary expressions (`-`, `not`, `!`, `~`)
-- [ ] Binary expressions with full operator precedence (13 levels)
-- [ ] Parenthesized grouping
-- [ ] Array literals (with trailing commas)
-- [ ] Record literals (with trailing commas)
-- [ ] Property access (`obj.prop`)
-- [ ] Index access (`arr[i]`, `str[i]`)
-- [ ] Function expressions (typed params, optional defaults, return type, block body)
-- [ ] Call expressions (with trailing commas)
-- [ ] Throw expressions
-- [ ] Template literal expressions (multiline)
+- [x] Numeric, string, boolean, none literals
+- [x] Identifier expressions
+- [x] Unary expressions (`-`, `not`, `!`, `~`)
+- [x] Binary expressions with full operator precedence (13 levels)
+- [x] Parenthesized grouping
+- [x] Array literals (with trailing commas)
+- [x] Record literals (with trailing commas)
+- [x] Property access (`obj.prop`)
+- [x] Index access (`arr[i]`, `str[i]`)
+- [x] Function expressions (typed params, optional defaults, return type, block body)
+- [x] Call expressions (with trailing commas)
+- [x] Throw expressions
+- [x] Template literal expressions (multiline)
 
 ### Statements
-- [ ] Variable declarations (`let`/`const`, optional type annotation)
-- [ ] Assignment statements (NOT expressions — forbidden in conditions)
-- [ ] Compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`)
-- [ ] Index assignment (`arr[i] = val`)
-- [ ] Property assignment (`record.field = val`)
-- [ ] If/else statements (including else-if chains)
-- [ ] While loops
-- [ ] For-in loops (arrays and strings only — no bare numbers)
-- [ ] Break / continue statements
-- [ ] Return statements
-- [ ] Block statements (scoped `{ }`)
-- [ ] Guard/against statements
-- [ ] Type declarations (`type Name = ...` — record types, aliases, function types)
-- [ ] Use/export statements
+- [x] Variable declarations (`let`/`const`, optional type annotation)
+- [x] Assignment statements (NOT expressions — forbidden in conditions)
+- [x] Compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`)
+- [x] Index assignment (`arr[i] = val`)
+- [x] Property assignment (`record.field = val`)
+- [x] If/else statements (including else-if chains)
+- [x] While loops
+- [x] For-in loops (arrays and strings only — no bare numbers)
+- [x] Break / continue statements
+- [x] Return statements
+- [x] Block statements (scoped `{ }`)
+- [x] Guard/against statements
+- [x] Type declarations (`type Name = ...` — record types, aliases, function types)
+- [x] Use/export statements
 
 ### Parser Quality
-- [ ] Clear error messages with line/column
-- [ ] Error recovery (don't stop at first error)
+- [x] Clear error messages with line/column
+- [x] Error recovery (don't stop at first error)
 - [ ] Reject assignment in conditions
 - [ ] Reject `break`/`continue` outside loops
 
@@ -86,58 +86,58 @@ Transform token stream into an Abstract Syntax Tree (AST).
 Evaluate the AST. This is the heart of the language.
 
 ### Values and Evaluation
-- [ ] Evaluate literals: int, float, string, boolean, none
-- [ ] Arithmetic operations — numeric only, int/int=int (truncating), float involved=float
-- [ ] String concatenation via `+` (string + string only, no auto-coercion)
-- [ ] Comparison: `==`/`!=` on same-type primitives only (cross-type = error, collections = error)
-- [ ] Ordering: `<`/`>`/`<=`/`>=` on numbers and strings (lexicographic). Cross-type = error. `none` = error.
-- [ ] Logical operations with truthiness (`false`, `none`, `0` are falsy) — always return `boolean`
-- [ ] Unary: `-` (numeric), `not`/`!` (truthiness), `~` (bitwise int)
-- [ ] Bitwise operations: `&`, `|`, `^`, `<<`, `>>` (int only, two's complement)
+- [x] Evaluate literals: int, float, string, boolean, none
+- [x] Arithmetic operations — numeric only, int/int=int (truncating), float involved=float
+- [x] String concatenation via `+` (string + string only, no auto-coercion)
+- [x] Comparison: `==`/`!=` on same-type primitives only (cross-type = error, collections = error)
+- [x] Ordering: `<`/`>`/`<=`/`>=` on numbers and strings (lexicographic). Cross-type = error. `none` = error.
+- [x] Logical operations with truthiness (`false`, `none`, `0` are falsy) — always return `boolean`
+- [x] Unary: `-` (numeric), `not`/`!` (truthiness), `~` (bitwise int)
+- [x] Bitwise operations: `&`, `|`, `^`, `<<`, `>>` (int only, two's complement)
 
 ### Variables and Scope
-- [ ] Variable declaration and lookup (`let`/`const`)
-- [ ] Assignment and compound assignment (`+=`, etc.)
-- [ ] Deep const enforcement (no reassign, no element/field mutation)
-- [ ] `let` = fully mutable (variable + contents)
-- [ ] Value semantics: assignment copies arrays and records
-- [ ] Scope chain: nested scopes, parent lookup
-- [ ] Variable shadowing
-- [ ] Block scope creation
+- [x] Variable declaration and lookup (`let`/`const`)
+- [x] Assignment and compound assignment (`+=`, etc.)
+- [x] Deep const enforcement (no reassign, no element/field mutation)
+- [x] `let` = fully mutable (variable + contents)
+- [x] Value semantics: assignment copies arrays and records
+- [x] Scope chain: nested scopes, parent lookup
+- [x] Variable shadowing
+- [x] Block scope creation
 
 ### Control Flow
-- [ ] If/else evaluation (truthiness-based conditions)
-- [ ] While loops
-- [ ] For-in loops: arrays and strings. Loop variable is `const`.
-- [ ] Break signal (exits loop)
-- [ ] Continue signal (skips to next iteration)
+- [x] If/else evaluation (truthiness-based conditions)
+- [x] While loops
+- [x] For-in loops: arrays and strings. Loop variable is `const`.
+- [x] Break signal (exits loop)
+- [x] Continue signal (skips to next iteration)
 
 ### Functions
-- [ ] Function creation with closure capture (closures capture by copy, like C++ `[x]` lambdas)
-- [ ] Function calls — arguments are copies (value semantics)
+- [x] Function creation with closure capture (closures capture by copy, like C++ `[x]` lambdas)
+- [x] Function calls — arguments are copies (value semantics)
 - [ ] Default parameter values
-- [ ] Return signal
-- [ ] Recursion (function name in scope inside own body)
-- [ ] Higher-order functions (pass/return functions)
-- [ ] Every code path must return matching type (enforce at runtime for now)
+- [x] Return signal
+- [x] Recursion (function name in scope inside own body)
+- [x] Higher-order functions (pass/return functions)
+- [ ] Every code path must return matching type (requires type checker)
 
 ### Data Structures
-- [ ] Array creation and indexing: read out-of-bounds → `none`, write out-of-bounds → error
-- [ ] String indexing: `"hello"[0]` → `"h"`, out-of-bounds → `none`
-- [ ] Record creation and property access (dot notation)
-- [ ] Record shape is fixed at creation — no adding new fields
-- [ ] Typed record: missing field read/write → error
-- [ ] Untyped record: missing field read → `none`, missing field write → error
-- [ ] Index assignment (`arr[i] = val`) on `let` arrays only
-- [ ] Property assignment (`record.field = val`) on `let` records only
+- [x] Array creation and indexing: read out-of-bounds → `none`, write out-of-bounds → error
+- [x] String indexing: `"hello"[0]` → `"h"`, out-of-bounds → `none`
+- [x] Record creation and property access (dot notation)
+- [x] Record shape is fixed at creation — no adding new fields
+- [ ] Typed record: missing field read/write → error (requires type checker)
+- [x] Untyped record: missing field read → `none`, missing field write → error
+- [x] Index assignment (`arr[i] = val`) on `let` arrays only
+- [x] Property assignment (`record.field = val`) on `let` records only
 
 ### Error Handling
-- [ ] Throw expression (any value)
-- [ ] Guard/against evaluation: declares variable in enclosing scope, defaults to `none` if unassigned
-- [ ] `guard` with non-throwing expression is valid (against block = dead code)
-- [ ] `break`/`continue`/`return` work inside `against` blocks
-- [ ] Error propagation through call stack
-- [ ] Unhandled `throw` at top level terminates program with error message
+- [x] Throw expression (any value)
+- [x] Guard/against evaluation: declares variable in enclosing scope, defaults to `none` if unassigned
+- [x] `guard` with non-throwing expression is valid (against block = dead code)
+- [x] `break`/`continue`/`return` work inside `against` blocks
+- [x] Error propagation through call stack
+- [x] Unhandled `throw` at top level terminates program with error message
 
 **Done when:** Every runtime behavior from the spec works. All interpreter tests green.
 

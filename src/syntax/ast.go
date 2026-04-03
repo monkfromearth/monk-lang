@@ -17,107 +17,128 @@ type Stmt interface {
 	stmtNode()
 }
 
-// Program is the root AST node — a list of statements.
+// Program is the root AST node — a list of top-level statements.
 type Program struct {
 	Stmts []Stmt
 }
 
 func (p *Program) nodeKind() string { return "Program" }
 
-// --- Expressions ---
+// --- Expression nodes ---
 
+// NumberExpr represents an integer or float literal.
 type NumberExpr struct {
 	Value string // raw text: "42", "3.14", "0xFF"
-	IsInt bool   // true for int, false for float
+	IsInt bool   // true = int, false = float
 }
 
+// StringExpr represents a double-quoted string literal (contents without quotes).
 type StringExpr struct {
-	Value string // contents without quotes
+	Value string
 }
 
+// TemplateExpr represents a backtick template literal (contents without backticks).
 type TemplateExpr struct {
-	Value string // contents without backticks
+	Value string
 }
 
+// BoolExpr represents a boolean literal (true or false).
 type BoolExpr struct {
 	Value bool
 }
 
+// NoneExpr represents the none literal.
 type NoneExpr struct{}
 
+// IdentExpr represents an identifier (variable name, function name, type name).
 type IdentExpr struct {
 	Name string
 }
 
+// UnaryExpr represents a unary operation: -x, not x, !x, ~x.
 type UnaryExpr struct {
 	Op      TokenKind
 	Operand Expr
 }
 
+// BinaryExpr represents a binary operation: a + b, x == y, etc.
 type BinaryExpr struct {
 	Left  Expr
 	Op    TokenKind
 	Right Expr
 }
 
+// AssignExpr represents assignment: x = 1, arr[0] = 1, record.field = 1.
+// Also compound assignment: x += 1, x -= 1, etc.
 type AssignExpr struct {
 	Target Expr      // IdentExpr, IndexExpr, or PropertyExpr
 	Op     TokenKind // Equal, PlusEqual, MinusEqual, etc.
 	Value  Expr
 }
 
+// CallExpr represents a function call: f(a, b).
 type CallExpr struct {
 	Callee Expr
 	Args   []Expr
 }
 
+// IndexExpr represents index access: arr[i], "hello"[0].
 type IndexExpr struct {
 	Object Expr
 	Index  Expr
 }
 
+// PropertyExpr represents property access: record.field.
 type PropertyExpr struct {
 	Object   Expr
 	Property string
 }
 
+// ArrayExpr represents an array literal: [1, 2, 3].
 type ArrayExpr struct {
 	Elements []Expr
 }
 
+// RecordExpr represents a record literal: {name: "Alice", age: 30}.
 type RecordExpr struct {
 	Fields []RecordField
 }
 
+// RecordField is a key-value pair in a record literal or type definition.
 type RecordField struct {
 	Key   string
 	Value Expr
 }
 
+// FuncExpr represents a function expression: (a int, b int) int { return a + b }.
 type FuncExpr struct {
 	Params     []Param
-	ReturnType TypeExpr // may be nil
+	ReturnType TypeExpr
 	Body       *BlockStmt
 }
 
+// Param is a function parameter with name, type, and optional default value.
 type Param struct {
 	Name    string
 	Type    TypeExpr
 	Default Expr // nil if no default
 }
 
+// TypeExpr represents a type annotation: int, string, int[], int?.
 type TypeExpr struct {
 	Name     string // "int", "string", custom type name
 	IsArray  bool   // true for "int[]"
 	Optional bool   // true for "int?"
 }
 
+// ThrowExpr represents a throw expression: throw "error".
 type ThrowExpr struct {
 	Value Expr
 }
 
-// --- Statements ---
+// --- Statement nodes ---
 
+// VarDeclStmt represents a variable declaration: let x = 1 or const y = 2.
 type VarDeclStmt struct {
 	Name    string
 	Type    *TypeExpr // nil if no annotation
@@ -125,67 +146,83 @@ type VarDeclStmt struct {
 	IsConst bool
 }
 
+// ExprStmt wraps an expression used as a statement.
 type ExprStmt struct {
 	Expr Expr
 }
 
+// BlockStmt represents a block of statements: { stmt1; stmt2 }.
+// Created by if/while/for/guard/function bodies, not standalone.
 type BlockStmt struct {
 	Stmts []Stmt
 }
 
+// IfStmt represents an if/else/else-if statement.
 type IfStmt struct {
 	Condition Expr
 	Then      *BlockStmt
-	Else      Stmt // *BlockStmt or *IfStmt (else-if chain) or nil
+	Else      Stmt // *BlockStmt (else) or *IfStmt (else-if) or nil
 }
 
+// WhileStmt represents a while loop.
 type WhileStmt struct {
 	Condition Expr
 	Body      *BlockStmt
 }
 
+// ForStmt represents a for-in loop: for x in iterable { }.
 type ForStmt struct {
 	VarName  string
 	Iterable Expr
 	Body     *BlockStmt
 }
 
+// ReturnStmt represents a return statement. Value is nil for bare return.
 type ReturnStmt struct {
-	Value Expr // nil for bare return
+	Value Expr
 }
 
+// BreakStmt represents a break statement inside a loop.
 type BreakStmt struct{}
+
+// ContinueStmt represents a continue statement inside a loop.
 type ContinueStmt struct{}
 
+// GuardStmt represents guard/against error handling.
 type GuardStmt struct {
-	VarName   string
-	Expr      Expr
-	ErrorName string
-	Against   *BlockStmt
+	VarName   string     // variable that receives the result
+	Expr      Expr       // expression that might throw
+	ErrorName string     // variable that receives the error
+	Against   *BlockStmt // error handling block
 }
 
+// TypeDeclStmt represents a type declaration: type Point = { x: int, y: int }.
 type TypeDeclStmt struct {
 	Name       string
 	Definition TypeDefExpr
 }
 
+// TypeDefExpr represents the right side of a type declaration.
+// Either a type alias (AliasOf) or a record type definition (Fields).
 type TypeDefExpr struct {
 	AliasOf *TypeExpr     // for "type UserId = int"
-	Fields  []RecordField // for "type Point = { x: int, y: int }" (uses key as name, value as type)
+	Fields  []RecordField // for "type Point = { x: int, y: int }"
 }
 
+// UseStmt represents an import: use helper from "./utils".
 type UseStmt struct {
-	Names  []string // imported names; nil for wildcard
+	Names  []string // imported names
 	Star   bool     // true for "use * from"
 	Alias  string   // "use X as Alias from"
 	Source string   // the module path string
 }
 
+// ExportStmt represents an export: export helper.
 type ExportStmt struct {
 	Stmt Stmt // the declaration being exported
 }
 
-// --- Marker methods (satisfy interfaces) ---
+// --- Interface marker methods ---
 
 func (e *NumberExpr) nodeKind() string   { return "NumberExpr" }
 func (e *StringExpr) nodeKind() string   { return "StringExpr" }

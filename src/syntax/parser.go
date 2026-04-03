@@ -55,6 +55,9 @@ func (p *Parser) parseStmt() (Stmt, error) {
 		return p.parseUse()
 	case Export:
 		return p.parseExport()
+	// No case for LeftBrace here — bare { at statement level is a record expression.
+	// Blocks only exist inside if/while/for/guard/function bodies (parseBlock is
+	// called explicitly by those parsers). This avoids the block-vs-record ambiguity.
 	default:
 		return p.parseExprStmt()
 	}
@@ -343,6 +346,10 @@ func (p *Parser) parseRecordTypeDef() (TypeDefExpr, error) {
 	p.advance()
 
 	return TypeDefExpr{Fields: fields}, nil
+}
+
+func isTypeName(k TokenKind) bool {
+	return k == Identifier || k == None
 }
 
 func (p *Parser) parseTypeExpr() TypeExpr {
@@ -780,8 +787,8 @@ func (p *Parser) parseParenOrFunc() (Expr, error) {
 	// () -> definitely a function (no params)
 	if p.current().Kind == RightParen {
 		p.advance()
-		// If followed by an identifier (return type) or '{', it's a function
-		if p.current().Kind == Identifier || p.current().Kind == LeftBrace || p.current().Kind == LeftParen {
+		// If followed by a type name (return type) or '{', it's a function
+		if isTypeName(p.current().Kind) || p.current().Kind == LeftBrace || p.current().Kind == LeftParen {
 			p.pos = saved
 			return p.parseFuncExpr()
 		}
@@ -856,7 +863,7 @@ func (p *Parser) parseFuncExpr() (Expr, error) {
 
 	// Return type (before the block)
 	var returnType TypeExpr
-	if p.current().Kind == Identifier {
+	if isTypeName(p.current().Kind) {
 		returnType = p.parseTypeExpr()
 	}
 

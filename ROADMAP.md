@@ -148,38 +148,38 @@ Evaluate the AST. This is the heart of the language.
 Register native functions in the global scope.
 
 ### Output & Conversion
-- [ ] `show` — with defined output format (JSON-ish: strings quoted inside collections, `<function>`)
-- [ ] `to_string` — same format as `show`, returns string
-- [ ] `to_int` — string→int only, strict (rejects "3.14"), throws on failure
-- [ ] `to_float` — string→float, throws on failure
+- [x] `show` — with defined output format (JSON-ish: strings quoted inside collections, `<function>`)
+- [x] `to_string` — same format as `show`, returns string
+- [x] `to_int` — string→int only, strict (rejects "3.14"), throws on failure
+- [x] `to_float` — string→float, throws on failure
 
 ### Math
-- [ ] `abs`, `floor`, `ceil`, `round`
-- [ ] `sqrt` (throws if x < 0), `pow`, `log` (throws if x <= 0), `log10` (throws if x <= 0), `exp`
-- [ ] `min`, `max`
+- [x] `abs`, `floor`, `ceil`, `round`
+- [x] `sqrt` (throws if x < 0), `pow`, `log` (throws if x <= 0), `log10` (throws if x <= 0), `exp`
+- [x] `min`, `max`
 
 ### Trigonometry
-- [ ] `sin`, `cos`, `tan`
-- [ ] `asin`, `acos`, `atan`
+- [x] `sin`, `cos`, `tan`
+- [x] `asin`, `acos`, `atan`
 
 ### String
-- [ ] `length` (overloaded: string, array, record)
-- [ ] `substring` (indices clamp), `index_of`
-- [ ] `split`, `trim`
-- [ ] `to_upper_case`, `to_lower_case`
+- [x] `length` (overloaded: string, array, record)
+- [x] `substring` (indices clamp), `index_of`
+- [x] `split`, `trim`
+- [x] `to_upper_case`, `to_lower_case`
 
 ### Array
-- [ ] `append`, `prepend`
-- [ ] `pop` (`pop([])` = `[]`)
-- [ ] `drop(arr, n=1)`, `take(arr, n=1)` — both clamp
-- [ ] `slice` (indices clamp)
-- [ ] `map`, `filter`, `reduce` (`reduce([], fn, x)` = `x`)
-- [ ] `range` (`range(0)` = `[]`, `range(-5)` = `[]`)
+- [x] `append`, `prepend`
+- [x] `pop` (`pop([])` = `[]`)
+- [x] `drop(arr, n=1)`, `take(arr, n=1)` — both clamp
+- [x] `slice` (indices clamp)
+- [x] `map`, `filter`, `reduce` (`reduce([], fn, x)` = `x`)
+- [x] `range` (`range(0)` = `[]`, `range(-5)` = `[]`)
 
 ### Type Checking
-- [ ] `typeof` (returns base type strings: "int", "float", "string", "boolean", "none", "array", "record", "function")
-- [ ] `is_number`, `is_string`, `is_boolean`
-- [ ] `is_array`, `is_record`, `is_function`, `is_none`
+- [x] `typeof` (returns base type strings: "int", "float", "string", "boolean", "none", "array", "record", "function")
+- [x] `is_number`, `is_string`, `is_boolean`
+- [x] `is_array`, `is_record`, `is_function`, `is_none`
 
 ### File System & Environment
 - [ ] `file_read`, `file_write`, `file_exists`

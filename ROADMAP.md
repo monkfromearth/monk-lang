@@ -45,20 +45,20 @@ Transform token stream into an Abstract Syntax Tree (AST).
 
 The small C library linked into every compiled Monk program.
 
-- [ ] `MonkValue` tagged union (int, float, string, bool, none, array, record, function)
-- [ ] Value creation helpers (`monk_int`, `monk_string`, etc.)
-- [ ] `monk_show()` with spec-defined output format
-- [ ] Deep copy for value semantics
-- [ ] Truthiness check (false, none, 0 are falsy)
-- [ ] String operations: length, substring, index_of, split, trim, to_upper, to_lower
-- [ ] Array operations: append, prepend, pop, drop, take, slice, range (all return new arrays, all clamp)
-- [ ] Math functions: abs, floor, ceil, round, sqrt, pow, log, log10, exp, min, max, sin, cos, tan, asin, acos, atan
-- [ ] Conversion: to_string, to_int (strict), to_float
-- [ ] Type checking: typeof, is_number, is_string, is_boolean, is_array, is_record, is_function, is_none
-- [ ] File system: file_read, file_write, file_exists
-- [ ] Environment: env_get, exit, args
-- [ ] Error handling: setjmp/longjmp infrastructure for guard/against/throw
-- [ ] Memory: malloc/free wrappers, deep copy functions
+- [x] `MonkValue` tagged union (int, float, string, bool, none, array, record, function)
+- [x] Value creation helpers (`monk_int`, `monk_string`, etc.)
+- [x] `monk_show()` with spec-defined output format
+- [x] Deep copy for value semantics
+- [x] Truthiness check (false, none, 0 are falsy)
+- [x] String operations: length, substring, index_of, split, trim, to_upper, to_lower
+- [x] Array operations: append, prepend, pop, drop, take, slice, range (all return new arrays, all clamp)
+- [x] Math functions: abs, floor, ceil, round, sqrt, pow, log, log10, exp, min, max, sin, cos, tan, asin, acos, atan
+- [x] Conversion: to_string, to_int (strict), to_float
+- [x] Type checking: typeof, is_number, is_string, is_boolean, is_array, is_record, is_function, is_none
+- [x] File system: file_read, file_write, file_exists
+- [x] Environment: env_get, exit, args
+- [x] Error handling: setjmp/longjmp infrastructure for guard/against/throw
+- [x] Memory: malloc/free wrappers, deep copy functions
 
 **Done when:** `runtime.c` compiles standalone and all functions work in isolation.
 

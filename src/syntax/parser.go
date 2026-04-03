@@ -16,6 +16,12 @@ func Parse(source string) (*Program, error) {
 	return p.parseProgram()
 }
 
+// pos returns the current token's position as a Pos.
+func (p *Parser) currentPos() Pos {
+	tok := p.current()
+	return Pos{Line: tok.Line, Column: tok.Column}
+}
+
 func (p *Parser) parseProgram() (*Program, error) {
 	prog := &Program{}
 	for !p.atEnd() {
@@ -46,14 +52,16 @@ func (p *Parser) parseStmt() (Stmt, error) {
 		if p.loopDepth == 0 {
 			return nil, p.error("'break' can only be used inside a loop")
 		}
+		pos := p.currentPos()
 		p.advance()
-		return &BreakStmt{}, nil
+		return &BreakStmt{Pos: pos}, nil
 	case Continue:
 		if p.loopDepth == 0 {
 			return nil, p.error("'continue' can only be used inside a loop")
 		}
+		pos := p.currentPos()
 		p.advance()
-		return &ContinueStmt{}, nil
+		return &ContinueStmt{Pos: pos}, nil
 	case Guard:
 		return p.parseGuard()
 	case Type:
@@ -67,11 +75,36 @@ func (p *Parser) parseStmt() (Stmt, error) {
 	// called explicitly by those parsers). This avoids the block-vs-record ambiguity
 	// without fragile peek-ahead heuristics. Standalone blocks removed from language.
 	default:
-		return p.parseExprStmt()
+		return p.parseExprOrAssignStmt()
 	}
 }
 
+// parseExprOrAssignStmt parses either an expression statement or an assignment statement.
+// Design decision: assignment is a STATEMENT, not an expression.
+// It cannot appear inside conditions, function args, or other expressions.
+func (p *Parser) parseExprOrAssignStmt() (Stmt, error) {
+	pos := p.currentPos()
+	expr, err := p.parseOr() // parse left side (NOT full parseExpr, to avoid nested assignment)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for assignment operator
+	if isAssignOp(p.current().Kind) {
+		op := p.current().Kind
+		p.advance()
+		value, err := p.parseExpr()
+		if err != nil {
+			return nil, err
+		}
+		return &AssignStmt{Pos: pos, Target: expr, Op: op, Value: value}, nil
+	}
+
+	return &ExprStmt{Pos: pos, Expr: expr}, nil
+}
+
 func (p *Parser) parseVarDecl() (*VarDeclStmt, error) {
+	pos := p.currentPos()
 	isConst := p.current().Kind == Const
 	p.advance() // skip let/const
 
@@ -84,8 +117,6 @@ func (p *Parser) parseVarDecl() (*VarDeclStmt, error) {
 	// Optional type annotation
 	var typeAnnotation *TypeExpr
 	if p.current().Kind == Identifier && p.current().Kind != Equal {
-		// Could be a type annotation: let count int = 0
-		// But only if followed by = or [] or ?
 		te, ok := p.tryParseTypeExpr()
 		if ok {
 			typeAnnotation = &te
@@ -103,6 +134,7 @@ func (p *Parser) parseVarDecl() (*VarDeclStmt, error) {
 	}
 
 	return &VarDeclStmt{
+		Pos:     pos,
 		Name:    name,
 		Type:    typeAnnotation,
 		Value:   value,
@@ -115,47 +147,38 @@ func (p *Parser) tryParseTypeExpr() (TypeExpr, bool) {
 		return TypeExpr{}, false
 	}
 
-	// Look ahead: is the next token after the name '=', '[]', or '?'?
-	// If it's '=' then this IS a type annotation (name = value after it)
 	saved := p.pos
 	name := p.current().Text
 	p.advance()
 
 	te := TypeExpr{Name: name}
 
-	// Check for array suffix []
 	if p.current().Kind == LeftBracket && p.peek().Kind == RightBracket {
 		te.IsArray = true
-		p.advance() // [
-		p.advance() // ]
+		p.advance()
+		p.advance()
 	}
 
-	// Check for optional suffix ?
 	if p.current().Kind == Question {
 		te.Optional = true
 		p.advance()
 	}
 
-	// If next is '=' then this was a type annotation
 	if p.current().Kind == Equal {
 		return te, true
 	}
 
-	// Not a type annotation, restore position
 	p.pos = saved
 	return TypeExpr{}, false
 }
 
 func (p *Parser) parseIf() (*IfStmt, error) {
+	pos := p.currentPos()
 	p.advance() // skip 'if'
 
 	condition, err := p.parseExpr()
 	if err != nil {
 		return nil, err
-	}
-	// Design decision: assignment in conditions is forbidden (prevents = vs == bugs)
-	if _, isAssign := condition.(*AssignExpr); isAssign {
-		return nil, p.error("assignment not allowed in condition (use == for comparison)")
 	}
 
 	then, err := p.parseBlock()
@@ -165,7 +188,7 @@ func (p *Parser) parseIf() (*IfStmt, error) {
 
 	var elseStmt Stmt
 	if p.current().Kind == Else {
-		p.advance() // skip 'else'
+		p.advance()
 		if p.current().Kind == If {
 			elseIf, err := p.parseIf()
 			if err != nil {
@@ -181,18 +204,16 @@ func (p *Parser) parseIf() (*IfStmt, error) {
 		}
 	}
 
-	return &IfStmt{Condition: condition, Then: then, Else: elseStmt}, nil
+	return &IfStmt{Pos: pos, Condition: condition, Then: then, Else: elseStmt}, nil
 }
 
 func (p *Parser) parseWhile() (*WhileStmt, error) {
+	pos := p.currentPos()
 	p.advance() // skip 'while'
 
 	condition, err := p.parseExpr()
 	if err != nil {
 		return nil, err
-	}
-	if _, isAssign := condition.(*AssignExpr); isAssign {
-		return nil, p.error("assignment not allowed in condition (use == for comparison)")
 	}
 
 	p.loopDepth++
@@ -202,10 +223,11 @@ func (p *Parser) parseWhile() (*WhileStmt, error) {
 		return nil, err
 	}
 
-	return &WhileStmt{Condition: condition, Body: body}, nil
+	return &WhileStmt{Pos: pos, Condition: condition, Body: body}, nil
 }
 
 func (p *Parser) parseFor() (*ForStmt, error) {
+	pos := p.currentPos()
 	p.advance() // skip 'for'
 
 	if p.current().Kind != Identifier {
@@ -217,7 +239,7 @@ func (p *Parser) parseFor() (*ForStmt, error) {
 	if p.current().Kind != In {
 		return nil, p.error("expected 'in' after for variable")
 	}
-	p.advance() // skip 'in'
+	p.advance()
 
 	iterable, err := p.parseExpr()
 	if err != nil {
@@ -231,25 +253,26 @@ func (p *Parser) parseFor() (*ForStmt, error) {
 		return nil, err
 	}
 
-	return &ForStmt{VarName: varName, Iterable: iterable, Body: body}, nil
+	return &ForStmt{Pos: pos, VarName: varName, Iterable: iterable, Body: body}, nil
 }
 
 func (p *Parser) parseReturn() (*ReturnStmt, error) {
+	pos := p.currentPos()
 	p.advance() // skip 'return'
 
-	// Bare return: next token is } or EOF or another statement keyword
 	if p.atEnd() || p.current().Kind == RightBrace || p.isStmtStart() {
-		return &ReturnStmt{Value: nil}, nil
+		return &ReturnStmt{Pos: pos, Value: nil}, nil
 	}
 
 	value, err := p.parseExpr()
 	if err != nil {
 		return nil, err
 	}
-	return &ReturnStmt{Value: value}, nil
+	return &ReturnStmt{Pos: pos, Value: value}, nil
 }
 
 func (p *Parser) parseGuard() (*GuardStmt, error) {
+	pos := p.currentPos()
 	p.advance() // skip 'guard'
 
 	if p.current().Kind != Identifier {
@@ -285,6 +308,7 @@ func (p *Parser) parseGuard() (*GuardStmt, error) {
 	}
 
 	return &GuardStmt{
+		Pos:       pos,
 		VarName:   varName,
 		Expr:      expr,
 		ErrorName: errorName,
@@ -293,6 +317,7 @@ func (p *Parser) parseGuard() (*GuardStmt, error) {
 }
 
 func (p *Parser) parseTypeDecl() (*TypeDeclStmt, error) {
+	pos := p.currentPos()
 	p.advance() // skip 'type'
 
 	if p.current().Kind != Identifier {
@@ -311,22 +336,19 @@ func (p *Parser) parseTypeDecl() (*TypeDeclStmt, error) {
 		return nil, err
 	}
 
-	return &TypeDeclStmt{Name: name, Definition: def}, nil
+	return &TypeDeclStmt{Pos: pos, Name: name, Definition: def}, nil
 }
 
 func (p *Parser) parseTypeDef() (TypeDefExpr, error) {
-	// Record type: { x: int, y: int }
 	if p.current().Kind == LeftBrace {
 		return p.parseRecordTypeDef()
 	}
 
-	// Alias type: int, string, etc.
 	if p.current().Kind == Identifier {
 		te := p.parseTypeExpr()
 		return TypeDefExpr{AliasOf: &te}, nil
 	}
 
-	// Function type: (int, int) -> int
 	if p.current().Kind == LeftParen {
 		te := p.parseTypeExpr()
 		return TypeDefExpr{AliasOf: &te}, nil
@@ -338,12 +360,12 @@ func (p *Parser) parseTypeDef() (TypeDefExpr, error) {
 func (p *Parser) parseRecordTypeDef() (TypeDefExpr, error) {
 	p.advance() // skip {
 
-	var fields []RecordField
+	var fields []TypeField
 	for p.current().Kind != RightBrace && !p.atEnd() {
 		if p.current().Kind != Identifier {
 			return TypeDefExpr{}, p.error("expected field name")
 		}
-		key := p.current().Text
+		name := p.current().Text
 		p.advance()
 
 		if p.current().Kind != Colon {
@@ -352,7 +374,7 @@ func (p *Parser) parseRecordTypeDef() (TypeDefExpr, error) {
 		p.advance()
 
 		te := p.parseTypeExpr()
-		fields = append(fields, RecordField{Key: key, Value: &IdentExpr{Name: te.Name}})
+		fields = append(fields, TypeField{Name: name, Type: te})
 
 		if p.current().Kind == Comma {
 			p.advance()
@@ -391,18 +413,65 @@ func (p *Parser) parseTypeExpr() TypeExpr {
 	return te
 }
 
+// Fix 5: Parse use { X, Y } from "..." and use * from "..."
 func (p *Parser) parseUse() (*UseStmt, error) {
+	pos := p.currentPos()
 	p.advance() // skip 'use'
 
-	u := &UseStmt{}
+	u := &UseStmt{Pos: pos}
 
+	// use * from "..."
+	if p.current().Kind == Star {
+		u.Star = true
+		p.advance()
+		if p.current().Kind != From {
+			return nil, p.error("expected 'from' after '*'")
+		}
+		p.advance()
+		if p.current().Kind != StringLiteral {
+			return nil, p.error("expected module path string after 'from'")
+		}
+		u.Source = p.current().Text
+		p.advance()
+		return u, nil
+	}
+
+	// use { X, Y } from "..."
+	if p.current().Kind == LeftBrace {
+		p.advance()
+		for p.current().Kind != RightBrace && !p.atEnd() {
+			if p.current().Kind != Identifier {
+				return nil, p.error("expected identifier in import list")
+			}
+			u.Names = append(u.Names, p.current().Text)
+			p.advance()
+			if p.current().Kind == Comma {
+				p.advance()
+			}
+		}
+		if p.current().Kind != RightBrace {
+			return nil, p.error("expected '}'")
+		}
+		p.advance()
+		if p.current().Kind != From {
+			return nil, p.error("expected 'from' after import list")
+		}
+		p.advance()
+		if p.current().Kind != StringLiteral {
+			return nil, p.error("expected module path string after 'from'")
+		}
+		u.Source = p.current().Text
+		p.advance()
+		return u, nil
+	}
+
+	// use X from "..." or use X as Y from "..."
 	if p.current().Kind != Identifier {
-		return nil, p.error("expected identifier after 'use'")
+		return nil, p.error("expected identifier, '{', or '*' after 'use'")
 	}
 	firstName := p.current().Text
 	p.advance()
 
-	// Check for alias: use X as Y from "..."
 	if p.current().Kind == As {
 		p.advance()
 		if p.current().Kind != Identifier {
@@ -429,6 +498,7 @@ func (p *Parser) parseUse() (*UseStmt, error) {
 }
 
 func (p *Parser) parseExport() (*ExportStmt, error) {
+	pos := p.currentPos()
 	p.advance() // skip 'export'
 
 	stmt, err := p.parseStmt()
@@ -436,18 +506,11 @@ func (p *Parser) parseExport() (*ExportStmt, error) {
 		return nil, err
 	}
 
-	return &ExportStmt{Stmt: stmt}, nil
-}
-
-func (p *Parser) parseExprStmt() (*ExprStmt, error) {
-	expr, err := p.parseExpr()
-	if err != nil {
-		return nil, err
-	}
-	return &ExprStmt{Expr: expr}, nil
+	return &ExportStmt{Pos: pos, Stmt: stmt}, nil
 }
 
 func (p *Parser) parseBlock() (*BlockStmt, error) {
+	pos := p.currentPos()
 	if p.current().Kind != LeftBrace {
 		return nil, p.error("expected '{'")
 	}
@@ -467,33 +530,14 @@ func (p *Parser) parseBlock() (*BlockStmt, error) {
 	}
 	p.advance()
 
-	return &BlockStmt{Stmts: stmts}, nil
+	return &BlockStmt{Pos: pos, Stmts: stmts}, nil
 }
 
-// --- Expression parsing (Pratt / precedence climbing) ---
+// --- Expression parsing (precedence climbing) ---
+// Assignment is NOT in the expression chain — it's handled as a statement.
 
 func (p *Parser) parseExpr() (Expr, error) {
-	return p.parseAssignment()
-}
-
-func (p *Parser) parseAssignment() (Expr, error) {
-	expr, err := p.parseOr()
-	if err != nil {
-		return nil, err
-	}
-
-	// Assignment operators
-	if isAssignOp(p.current().Kind) {
-		op := p.current().Kind
-		p.advance()
-		value, err := p.parseAssignment() // right-associative
-		if err != nil {
-			return nil, err
-		}
-		return &AssignExpr{Target: expr, Op: op, Value: value}, nil
-	}
-
-	return expr, nil
+	return p.parseOr()
 }
 
 func (p *Parser) parseOr() (Expr, error) {
@@ -503,13 +547,14 @@ func (p *Parser) parseOr() (Expr, error) {
 	}
 
 	for p.current().Kind == Or || p.current().Kind == PipePipe {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseAnd()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -521,13 +566,14 @@ func (p *Parser) parseAnd() (Expr, error) {
 	}
 
 	for p.current().Kind == And || p.current().Kind == AmpAmp {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseBitwiseOr()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -539,13 +585,14 @@ func (p *Parser) parseBitwiseOr() (Expr, error) {
 	}
 
 	for p.current().Kind == Pipe {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseBitwiseXor()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -557,13 +604,14 @@ func (p *Parser) parseBitwiseXor() (Expr, error) {
 	}
 
 	for p.current().Kind == Caret {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseBitwiseAnd()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -575,13 +623,14 @@ func (p *Parser) parseBitwiseAnd() (Expr, error) {
 	}
 
 	for p.current().Kind == Amp {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseEquality()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -593,13 +642,14 @@ func (p *Parser) parseEquality() (Expr, error) {
 	}
 
 	for p.current().Kind == EqualEqual || p.current().Kind == BangEqual || p.current().Kind == Is {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseComparison()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -612,13 +662,14 @@ func (p *Parser) parseComparison() (Expr, error) {
 
 	for p.current().Kind == Less || p.current().Kind == Greater ||
 		p.current().Kind == LessEqual || p.current().Kind == GreaterEqual {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseShift()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -630,13 +681,14 @@ func (p *Parser) parseShift() (Expr, error) {
 	}
 
 	for p.current().Kind == ShiftLeft || p.current().Kind == ShiftRight {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseAddSub()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -648,13 +700,14 @@ func (p *Parser) parseAddSub() (Expr, error) {
 	}
 
 	for p.current().Kind == Plus || p.current().Kind == Minus {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseMulDiv()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
@@ -666,35 +719,38 @@ func (p *Parser) parseMulDiv() (Expr, error) {
 	}
 
 	for p.current().Kind == Star || p.current().Kind == Slash || p.current().Kind == Percent {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		right, err := p.parseUnary()
 		if err != nil {
 			return nil, err
 		}
-		left = &BinaryExpr{Left: left, Op: op, Right: right}
+		left = &BinaryExpr{Pos: pos, Left: left, Op: op, Right: right}
 	}
 	return left, nil
 }
 
 func (p *Parser) parseUnary() (Expr, error) {
 	if p.current().Kind == Minus || p.current().Kind == Not || p.current().Kind == Bang || p.current().Kind == Tilde {
+		pos := p.currentPos()
 		op := p.current().Kind
 		p.advance()
 		operand, err := p.parseUnary()
 		if err != nil {
 			return nil, err
 		}
-		return &UnaryExpr{Op: op, Operand: operand}, nil
+		return &UnaryExpr{Pos: pos, Op: op, Operand: operand}, nil
 	}
 
 	if p.current().Kind == Throw {
+		pos := p.currentPos()
 		p.advance()
 		value, err := p.parseExpr()
 		if err != nil {
 			return nil, err
 		}
-		return &ThrowExpr{Value: value}, nil
+		return &ThrowExpr{Pos: pos, Value: value}, nil
 	}
 
 	return p.parsePostfix()
@@ -709,16 +765,16 @@ func (p *Parser) parsePostfix() (Expr, error) {
 	for {
 		switch p.current().Kind {
 		case LeftParen:
-			// Function call
+			pos := p.currentPos()
 			p.advance()
 			args, err := p.parseArgList()
 			if err != nil {
 				return nil, err
 			}
-			expr = &CallExpr{Callee: expr, Args: args}
+			expr = &CallExpr{Pos: pos, Callee: expr, Args: args}
 
 		case LeftBracket:
-			// Index access
+			pos := p.currentPos()
 			p.advance()
 			index, err := p.parseExpr()
 			if err != nil {
@@ -728,17 +784,17 @@ func (p *Parser) parsePostfix() (Expr, error) {
 				return nil, p.error("expected ']'")
 			}
 			p.advance()
-			expr = &IndexExpr{Object: expr, Index: index}
+			expr = &IndexExpr{Pos: pos, Object: expr, Index: index}
 
 		case Dot:
-			// Property access
+			pos := p.currentPos()
 			p.advance()
 			if p.current().Kind != Identifier {
 				return nil, p.error("expected property name after '.'")
 			}
 			name := p.current().Text
 			p.advance()
-			expr = &PropertyExpr{Object: expr, Property: name}
+			expr = &PropertyExpr{Pos: pos, Object: expr, Property: name}
 
 		default:
 			return expr, nil
@@ -748,39 +804,40 @@ func (p *Parser) parsePostfix() (Expr, error) {
 
 func (p *Parser) parsePrimary() (Expr, error) {
 	tok := p.current()
+	pos := p.currentPos()
 
 	switch tok.Kind {
 	case IntLiteral:
 		p.advance()
-		return &NumberExpr{Value: tok.Text, IsInt: true}, nil
+		return &NumberExpr{Pos: pos, Value: tok.Text, IsInt: true}, nil
 
 	case FloatLiteral:
 		p.advance()
-		return &NumberExpr{Value: tok.Text, IsInt: false}, nil
+		return &NumberExpr{Pos: pos, Value: tok.Text, IsInt: false}, nil
 
 	case StringLiteral:
 		p.advance()
-		return &StringExpr{Value: tok.Text}, nil
+		return &StringExpr{Pos: pos, Value: tok.Text}, nil
 
 	case TemplateLiteral:
 		p.advance()
-		return &TemplateExpr{Value: tok.Text}, nil
+		return &TemplateExpr{Pos: pos, Value: tok.Text}, nil
 
 	case True:
 		p.advance()
-		return &BoolExpr{Value: true}, nil
+		return &BoolExpr{Pos: pos, Value: true}, nil
 
 	case False:
 		p.advance()
-		return &BoolExpr{Value: false}, nil
+		return &BoolExpr{Pos: pos, Value: false}, nil
 
 	case None:
 		p.advance()
-		return &NoneExpr{}, nil
+		return &NoneExpr{Pos: pos}, nil
 
 	case Identifier:
 		p.advance()
-		return &IdentExpr{Name: tok.Text}, nil
+		return &IdentExpr{Pos: pos, Name: tok.Text}, nil
 
 	case LeftParen:
 		return p.parseParenOrFunc()
@@ -797,34 +854,39 @@ func (p *Parser) parsePrimary() (Expr, error) {
 }
 
 func (p *Parser) parseParenOrFunc() (Expr, error) {
-	// Distinguish between (expr) grouping and (params) returnType { body } function
-	// Heuristic: if after '(' we see 'ident ident' or ')' followed by ident/'{', it's a function
+	// Fix 4: Improved disambiguation.
+	// Function pattern: (name type, ...) returnType { body }
+	// Grouping pattern: (expr)
+	//
+	// Strategy: save position, try to detect the function pattern by looking
+	// at what follows '('. If we see ')' followed by a type/brace, or
+	// 'ident ident' (param + type), it's a function. Otherwise it's grouping.
 
 	saved := p.pos
 	p.advance() // skip (
 
-	// () -> definitely a function (no params)
+	// () followed by type name or { → function with no params
 	if p.current().Kind == RightParen {
 		p.advance()
-		// If followed by a type name (return type) or '{', it's a function
-		if isTypeName(p.current().Kind) || p.current().Kind == LeftBrace || p.current().Kind == LeftParen {
+		if isTypeName(p.current().Kind) || p.current().Kind == LeftBrace {
 			p.pos = saved
 			return p.parseFuncExpr()
 		}
-		// Empty parens with nothing after — error
 		p.pos = saved
-		p.advance() // skip (
-		// Actually this might be a grouping of nothing, which is invalid
+		p.advance()
 		return nil, p.error("unexpected ')'")
 	}
 
-	// Look for function pattern: (name type, ...)
+	// Look for function pattern: identifier followed by another identifier (param type)
+	// This is unambiguous because in an expression, ident is never followed by ident
+	// (it would be ident operator ident, or ident ( for a call, etc.)
 	if p.current().Kind == Identifier {
 		afterIdent := p.pos + 1
 		if afterIdent < len(p.tokens) {
 			next := p.tokens[afterIdent].Kind
+			// ident followed by ident = param type pair → function
+			// ident followed by ( = could be function type param, treat as function
 			if next == Identifier || next == LeftParen {
-				// Looks like (param type, ...) — it's a function
 				p.pos = saved
 				return p.parseFuncExpr()
 			}
@@ -846,6 +908,7 @@ func (p *Parser) parseParenOrFunc() (Expr, error) {
 }
 
 func (p *Parser) parseFuncExpr() (Expr, error) {
+	pos := p.currentPos()
 	p.advance() // skip (
 
 	var params []Param
@@ -880,7 +943,6 @@ func (p *Parser) parseFuncExpr() (Expr, error) {
 	}
 	p.advance()
 
-	// Return type (before the block)
 	var returnType TypeExpr
 	if isTypeName(p.current().Kind) {
 		returnType = p.parseTypeExpr()
@@ -891,10 +953,11 @@ func (p *Parser) parseFuncExpr() (Expr, error) {
 		return nil, err
 	}
 
-	return &FuncExpr{Params: params, ReturnType: returnType, Body: body}, nil
+	return &FuncExpr{Pos: pos, Params: params, ReturnType: returnType, Body: body}, nil
 }
 
 func (p *Parser) parseArrayLiteral() (Expr, error) {
+	pos := p.currentPos()
 	p.advance() // skip [
 
 	var elements []Expr
@@ -914,10 +977,11 @@ func (p *Parser) parseArrayLiteral() (Expr, error) {
 	}
 	p.advance()
 
-	return &ArrayExpr{Elements: elements}, nil
+	return &ArrayExpr{Pos: pos, Elements: elements}, nil
 }
 
 func (p *Parser) parseRecordLiteral() (Expr, error) {
+	pos := p.currentPos()
 	p.advance() // skip {
 
 	var fields []RecordField
@@ -950,7 +1014,7 @@ func (p *Parser) parseRecordLiteral() (Expr, error) {
 	}
 	p.advance()
 
-	return &RecordExpr{Fields: fields}, nil
+	return &RecordExpr{Pos: pos, Fields: fields}, nil
 }
 
 func (p *Parser) parseArgList() ([]Expr, error) {

@@ -24,12 +24,20 @@ func (s throwSignal) Error() string    { return fmt.Sprintf("throw: %s", s.value
 // Eval parses and evaluates a Monk source string. Returns the value of the
 // last expression, or MonkNone for empty programs / void statements.
 func Eval(source string) (Value, error) {
+	return EvalWithEnv(source, nil)
+}
+
+// EvalWithEnv parses and evaluates source with a pre-configured environment.
+// If env is nil, a fresh environment is created. Use this to inject builtins.
+func EvalWithEnv(source string, env *Environment) (Value, error) {
 	prog, err := syntax.Parse(source)
 	if err != nil {
 		return MonkNone, err
 	}
 
-	env := NewEnvironment()
+	if env == nil {
+		env = NewEnvironment()
+	}
 	return evalProgram(prog, env)
 }
 
@@ -620,7 +628,12 @@ func evalCall(e *syntax.CallExpr, env *Environment) (Value, error) {
 		args[i] = val.DeepCopy()
 	}
 
-	// Create function scope from closure's captured environment
+	// Native built-in function
+	if fn.Builtin != nil {
+		return fn.Builtin(args)
+	}
+
+	// User-defined function
 	fnEnv := fn.Env.Child()
 	params := fn.Params
 	for i, param := range params {
@@ -629,7 +642,6 @@ func evalCall(e *syntax.CallExpr, env *Environment) (Value, error) {
 		}
 	}
 
-	// Execute body
 	body := fn.Body.(*syntax.BlockStmt)
 	_, err = evalBlock(body, fnEnv)
 	if err != nil {

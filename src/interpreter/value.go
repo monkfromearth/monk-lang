@@ -43,14 +43,17 @@ type RecordEntry struct {
 	Value Value
 }
 
-// FuncDef is a runtime function value.
+// FuncDef is a runtime function value — either user-defined (Body) or native (Builtin).
 type FuncDef struct {
 	Params  []string
-	Env     *Environment // captured environment (closure snapshot)
-	// Body is stored as an interface{} to avoid circular import with syntax.
-	// The evaluator casts it to *syntax.BlockStmt.
-	Body    any
+	Env     *Environment // captured environment (closure snapshot, nil for builtins)
+	Body    any          // *syntax.BlockStmt for user functions, nil for builtins
+	Builtin BuiltinFunc  // native Go function, nil for user functions
 }
+
+// BuiltinFunc is the signature for native functions callable from Monk.
+// It receives evaluated arguments and returns a value or error.
+type BuiltinFunc func(args []Value) (Value, error)
 
 // Predefined singleton values.
 var (

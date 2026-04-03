@@ -8,8 +8,7 @@ body {
 
 /* Shiki code blocks */
 pre.astro-code {
-  background: #FAFAF9 !important;
-  border: 1px solid #E8E4DF;
+  background: #1C1917 !important;
   border-radius: 12px;
   padding: 1.25rem;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;

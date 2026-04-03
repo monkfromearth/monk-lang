@@ -1,0 +1,130 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+---
+
+<LessonLayout title="References & Further Reading" lessonNumber="1.4" section="Phase 1">
+
+    <LessonHeader lessonNumber="1.4" title="References & Further Reading" description="The books, chapters, and blog posts that teach lexing deeper than this course covers. Start with Nystrom, branch out from there.">
+        <TagBadge variant="links">links</TagBadge>
+        <TagBadge variant="default">5 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Primary -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The essential read.</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-6">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                </div>
+                <div>
+                    <h3 class="font-bold">Crafting Interpreters — Chapter 4: Scanning</h3>
+                    <p class="text-monk-muted text-sm mt-1">by Robert Nystrom</p>
+                    <p class="text-monk-muted text-sm mt-2">Free online. The best introduction to lexing ever written. Nystrom builds a complete scanner for Lox, which is structurally similar to Monk's. Read this chapter before or alongside building the lexer.</p>
+                    <a href="https://craftinginterpreters.com/scanning.html" class="text-monk-accent text-sm hover:underline mt-2 inline-block">craftinginterpreters.com/scanning.html</a>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Why this book?</strong> Most compiler textbooks start with formal grammar theory. Nystrom starts with code. You build something that works, then understand why. Same philosophy as this course.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Go-specific -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Go lexer implementations to study.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Writing An Interpreter In Go — Ch. 1: Lexing</h3>
+                <p class="text-monk-muted text-sm mt-1">by Thorsten Ball</p>
+                <p class="text-monk-muted text-sm mt-2">Builds a lexer for Monkey (a teaching language) in Go. Almost identical architecture to what we're building. The token types, the NextToken() loop, the keyword table — all directly applicable.</p>
+                <a href="https://interpreterbook.com/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">interpreterbook.com</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go's own scanner: <code class="bg-stone-100 px-1 rounded text-xs">go/scanner</code></h3>
+                <p class="text-monk-muted text-sm mt-2">The Go standard library includes a complete Go lexer. It's real production code — handles Unicode, number literals, string escapes. More complex than what Monk needs, but instructive to browse.</p>
+                <a href="https://pkg.go.dev/go/scanner" class="text-monk-accent text-sm hover:underline mt-2 inline-block">pkg.go.dev/go/scanner</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Theory -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">If you want the theory.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Engineering a Compiler — Ch. 2: Scanners</h3>
+                <p class="text-monk-muted text-sm mt-1">by Cooper & Torczon</p>
+                <p class="text-monk-muted text-sm mt-2">The formal approach: regular expressions, finite automata, DFA minimization. You won't need this for Monk (hand-written scanners are simpler), but it explains why tools like lex/flex exist and when they're worth using.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Compilers: Principles, Techniques, and Tools (Dragon Book) — Ch. 3</h3>
+                <p class="text-monk-muted text-sm mt-1">by Aho, Lam, Sethi, Ullman</p>
+                <p class="text-monk-muted text-sm mt-2">The classic. Dense and academic, but comprehensive. Good as a reference, not as a first read.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Blog posts -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Blog posts and talks.</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm">
+            <div class="divide-y divide-monk-border">
+                <div class="px-5 py-3">
+                    <p class="font-semibold">Rob Pike — "Lexical Scanning in Go"</p>
+                    <p class="text-monk-muted text-xs mt-1">A talk about Go's template lexer using a state-function pattern. Elegant alternative to the switch-based approach. Worth watching after you've built the switch version.</p>
+                </div>
+                <div class="px-5 py-3">
+                    <p class="font-semibold">Eli Bendersky — "How to write a lexer in Go"</p>
+                    <p class="text-monk-muted text-xs mt-1">Step-by-step blog post building a lexer for a simple language. Practical, code-heavy, good complement to Nystrom.</p>
+                </div>
+                <div class="px-5 py-3">
+                    <p class="font-semibold">Munificent (Nystrom) — "Pratt Parsers: Expression Parsing Made Easy"</p>
+                    <p class="text-monk-muted text-xs mt-1">Not about lexing — but about what comes next. Read this before Phase 2.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Reading order -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Suggested reading order.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Crafting Interpreters Ch. 4</strong> — read alongside building Monk's lexer. The code is in Java, but the structure maps 1:1.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Writing An Interpreter In Go Ch. 1</strong> — if you want to see the same ideas in Go specifically.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Rob Pike's talk</strong> — after your lexer works. Interesting alternative architecture.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>Dragon Book / Cooper & Torczon</strong> — only if you're curious about the formal theory. Not required for building Monk.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-1-lexer/building-the-lexer"
+        prevLabel="Prev: Building the Lexer"
+    />
+
+</LessonLayout>

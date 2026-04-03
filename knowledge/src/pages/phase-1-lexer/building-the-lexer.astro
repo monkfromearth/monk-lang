@@ -1,0 +1,329 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import ExerciseBox from '../../components/ExerciseBox.astro';
+import StepNumber from '../../components/StepNumber.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Building the Lexer" lessonNumber="1.3" section="Phase 1">
+
+    <LessonHeader lessonNumber="1.3" title="Building the Lexer" description="A step-by-step walkthrough of how to implement Monk's lexer, from single characters to multi-token lookahead. TDD all the way.">
+        <TagBadge variant="build">build</TagBadge>
+        <TagBadge variant="default">20 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Overview -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The plan.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            We're building the lexer in stages, each one handling more of the language. At every step: write a test first, then make it pass.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm">
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['1', 'Single-character tokens', '( ) { } [ ] + - * , . : ;'],
+                    ['2', 'One-or-two-character tokens', '= == != < <= > >= += -= -> && ||'],
+                    ['3', 'Whitespace and comments', 'spaces, tabs, newlines, // comments'],
+                    ['4', 'Identifiers and keywords', 'variable names, reserved words'],
+                    ['5', 'Numbers', 'integers, floats, hex, binary, underscores'],
+                    ['6', 'Strings', 'double-quoted, escape sequences, template literals'],
+                    ['7', 'Error reporting', 'unexpected characters, unterminated strings'],
+                ].map(([num, name, examples]) => (
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                            <span class="text-monk-accent font-bold text-xs">{num}</span>
+                        </div>
+                        <div class="flex-1">
+                            <span class="font-semibold">{name}</span>
+                            <span class="text-monk-muted text-xs ml-2">{examples}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 1: The scanner skeleton -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={1} color="accent" />
+            <h2 class="text-xl font-bold">The scanner skeleton.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The lexer is a struct that holds the source string, a cursor position, and the current line/column. It has one public method: <code class="bg-stone-100 px-1 rounded text-xs">NextToken()</code> — call it repeatedly and it returns the next token until EOF.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The core loop looks at the character under the cursor, decides what kind of token is starting, reads until it's complete, then returns it. In pseudocode:
+        </p>
+
+        <Code code={`func NextToken() Token {
+    skipWhitespace()
+
+    ch := currentChar()
+
+    switch {
+    case ch == 0:      return token(EOF)
+    case ch == '(':    return token(LPAREN)
+    case ch == '+':    return token(PLUS)
+    case isLetter(ch): return readIdentifier()
+    case isDigit(ch):  return readNumber()
+    case ch == '"':    return readString()
+    default:           return error("unexpected character")
+    }
+}`} lang="go" />
+
+        <InsightBox>
+            <p class="text-sm"><strong>Test-first.</strong> Before writing any of this, write a test: feed in <code class="bg-stone-100 px-1 rounded text-xs">"("</code>, expect one LPAREN token followed by EOF. Make it pass. Then add <code class="bg-stone-100 px-1 rounded text-xs">")"</code>. Then <code class="bg-stone-100 px-1 rounded text-xs">"()"</code>. Build up one test at a time.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Step 2: Two-character tokens -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={2} color="accent" />
+            <h2 class="text-xl font-bold">Lookahead: one-or-two-character tokens.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When the lexer sees <code class="bg-stone-100 px-1 rounded text-xs">=</code>, it can't immediately emit ASSIGN. It needs to peek at the next character:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6 text-sm">
+            <div class="divide-y divide-monk-border">
+                <div class="flex px-5 py-3"><code class="font-mono w-16 text-monk-amber">=</code><span class="text-monk-muted">Next is <code class="bg-stone-100 px-1 rounded text-xs">=</code>? &rarr; EQUAL_EQUAL. Otherwise &rarr; ASSIGN.</span></div>
+                <div class="flex px-5 py-3"><code class="font-mono w-16 text-monk-amber">!</code><span class="text-monk-muted">Next is <code class="bg-stone-100 px-1 rounded text-xs">=</code>? &rarr; BANG_EQUAL. Otherwise &rarr; BANG.</span></div>
+                <div class="flex px-5 py-3"><code class="font-mono w-16 text-monk-amber">&lt;</code><span class="text-monk-muted">Next is <code class="bg-stone-100 px-1 rounded text-xs">=</code>? &rarr; LESS_EQUAL. Next is <code class="bg-stone-100 px-1 rounded text-xs">&lt;</code>? &rarr; SHIFT_LEFT. Otherwise &rarr; LESS.</span></div>
+                <div class="flex px-5 py-3"><code class="font-mono w-16 text-monk-amber">-</code><span class="text-monk-muted">Next is <code class="bg-stone-100 px-1 rounded text-xs">&gt;</code>? &rarr; ARROW. Next is <code class="bg-stone-100 px-1 rounded text-xs">=</code>? &rarr; MINUS_ASSIGN. Otherwise &rarr; MINUS.</span></div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is a helper you'll use a lot: "if the next character matches, advance and return the longer token; otherwise return the shorter one." In Go, a simple <code class="bg-stone-100 px-1 rounded text-xs">if peek() == '='</code> conditional.
+        </p>
+
+        <ExerciseBox>
+            <p class="text-sm text-monk-muted">Write a test for <code class="bg-stone-100 px-1 rounded text-xs">"<= >= == != ->"</code>. The lexer should produce LESS_EQUAL, GREATER_EQUAL, EQUAL_EQUAL, BANG_EQUAL, ARROW, EOF. Make it pass.</p>
+        </ExerciseBox>
+    </section>
+
+    <!-- Step 3: Whitespace and comments -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={3} color="accent" />
+            <h2 class="text-xl font-bold">Whitespace and comments.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Whitespace (spaces, tabs, carriage returns) is skipped before every token. Newlines are skipped too, but they also increment the line counter and reset the column.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Comments start with <code class="bg-stone-100 px-1 rounded text-xs">//</code> and run to the end of the line. When the lexer sees <code class="bg-stone-100 px-1 rounded text-xs">/</code>, it peeks: next is <code class="bg-stone-100 px-1 rounded text-xs">/</code>? Consume everything until newline. Next is <code class="bg-stone-100 px-1 rounded text-xs">=</code>? Emit SLASH_ASSIGN. Otherwise, emit SLASH.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk has no multi-line comments. No <code class="bg-stone-100 px-1 rounded text-xs">/* */</code>. This is deliberate — it keeps the lexer simple and avoids the nesting problem.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>The nesting problem:</strong> should <code class="bg-stone-100 px-1 rounded text-xs">/* a /* b */ c */</code> be one comment or two? Different languages answer differently. Monk sidesteps the question entirely.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Step 4: Identifiers and keywords -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={4} color="accent" />
+            <h2 class="text-xl font-bold">Identifiers and keywords.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            An identifier starts with a letter or underscore, then continues with letters, digits, or underscores. The scanner reads the whole word, then looks it up in the keyword table.
+        </p>
+
+        <Code code={`func readIdentifier() Token {
+    start := position
+    for isLetter(ch) || isDigit(ch) {
+        advance()
+    }
+    word := source[start:position]
+    kind := lookupKeyword(word) // returns IDENT if not a keyword
+    return token(kind, word)
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The keyword lookup is a map from string to token type. 27 entries. No special logic — just a table lookup.
+        </p>
+
+        <ExerciseBox>
+            <p class="text-sm text-monk-muted">Test: <code class="bg-stone-100 px-1 rounded text-xs">"let x = if true return"</code> should produce LET, IDENT("x"), ASSIGN, IF, TRUE, RETURN, EOF. Note that <code class="bg-stone-100 px-1 rounded text-xs">x</code> is an identifier, but <code class="bg-stone-100 px-1 rounded text-xs">let</code>, <code class="bg-stone-100 px-1 rounded text-xs">if</code>, <code class="bg-stone-100 px-1 rounded text-xs">true</code>, and <code class="bg-stone-100 px-1 rounded text-xs">return</code> are keywords.</p>
+        </ExerciseBox>
+    </section>
+
+    <!-- Step 5: Numbers -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={5} color="accent" />
+            <h2 class="text-xl font-bold">Numbers.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Number scanning has the most edge cases. The lexer needs to handle:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6 text-sm">
+            <div class="divide-y divide-monk-border">
+                <div class="flex items-center gap-4 px-5 py-3"><code class="font-mono text-monk-blue w-28">42</code><span class="text-monk-muted">Plain integer</span></div>
+                <div class="flex items-center gap-4 px-5 py-3"><code class="font-mono text-monk-blue w-28">3.14</code><span class="text-monk-muted">Float — has a decimal point</span></div>
+                <div class="flex items-center gap-4 px-5 py-3"><code class="font-mono text-monk-blue w-28">1.23e5</code><span class="text-monk-muted">Scientific notation</span></div>
+                <div class="flex items-center gap-4 px-5 py-3"><code class="font-mono text-monk-blue w-28">0xFF</code><span class="text-monk-muted">Hex — starts with 0x</span></div>
+                <div class="flex items-center gap-4 px-5 py-3"><code class="font-mono text-monk-blue w-28">0b1010</code><span class="text-monk-muted">Binary — starts with 0b</span></div>
+                <div class="flex items-center gap-4 px-5 py-3"><code class="font-mono text-monk-blue w-28">0o77</code><span class="text-monk-muted">Octal — starts with 0o</span></div>
+                <div class="flex items-center gap-4 px-5 py-3"><code class="font-mono text-monk-blue w-28">1_000_000</code><span class="text-monk-muted">Underscores — visual separator, ignored</span></div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The strategy: start reading digits. If you hit <code class="bg-stone-100 px-1 rounded text-xs">0x</code>/<code class="bg-stone-100 px-1 rounded text-xs">0b</code>/<code class="bg-stone-100 px-1 rounded text-xs">0o</code>, switch to the appropriate digit set. If you hit a <code class="bg-stone-100 px-1 rounded text-xs">.</code> followed by a digit, it's a float. If you hit <code class="bg-stone-100 px-1 rounded text-xs">e</code> or <code class="bg-stone-100 px-1 rounded text-xs">E</code>, it's scientific notation. Underscores are consumed but don't affect the value.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Trap: the dot ambiguity.</strong> Is <code class="bg-stone-100 px-1 rounded text-xs">42.method()</code> the number <code class="bg-stone-100 px-1 rounded text-xs">42</code> followed by DOT and a method call? Or the start of float <code class="bg-stone-100 px-1 rounded text-xs">42.m...</code>? The lexer peeks after the dot: if the next character is a digit, it's a float. Otherwise, the dot belongs to the next token.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Step 6: Strings -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={6} color="accent" />
+            <h2 class="text-xl font-bold">Strings.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Two kinds: double-quoted strings and backtick template literals.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <strong>Double-quoted strings</strong> start and end with <code class="bg-stone-100 px-1 rounded text-xs">"</code>. The lexer reads character by character, looking for the closing quote. If it hits a backslash, the next character is an escape: <code class="bg-stone-100 px-1 rounded text-xs">\n</code> becomes newline, <code class="bg-stone-100 px-1 rounded text-xs">\"</code> becomes a literal quote, <code class="bg-stone-100 px-1 rounded text-xs">\\</code> becomes a literal backslash. An unrecognized escape is an error.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <strong>Template literals</strong> start and end with backtick. Simpler — no escape sequences, multiline by default. Read until the closing backtick.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The biggest error to catch: an unterminated string (the file ends before the closing quote). Report the error with the position where the string started, not where it ran out.
+        </p>
+
+        <ExerciseBox>
+            <p class="text-sm text-monk-muted">Test: <code class="bg-stone-100 px-1 rounded text-xs">"hello \"world\"\n"</code> should produce one STRING token whose value is <code class="bg-stone-100 px-1 rounded text-xs">hello "world"\n</code> (with the actual newline character, not the two characters <code class="bg-stone-100 px-1 rounded text-xs">\</code> and <code class="bg-stone-100 px-1 rounded text-xs">n</code>).</p>
+        </ExerciseBox>
+    </section>
+
+    <!-- Step 7: Errors -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={7} color="accent" />
+            <h2 class="text-xl font-bold">Error reporting.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A good lexer doesn't crash on bad input. It reports the error and keeps scanning — so the user sees all the problems in one pass, not one at a time.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Errors to catch:</p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6 text-sm">
+            <div class="divide-y divide-monk-border">
+                <div class="flex items-center gap-4 px-5 py-3">
+                    <span class="text-red-500 font-mono text-xs w-44">unexpected character</span>
+                    <span class="text-monk-muted"><code class="bg-stone-100 px-1 rounded text-xs">@</code>, <code class="bg-stone-100 px-1 rounded text-xs">#</code>, <code class="bg-stone-100 px-1 rounded text-xs">$</code> — not part of Monk's syntax</span>
+                </div>
+                <div class="flex items-center gap-4 px-5 py-3">
+                    <span class="text-red-500 font-mono text-xs w-44">unterminated string</span>
+                    <span class="text-monk-muted"><code class="bg-stone-100 px-1 rounded text-xs">"hello</code> — no closing quote before EOF or newline</span>
+                </div>
+                <div class="flex items-center gap-4 px-5 py-3">
+                    <span class="text-red-500 font-mono text-xs w-44">invalid number</span>
+                    <span class="text-monk-muted"><code class="bg-stone-100 px-1 rounded text-xs">0xGG</code> — invalid hex digits</span>
+                </div>
+                <div class="flex items-center gap-4 px-5 py-3">
+                    <span class="text-red-500 font-mono text-xs w-44">invalid escape</span>
+                    <span class="text-monk-muted"><code class="bg-stone-100 px-1 rounded text-xs">"\q"</code> — unrecognized escape sequence</span>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The strategy: emit an ILLEGAL token with an error message, then continue scanning from the next character. The parser will see the ILLEGAL token and know something went wrong.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Error recovery is kindness.</strong> A lexer that stops at the first error wastes the user's time. Show everything that's wrong in one shot. They'll thank you.</p>
+        </InsightBox>
+    </section>
+
+    <!-- The full picture -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The full picture.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When you're done, the lexer handles all of Monk's syntax. Feed in any valid Monk program, get a correct token stream. Feed in garbage, get error tokens with useful positions.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Here's a real test to aim for:</p>
+
+        <Code code={`const greet = (name string) string {
+    return "Hello, " + name
+}
+
+let msg = greet("world")
+// msg is "Hello, world"`} lang="javascript" />
+
+        <p class="text-monk-muted text-sm mt-4 mb-4">This should produce 26 tokens (including EOF). If your lexer handles this correctly, Phase 1 is done.</p>
+
+        <ExerciseBox title="Final exercise">
+            <p class="text-sm text-monk-muted">Write the test for the program above. List every token you expect. Then verify your lexer produces exactly that sequence. This is the Phase 1 acceptance test.</p>
+        </ExerciseBox>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Build the lexer in layers: single chars, then two-char operators, then whitespace/comments, then identifiers, then numbers, then strings.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">The core is a switch on the current character with peek-ahead for multi-character tokens.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Keywords are identifiers matched against a lookup table. Not special-cased in the scanner.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Report errors with ILLEGAL tokens and keep scanning. Show all problems in one pass.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-1-lexer/monks-tokens"
+        prevLabel="Prev: Monk's Token Set"
+        nextHref="/phase-1-lexer/references"
+        nextLabel="Next: References"
+    />
+
+</LessonLayout>

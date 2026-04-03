@@ -88,20 +88,31 @@ Go 1.22+ required. Standard `go test` for TDD.
 ## Project Structure
 
 ```
-spec/                — Language specification
-  REFERENCE.md           — THE source of truth for syntax and semantics
-  ARCHITECTURE_DECISIONS.md — Why Go, why compile-to-C, implementation plans
-  MEMORY_MODEL_DISCUSSION.md — Design history for memory management
-knowledge/           — Learning course (Brilliant.org style, migrating to Astro)
-  ASTRO_MIGRATION_PROMPT.md — Full prompt for migrating to Astro + Solid
-  index.html             — Course map landing page
-  foundations/           — Unit 0 lessons (how compilers work, Go/C basics)
-tests/               — Test suite (contract for the implementation)
-examples/            — Example .monk programs
-src/                 — Go implementation (not yet created)
-runtime/             — C runtime library (not yet created)
-editor/              — VS Code extension, LSP
-scripts/             — Build and automation
+spec/                    — Language specification
+  REFERENCE.md               — THE source of truth for syntax and semantics
+  ARCHITECTURE_DECISIONS.md  — Why Go, why compile-to-C, what can change later
+  MEMORY_MODEL_DISCUSSION.md — Design history (contains rejected options, read only if needed)
+knowledge/               — Learning course (Brilliant.org style, Astro + Solid)
+  ASTRO_MIGRATION_PROMPT.md  — Full prompt for Astro migration work
+src/                     — Go implementation
+  syntax/                    — Lexer + Parser + AST (Phase 1-2, complete)
+    token.go                     token types and keyword lookup
+    scanner.go                   lexer: source text → tokens
+    scanner_test.go              100 lexer tests
+    ast.go                       29 AST node types
+    parser.go                    recursive descent parser with 13-level precedence
+    parser_test.go               119 parser tests
+  interpreter/               — Tree-walking evaluator (Phase 3, complete)
+    value.go                     MonkValue, DeepCopy, IsTruthy, String
+    env.go                       Environment (scope chain, const enforcement)
+    eval.go                      evaluator: AST → values
+    eval_test.go                 144 interpreter tests
+  cmd/monk/                  — CLI entry point (stubs)
+    main.go
+  monk.go                    — package-level documentation
+runtime/                 — C runtime library (not yet created)
+examples/                — .monk example programs
+go.mod                   — github.com/monkfromearth/monk-lang
 ```
 
 ## Rules

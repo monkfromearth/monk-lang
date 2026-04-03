@@ -36,7 +36,7 @@ No code without a test. No test without a spec reference.
 ## Key Decisions
 
 - **Implementation language:** Go. Chosen for fast builds (TDD), easy tree manipulation, first-class strings, single-binary output. Zig/Rust deferred to future backend work (LLVM, custom codegen).
-- **Execution model:** Compile to C. Monk is a compiler, not an interpreter. `monk build` → native binary. REPL uses tree-walking for interactivity.
+- **Execution model:** Compile to C. Monk is a compiler, not an interpreter. `monk build` → native binary. `monk run` compiles and runs in one step.
 - **Runtime:** Small C library (~2-5 KB) linked into every compiled program. Provides MonkValue, built-in functions, error handling.
 - **Architecture restart:** Clean break from v1. No code carried over.
 - **v1 archive:** `github.com/monkfromearth/monk-lang-v1` (renamed from monk-lang)
@@ -115,9 +115,10 @@ Phases must be completed in order (each depends on the one before):
 4. Built-in functions
 5. Type system
 6. Module system
-7. CLI (run, repl, lint, format, check)
-8. LSP + editor
-9. Distribution
+7. C FFI
+8. CLI (build, run, lint, format, check)
+9. LSP + editor
+10. Distribution
 
 Memory model / `ref` / borrowing will be inserted when the design is finalized.
 

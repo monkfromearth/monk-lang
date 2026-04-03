@@ -104,25 +104,28 @@ The C backend stays as the universal fallback. LLVM becomes the "release mode" o
 | Community | Massive | Growing |
 | Languages built in it | Gleam, Rhai, Deno | Bun (partial) |
 
-### Decision: Zig ✅
+### Decision: Go ✅ (revised from Zig)
 
-**Why Zig over Rust:**
+Initial choice was Zig for minimal footprint and explicit memory. Revised after recognizing that the Monk compiler is fundamentally a **text-in, text-out translator** — read source, build trees, write C. The hard parts are tree manipulation and string generation, not hardware control.
 
-1. **TDD cycle speed.** Zig rebuilds in milliseconds. Rust takes 10-20 seconds. With Red-Green-Refactor methodology and hundreds of test runs per day, this is the difference between flow state and waiting.
+**Why Go:**
 
-2. **Binary size = Monk's identity.** A 200 KB compiler reflects Monk's minimalist philosophy. A 2 MB compiler doesn't.
+1. **The language stays out of the way.** GC handles AST node allocation. Strings are first-class. Trees are trivial. You focus on compiler design, not memory management.
 
-3. **Explicit allocators match "explicit over implicit."** Zig's allocator model teaches memory patterns that directly inform Monk's memory model. You always know where memory comes from. No hidden allocations.
+2. **Fast builds for TDD.** `go test ./...` runs in seconds for a 50K LOC project. Red-Green-Refactor stays in flow state.
 
-4. **The ecosystem gap is smaller than it looks.** Phases 1-7 (lexer through CLI) are all custom code — no ecosystem needed. LSP (Phase 8) is the only phase where Rust's `tower-lsp` saves real time, and that's months away.
+3. **Single binary distribution.** `go build` produces a static binary. `monk build hello.monk` just works, no runtime install.
 
-5. **Zig's own C backend validates our approach.** Zig has a C backend at 97% test coverage. They consider compile-to-C a legitimate strategy. We're using the same pattern.
+4. **You already know Go.** The goal is learning compiler design and C, not learning a new implementation language. Go is the tool, not the lesson.
+
+5. **Strong ecosystem.** LSP libraries (`gopls` as reference, `go.lsp.dev/protocol`), testing built in, JSON built in, CLI libraries mature.
 
 **What we accept:**
-- Pre-1.0 risk (pin a stable version, don't chase latest)
-- Building LSP protocol layer from scratch (or wrapping a C library)
-- Smaller contributor pool
-- Debug-time safety instead of compile-time safety (use `GeneralPurposeAllocator` in dev)
+- 5-10 MB compiler binary (Go runtime + GC bundled). Acceptable for a CLI tool.
+- Go's GC manages the *compiler's* memory, not Monk's. The generated C has no GC.
+- Go's reference semantics for slices/maps internally. Doesn't affect Monk's value semantics — those are enforced in the generated C, not in the compiler.
+
+**Zig/Rust deferred to:** future backend work — LLVM integration, custom machine code backend, or self-hosted Monk compiler. When the compiler needs to generate optimized native code directly, a systems language makes sense. For the current compile-to-C pipeline, Go is right.
 
 ---
 
@@ -133,24 +136,24 @@ Monk source (.monk)
     │
     ▼
 ┌──────────┐
-│  Lexer   │  Zig
+│  Lexer   │  Go
 │  (tokens)│
 └────┬─────┘
      │
      ▼
 ┌──────────┐
-│  Parser  │  Zig
+│  Parser  │  Go
 │  (AST)   │
 └────┬─────┘
      │
      ▼
 ┌──────────────┐
-│ Type Checker │  Zig (annotates AST with types, catches errors)
+│ Type Checker │  Go (annotates AST with types, catches errors)
 └──────┬───────┘
        │
        ▼
 ┌────────────┐
-│ C Codegen  │  Zig (AST → .c file)
+│ C Codegen  │  Go (AST → .c file)
 └──────┬─────┘
        │
        ▼
@@ -178,7 +181,7 @@ monk repl                   # Interactive (interpreted mode, tree-walking for RE
 
 | Component | Written in | Purpose |
 |-----------|-----------|---------|
-| Monk compiler | Zig | Lexer, parser, type checker, C codegen, CLI |
+| Monk compiler | Go | Lexer, parser, type checker, C codegen, CLI, REPL |
 | Monk runtime library | C | Built-in functions (show, math, string ops, array ops) |
 | Generated code | C | The user's Monk program, compiled to C |
 | Final binary | Native | Linked: generated code + runtime library |
@@ -240,7 +243,7 @@ These are real problems other compile-to-C languages have hit. Our mitigations:
 |----------|---------|--------------|---------|
 | Backend | Compile to C | LLVM or Cranelift | When optimization matters more than build simplicity |
 | REPL | Tree-walking interpreter | Bytecode VM | When REPL performance matters |
-| Impl language | Zig | Self-hosted (Monk compiles Monk) | When Monk is mature enough |
+| Impl language | Go | Zig/Rust (for native backend) or self-hosted | When adding LLVM or custom codegen |
 | Memory model | Value semantics + COW | Add `ref` parameters | When return-value-only style proves too limiting |
 | String encoding | UTF-8 + O(n) indexing | Cached offsets or rope data structure | When string-heavy workloads show up |
 
@@ -248,14 +251,11 @@ These are real problems other compile-to-C languages have hit. Our mitigations:
 
 ## Summary
 
-**Monk v2 is a compiler, not an interpreter.** It is written in Zig, generates C, and produces native binaries with zero runtime dependencies beyond a C compiler. The architecture is minimal, inspectable, and extensible — LLVM can be added later without changing the frontend.
+**Monk v2 is a compiler, not an interpreter.** It is written in Go, generates C, and produces native binaries with zero runtime dependencies beyond a C compiler. The architecture is minimal, inspectable, and extensible — LLVM can be added later without changing the frontend.
 
 The stack:
 ```
-Zig (compiler) → C (generated code + runtime) → cc → native binary
+Go (compiler) → C (generated code + runtime) → cc → native binary
 ```
 
-This matches Monk's three design principles:
-1. **Explicit over implicit:** Zig's explicit allocators, C's explicit memory, no hidden runtime
-2. **Graceful on reads, strict on operations:** error handling via return codes, not setjmp magic
-3. **Values, not references:** C struct copies map directly to Monk's value semantics
+Go handles the translation (trees, strings, text processing). C handles the output (value semantics, explicit memory, no GC in the generated programs). Each language is used where it's strongest.

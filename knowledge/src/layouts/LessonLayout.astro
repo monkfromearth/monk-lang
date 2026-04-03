@@ -1,0 +1,46 @@
+---
+interface Props {
+  title: string;
+  lessonNumber: string;
+  section: string;
+  description?: string;
+}
+
+const { title, lessonNumber, section, description } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{lessonNumber} — {title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="font-sans text-monk-text min-h-screen">
+
+    <nav class="border-b border-monk-border bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div class="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between">
+            <a href="/" class="flex items-center gap-2 text-monk-muted hover:text-monk-text transition-colors text-sm">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                Course Map
+            </a>
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-mono text-monk-muted">{lessonNumber}</span>
+                <span class="text-xs text-monk-muted">/</span>
+                <span class="text-xs text-monk-accent font-semibold">{section.toUpperCase()}</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-3xl mx-auto px-6 py-12">
+        <slot />
+    </main>
+
+    <footer class="border-t border-monk-border py-6 mt-12 text-center text-monk-muted text-xs">
+        <p>Monk Lang &middot; <a href="https://github.com/monkfromearth/monk-lang" class="text-monk-accent hover:underline">GitHub</a></p>
+    </footer>
+
+</body>
+</html>

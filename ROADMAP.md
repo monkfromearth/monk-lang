@@ -4,7 +4,7 @@
 > No timelines. Each phase ships when it's solid.
 > Methodology: Red-Green-Refactor TDD throughout.
 
-The v1 implementation (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](https://github.com/monkfromearth/monk-lang-v1). This roadmap describes the v2 rebuild.
+The previous implementation (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](https://github.com/monkfromearth/monk-lang-v1). This roadmap describes the ground-up rebuild.
 
 ---
 

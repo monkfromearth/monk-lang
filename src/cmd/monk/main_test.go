@@ -189,6 +189,26 @@ func TestBuildDefaultOutput(t *testing.T) {
 	}
 }
 
+func TestBuildOutputC(t *testing.T) {
+	bin := buildMonk(t)
+	src := writeMonk(t, "hello.monk", `show("Hello!")`)
+	dir := filepath.Dir(src)
+	cOut := filepath.Join(dir, "hello.c")
+
+	_, _, code := runMonkCmd(t, bin, "build", src, "-o", cOut)
+	if code != 0 {
+		t.Fatalf("build -o .c failed (exit %d)", code)
+	}
+
+	content, err := os.ReadFile(cOut)
+	if err != nil {
+		t.Fatalf("expected .c file: %v", err)
+	}
+	if !strings.Contains(string(content), "monk_show") {
+		t.Error("generated C should contain monk_show")
+	}
+}
+
 func TestBuildMissingFile(t *testing.T) {
 	bin := buildMonk(t)
 	_, _, code := runMonkCmd(t, bin, "build", "/nonexistent.monk")

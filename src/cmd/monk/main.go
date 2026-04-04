@@ -2,10 +2,11 @@
 //
 // Usage:
 //
-//	monk build <file.monk>           Compile to native binary
-//	monk build <file.monk> -o <out>  Compile with custom output name
-//	monk run <file.monk>             Compile and run (temp binary, cleaned up)
-//	monk check <file.monk>           Parse and validate without compiling
+//	monk build <file.monk>              Compile to native binary (default: strips .monk)
+//	monk build <file.monk> -o <out>     Output binary with custom name
+//	monk build <file.monk> -o <out.c>   Output generated C source (no compilation)
+//	monk run <file.monk>                Compile and run (temp binary, cleaned up)
+//	monk check <file.monk>              Parse and validate without compiling
 package main
 
 import (
@@ -47,18 +48,19 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, `Usage: monk <command> [arguments]
 
 Commands:
-  build <file.monk> [-o output] [--emit-c]   Compile to native binary
-  run <file.monk> [--emit-c]                 Compile and run
-  check <file.monk>                          Parse and validate
-  version                                    Print version
-  help                                       Show this help
+  build <file.monk> [-o output]   Compile to native binary
+  run <file.monk>                 Compile and run
+  check <file.monk>               Parse and validate
+  version                         Print version
+  help                            Show this help
 
-Flags:
-  -o <output>    Set output binary name (build only)
-  --emit-c       Keep the generated .c file for inspection`)
+The -o flag controls the output format:
+  monk build hello.monk              Output: hello (binary)
+  monk build hello.monk -o app      Output: app (binary)
+  monk build hello.monk -o hello.c  Output: hello.c (C source, no compilation)`)
 }
 
-// cmdBuild compiles a .monk file to a native binary.
+// cmdBuild compiles a .monk file to a native binary or emits C source.
 func cmdBuild(args []string) {
 	if len(args) < 1 {
 		fatal("monk build: missing source file")
@@ -66,18 +68,12 @@ func cmdBuild(args []string) {
 
 	sourceFile := args[0]
 	outputFile := ""
-	emitC := false
 
-	// Parse flags
+	// Parse -o flag
 	for i := 1; i < len(args); i++ {
-		switch args[i] {
-		case "-o":
-			if i+1 < len(args) {
-				outputFile = args[i+1]
-				i++
-			}
-		case "--emit-c":
-			emitC = true
+		if args[i] == "-o" && i+1 < len(args) {
+			outputFile = args[i+1]
+			i++
 		}
 	}
 
@@ -89,13 +85,12 @@ func cmdBuild(args []string) {
 		}
 	}
 
-	// Read source
+	// Read and parse
 	source, err := os.ReadFile(sourceFile)
 	if err != nil {
 		fatal("monk build: %s", err)
 	}
 
-	// Parse
 	prog, err := syntax.Parse(string(source))
 	if err != nil {
 		fatal("%s: %s", sourceFile, err)
@@ -104,16 +99,23 @@ func cmdBuild(args []string) {
 	// Generate C
 	cSource := codegen.Generate(prog, sourceFile)
 
-	// Write .c file
+	// If output ends in .c, just emit the C source (no compilation)
+	if strings.HasSuffix(outputFile, ".c") {
+		if err := os.WriteFile(outputFile, []byte(cSource), 0644); err != nil {
+			fatal("monk build: cannot write %s: %s", outputFile, err)
+		}
+		fmt.Fprintf(os.Stderr, "monk: wrote %s\n", outputFile)
+		return
+	}
+
+	// Otherwise, compile to binary
 	cFile := outputFile + ".c"
 	if err := os.WriteFile(cFile, []byte(cSource), 0644); err != nil {
 		fatal("monk build: cannot write %s: %s", cFile, err)
 	}
 
-	// Find runtime
 	runtimeDir := findRuntime()
 
-	// Compile with cc
 	cmd := exec.Command("cc", "-std=c11", "-O2",
 		"-I"+runtimeDir,
 		cFile,
@@ -124,57 +126,34 @@ func cmdBuild(args []string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		os.Remove(cFile) // clean up on failure
+		os.Remove(cFile)
 		fatal("monk build: C compilation failed")
 	}
 
-	// Keep .c file if --emit-c was passed, otherwise clean up
-	if emitC {
-		fmt.Fprintf(os.Stderr, "monk: emitted %s\n", cFile)
-	} else {
-		os.Remove(cFile)
-	}
-
+	os.Remove(cFile)
 	fmt.Fprintf(os.Stderr, "monk: built %s\n", outputFile)
 }
 
-// cmdRun compiles and runs a .monk file, then cleans up the binary.
+// cmdRun compiles and runs a .monk file, then cleans up.
 func cmdRun(args []string) {
 	if len(args) < 1 {
 		fatal("monk run: missing source file")
 	}
 
 	sourceFile := args[0]
-	emitC := false
-	for _, a := range args[1:] {
-		if a == "--emit-c" {
-			emitC = true
-		}
-	}
 
-	// Read source
 	source, err := os.ReadFile(sourceFile)
 	if err != nil {
 		fatal("monk run: %s", err)
 	}
 
-	// Parse
 	prog, err := syntax.Parse(string(source))
 	if err != nil {
 		fatal("%s: %s", sourceFile, err)
 	}
 
-	// Generate C
 	cSource := codegen.Generate(prog, sourceFile)
 
-	// If --emit-c, write the C to a file next to the source
-	if emitC {
-		cFile := strings.TrimSuffix(sourceFile, ".monk") + ".c"
-		os.WriteFile(cFile, []byte(cSource), 0644)
-		fmt.Fprintf(os.Stderr, "monk: emitted %s\n", cFile)
-	}
-
-	// Write temp files
 	dir, err := os.MkdirTemp("", "monk-run-*")
 	if err != nil {
 		fatal("monk run: %s", err)
@@ -188,10 +167,8 @@ func cmdRun(args []string) {
 		fatal("monk run: %s", err)
 	}
 
-	// Find runtime
 	runtimeDir := findRuntime()
 
-	// Compile
 	compile := exec.Command("cc", "-std=c11", "-O2",
 		"-I"+runtimeDir,
 		cFile,
@@ -204,7 +181,6 @@ func cmdRun(args []string) {
 		fatal("monk run: compilation failed")
 	}
 
-	// Run the binary, passing through remaining args
 	run := exec.Command(binFile, args[1:]...)
 	run.Stdout = os.Stdout
 	run.Stderr = os.Stderr
@@ -240,7 +216,6 @@ func cmdCheck(args []string) {
 }
 
 // findRuntime locates the runtime/ directory.
-// Looks relative to the executable, then falls back to common paths.
 func findRuntime() string {
 	// Try relative to executable
 	exe, err := os.Executable()

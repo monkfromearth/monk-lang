@@ -39,9 +39,9 @@ go mod init github.com/yourname/monk-lang`} lang="bash" />
     <section class="mb-14">
         <h2 class="text-xl font-bold mb-4">Write the first test</h2>
 
-        <p class="text-monk-muted leading-relaxed mb-4">Create <code class="bg-stone-100 px-1 rounded text-xs">lexer/lexer_test.go</code>:</p>
+        <p class="text-monk-muted leading-relaxed mb-4">Create <code class="bg-stone-100 px-1 rounded text-xs">syntax/scanner_test.go</code>:</p>
 
-        <Code code={`package lexer
+        <Code code={`package syntax
 
 import "testing"
 
@@ -55,8 +55,8 @@ func TestPlaceholder(t *testing.T) {
 
         <p class="text-monk-muted text-sm mt-4 mb-4">Run it:</p>
 
-        <Code code={`go test ./lexer/
-# ok  github.com/yourname/monk-lang/lexer  0.001s`} lang="bash" />
+        <Code code={`go test ./syntax/
+# ok  github.com/yourname/monk-lang/syntax  0.001s`} lang="bash" />
 
         <div class="mt-6">
             <InsightBox>
@@ -73,17 +73,14 @@ func TestPlaceholder(t *testing.T) {
         <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm font-mono">
             <div class="divide-y divide-monk-border">
                 <div class="flex px-5 py-2.5"><span class="w-44 text-monk-muted">go.mod</span><span class="font-sans text-monk-muted text-xs">Module definition</span></div>
-                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-blue">lexer/</span><span class="font-sans text-monk-muted text-xs">Phase 1: text to tokens</span></div>
-                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-teal">parser/</span><span class="font-sans text-monk-muted text-xs">Phase 2: tokens to AST</span></div>
-                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-teal">ast/</span><span class="font-sans text-monk-muted text-xs">AST node type definitions</span></div>
-                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-green">eval/</span><span class="font-sans text-monk-muted text-xs">Phase 3: tree-walking interpreter</span></div>
-                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-amber">codegen/</span><span class="font-sans text-monk-muted text-xs">Phase 7: AST to C source</span></div>
-                <div class="flex px-5 py-2.5"><span class="w-44 text-stone-500">cmd/monk/</span><span class="font-sans text-monk-muted text-xs">CLI entry point</span></div>
-                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-amber">runtime/</span><span class="font-sans text-monk-muted text-xs">Small C library linked into compiled programs</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-blue">syntax/</span><span class="font-sans text-monk-muted text-xs">Phases 1-2: lexer, parser, AST, tokens</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-amber">codegen/</span><span class="font-sans text-monk-muted text-xs">Phase 4: AST to C source</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-stone-500">cmd/monk/</span><span class="font-sans text-monk-muted text-xs">Phase 5: CLI entry point</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-monk-green">runtime/</span><span class="font-sans text-monk-muted text-xs">Phase 3: C library linked into every binary</span></div>
             </div>
         </div>
 
-        <p class="text-monk-muted text-sm mt-4">Each directory is a Go package. Tests live next to the code they test (<code class="bg-stone-100 px-1 rounded text-xs">lexer/lexer_test.go</code>). No separate test directory.</p>
+        <p class="text-monk-muted text-sm mt-4">Each directory is a Go package. Tests live next to the code they test (<code class="bg-stone-100 px-1 rounded text-xs">syntax/scanner_test.go</code>). No separate test directory.</p>
     </section>
 
     <section class="mb-14">

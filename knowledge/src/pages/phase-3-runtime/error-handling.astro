@@ -1,0 +1,257 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Error Handling" lessonNumber="3.5" section="Phase 3">
+
+    <LessonHeader lessonNumber="3.5" title="Error Handling" description="guard/against/throw -- Monk's alternative to try/catch, implemented with setjmp/longjmp.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The problem -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Things go wrong.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Division by zero. File not found. Index out of bounds. Type mismatch. Every program encounters situations where it can't do what was asked. The question is: what happens next?
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Some languages crash immediately. Some return error codes you have to check at every call site. Some use exceptions that silently propagate up the call stack. Monk takes a different approach: <strong>guard/against/throw</strong>.
+        </p>
+    </section>
+
+    <!-- The syntax -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Guard, against, throw.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The syntax makes the intent explicit. You're guarding a piece of code against possible errors:
+        </p>
+
+        <Code code={`guard result = might_fail() against error {
+    show("Something went wrong: " + error)
+    result = fallback_value
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Read it aloud: "Guard this assignment. If it throws, catch the error in the against block." The variable <code class="bg-stone-100 px-1 rounded text-xs">error</code> holds the error message. The against block provides recovery logic.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Throwing an error from anywhere in the call stack:
+        </p>
+
+        <Code code={`const divide = (a int, b int) int {
+    if b == 0 {
+        throw("division by zero")
+    }
+    return a / b
+}
+
+guard result = divide(10, 0) against error {
+    show(error)       // "division by zero"
+    result = 0
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The throw doesn't have to be in the immediate function. It can be 5 calls deep. The error propagates back to the nearest guard.
+        </p>
+    </section>
+
+    <!-- The analogy -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Save points and time travel.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Think of it like saving your game. <code class="bg-stone-100 px-1 rounded text-xs">guard</code> saves a checkpoint. Your program keeps going. If something goes wrong, <code class="bg-stone-100 px-1 rounded text-xs">throw</code> loads that save. Everything that happened after the save is undone. You're back at the checkpoint, in the <code class="bg-stone-100 px-1 rounded text-xs">against</code> block, with an error message telling you what went wrong.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            If you never save your game (no <code class="bg-stone-100 px-1 rounded text-xs">guard</code>), and something goes wrong, the game crashes. That's exactly what happens in Monk: unguarded errors terminate the program with a stack trace.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Monk's error handling is explicit.</strong> You must write <code class="bg-stone-100 px-1 rounded text-xs">guard</code> to catch errors. If you don't guard, errors crash the program with a stack trace. No silent swallowing.</p>
+        </InsightBox>
+    </section>
+
+    <!-- How it works: setjmp/longjmp -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Under the hood: setjmp and longjmp.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            C has a mechanism for this exact pattern: <code class="bg-stone-100 px-1 rounded text-xs">setjmp</code> and <code class="bg-stone-100 px-1 rounded text-xs">longjmp</code>. They're in the C standard library, and they do exactly what the game-save analogy describes.
+        </p>
+
+        <div class="space-y-4 mb-6">
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-accent font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">setjmp saves the current position.</p>
+                    <p class="text-monk-muted text-sm">It captures the CPU state (registers, stack pointer, program counter) into a buffer. Returns 0 the first time. This is the checkpoint.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-blueLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-blue font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">longjmp jumps back to the checkpoint.</p>
+                    <p class="text-monk-muted text-sm">It restores the saved CPU state and makes setjmp return a non-zero value. Execution resumes at the setjmp call, as if the intervening code never happened.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-greenLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-green font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">The return value tells you which path you're on.</p>
+                    <p class="text-monk-muted text-sm">First call (setjmp returns 0): run the guarded code. Second call (setjmp returns non-zero): an error was thrown, run the against block.</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The conceptual C translation of guard/against looks like this:
+        </p>
+
+        <Code code={`// Conceptual C for: guard result = expr against error { ... }
+jmp_buf checkpoint;
+if (setjmp(checkpoint) == 0) {
+    // Normal path: evaluate the guarded expression
+    result = evaluate_expr();
+} else {
+    // Error path: setjmp returned non-zero (longjmp was called)
+    MonkValue error = monk_current_error();
+    // ... run the against block ...
+}`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            And a throw is simply:
+        </p>
+
+        <Code code={`// Conceptual C for: throw("division by zero")
+monk_throw("division by zero");
+// internally calls longjmp(nearest_checkpoint, 1)`} lang="c" />
+    </section>
+
+    <!-- Why not return codes -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Why not return codes?</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The alternative to setjmp/longjmp is making every function return an error indicator. The caller checks it after every call. This is what Go does with <code class="bg-stone-100 px-1 rounded text-xs">if err != nil</code>.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            For a compiled language like Monk, return codes create a problem for code generation. Every function call in the generated C would need a check:
+        </p>
+
+        <Code code={`// With return codes: every call needs checking
+MonkValue result = call_function(args);
+if (has_error(result)) {
+    // propagate the error up...
+}
+// Now do the next thing
+MonkValue result2 = call_another(result);
+if (has_error(result2)) {
+    // propagate again...
+}`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            With setjmp/longjmp, the code generator doesn't need to emit error checks at every call site. Errors automatically propagate back to the nearest guard. The generated code stays clean:
+        </p>
+
+        <Code code={`// With setjmp/longjmp: clean generated code
+MonkValue result = call_function(args);
+MonkValue result2 = call_another(result);
+// If either throws, longjmp jumps back to the guard`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Simpler codegen, simpler generated C, and the error handling semantics are the same.
+        </p>
+    </section>
+
+    <!-- The tradeoff -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The tradeoff: skipping cleanup.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            setjmp/longjmp has a known weakness: when longjmp fires, it skips past any cleanup code between the throw site and the guard. In C++, this means destructors don't run. In a language with shared mutable state, this could leave things in an inconsistent state.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk sidesteps this problem through value semantics. Since there's no shared state, there's nothing to corrupt. When longjmp unwinds the stack, the local variables on each stack frame are simply abandoned. Heap memory for those values is leaked in the worst case, but the program's observable state remains consistent.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            For a language prioritizing correctness and simplicity over maximum performance, this is an acceptable tradeoff.
+        </p>
+    </section>
+
+    <!-- The runtime functions -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Runtime functions for error handling.</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm">
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['monk_guard_begin_ctx()', 'Sets a checkpoint with setjmp. Returns 0 on first call, non-zero when an error is caught.'],
+                    ['monk_throw(message)', 'Stores the error message and calls longjmp to jump back to the nearest guard.'],
+                    ['monk_current_error()', 'Returns the error message from the most recent throw.'],
+                ].map(([fn, desc]) => (
+                    <div class="flex items-start gap-4 px-5 py-4">
+                        <code class="font-mono text-xs bg-stone-100 px-2 py-0.5 rounded flex-shrink-0">{fn}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm mt-4">
+            The code generator emits calls to these functions. A Monk programmer never sees them -- they write <code class="bg-stone-100 px-1 rounded text-xs">guard</code>, <code class="bg-stone-100 px-1 rounded text-xs">against</code>, and <code class="bg-stone-100 px-1 rounded text-xs">throw</code>. The mapping from Monk syntax to C runtime calls is the code generator's job.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><code class="bg-stone-100 px-1 rounded text-xs">guard/against/throw</code> is Monk's error handling. Explicit, not implicit. You must guard to catch.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Implemented with C's setjmp/longjmp. setjmp saves a checkpoint, longjmp jumps back to it.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Chosen over return codes because it simplifies code generation. No per-call-site error checks needed.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Value semantics makes the setjmp/longjmp tradeoff safe: no shared state to corrupt when the stack unwinds.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-3-runtime/builtins"
+        prevLabel="Prev: Built-in Functions"
+        nextHref="/phase-3-runtime/references"
+        nextLabel="Next: References & Further Reading"
+    />
+
+</LessonLayout>

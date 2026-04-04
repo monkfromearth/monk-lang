@@ -1,0 +1,368 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Translation Rules" lessonNumber="4.2" section="Phase 4">
+
+    <LessonHeader lessonNumber="4.2" title="Translation Rules" description="How each Monk construct becomes C. The systematic mapping from AST nodes to C code.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">18 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The core idea -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">One node, one rule.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The code generator is a big switch statement. It looks at an AST node, checks its type, and applies exactly one translation rule. A number literal always becomes <code class="bg-stone-100 px-1 rounded text-xs">monk_int()</code>. An if statement always becomes <code class="bg-stone-100 px-1 rounded text-xs">if (monk_is_truthy(...))</code>. No ambiguity, no context-dependence.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is what makes code generation the most mechanical phase of the compiler. The creativity happened in the parser (tree shape) and the runtime (value semantics). Here, we just follow the rules.
+        </p>
+    </section>
+
+    <!-- Literals -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Literals: creating values from nothing.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every literal in Monk maps to a runtime constructor. The constructor allocates a <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> with the right type tag and data.
+        </p>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr class="border-b border-monk-border">
+                        <th class="text-left py-3 px-4 font-semibold">Monk</th>
+                        <th class="text-left py-3 px-4 font-semibold">C</th>
+                    </tr>
+                </thead>
+                <tbody class="font-mono text-xs">
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">42</td>
+                        <td class="py-3 px-4">monk_int(42)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">3.14</td>
+                        <td class="py-3 px-4">monk_float(3.14)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">"hello"</td>
+                        <td class="py-3 px-4">monk_string("hello")</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">true</td>
+                        <td class="py-3 px-4">monk_bool(1)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">false</td>
+                        <td class="py-3 px-4">monk_bool(0)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4">none</td>
+                        <td class="py-3 px-4">monk_none()</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-monk-muted text-sm mt-4">
+            Straightforward. Each Monk type has exactly one C constructor.
+        </p>
+    </section>
+
+    <!-- Variables -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Variables: declaring and copying.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In Monk, both <code class="bg-stone-100 px-1 rounded text-xs">let</code> and <code class="bg-stone-100 px-1 rounded text-xs">const</code> create variables. The difference is enforced by the checker (const cannot be reassigned), not by codegen. Both produce the same C.
+        </p>
+
+        <Code code={`let x int = 42
+const greeting = "hello"`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">Becomes:</p>
+
+        <Code code={`MonkValue x = monk_int(42);
+MonkValue greeting = monk_string("hello");`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            When assigning one variable to another, Monk uses value semantics -- the new variable gets its own copy. This is critical: without the deep copy, two variables would share the same memory, and freeing one would corrupt the other.
+        </p>
+
+        <Code code={`let y = x`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">Becomes:</p>
+
+        <Code code={`MonkValue y = monk_deep_copy(x);`} lang="c" />
+    </section>
+
+    <!-- Assignment and memory safety -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Assignment: the order matters.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Reassigning a variable seems simple: free the old value, assign the new one. But the order is a trap.
+        </p>
+
+        <Code code={`x = x + 1`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">The wrong way to translate this:</p>
+
+        <Code code={`// WRONG: use-after-free bug
+monk_free(x);
+x = monk_add(x, monk_int(1));  // x is already freed!`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">The right way:</p>
+
+        <Code code={`// CORRECT: compute first, then free
+MonkValue _new = monk_add(x, monk_int(1));
+monk_free(x);
+x = _new;`} lang="c" />
+
+        <InsightBox>
+            <p class="text-sm">This was an actual bug in Monk's code generator. The pattern is: <strong>compute the new value while the old value is still alive, then free the old value, then assign.</strong> Never free before computing. This applies to every reassignment, not just arithmetic.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Arithmetic and comparison -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Arithmetic and comparison: no C operators.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is the most important rule to internalize. Monk's <code class="bg-stone-100 px-1 rounded text-xs">+</code> does NOT become C's <code class="bg-stone-100 px-1 rounded text-xs">+</code>. Every operation goes through a runtime function.
+        </p>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr class="border-b border-monk-border">
+                        <th class="text-left py-3 px-4 font-semibold">Monk</th>
+                        <th class="text-left py-3 px-4 font-semibold">C</th>
+                    </tr>
+                </thead>
+                <tbody class="font-mono text-xs">
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">x + y</td>
+                        <td class="py-3 px-4">monk_add(x, y)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">x - y</td>
+                        <td class="py-3 px-4">monk_sub(x, y)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">x * y</td>
+                        <td class="py-3 px-4">monk_mul(x, y)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">x / y</td>
+                        <td class="py-3 px-4">monk_div(x, y)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">x == y</td>
+                        <td class="py-3 px-4">monk_equal(x, y)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">x != y</td>
+                        <td class="py-3 px-4">monk_not_equal(x, y)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">x &lt; y</td>
+                        <td class="py-3 px-4">monk_less(x, y)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4">x &gt;= y</td>
+                        <td class="py-3 px-4">monk_greater_equal(x, y)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm">No C arithmetic operators anywhere. <code class="bg-stone-100 px-1 rounded text-xs">x + y</code> does not become <code class="bg-stone-100 px-1 rounded text-xs">x + y</code> in C -- it becomes <code class="bg-stone-100 px-1 rounded text-xs">monk_add(x, y)</code>. Every operation goes through the runtime because <code class="bg-stone-100 px-1 rounded text-xs">x</code> and <code class="bg-stone-100 px-1 rounded text-xs">y</code> are MonkValues (tagged unions), not raw C ints.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Control flow -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Control flow: truthiness is the bridge.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk's control flow maps cleanly to C's, with one twist: every condition passes through <code class="bg-stone-100 px-1 rounded text-xs">monk_is_truthy()</code>. This function checks if a MonkValue is truthy (everything except <code class="bg-stone-100 px-1 rounded text-xs">false</code>, <code class="bg-stone-100 px-1 rounded text-xs">none</code>, and <code class="bg-stone-100 px-1 rounded text-xs">0</code>).
+        </p>
+
+        <Code code={`if x > 10 {
+    show("big")
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">Becomes:</p>
+
+        <Code code={`MonkValue _tmp_1 = monk_greater(x, monk_int(10));
+if (monk_is_truthy(_tmp_1)) {
+    monk_show(monk_string("big"));
+}
+monk_free(_tmp_1);`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">While loops follow the same pattern:</p>
+
+        <Code code={`while count > 0 {
+    count = count - 1
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">Becomes:</p>
+
+        <Code code={`while (1) {
+    MonkValue _tmp_1 = monk_greater(count, monk_int(0));
+    if (!monk_is_truthy(_tmp_1)) { monk_free(_tmp_1); break; }
+    monk_free(_tmp_1);
+    MonkValue _new = monk_sub(count, monk_int(1));
+    monk_free(count);
+    count = _new;
+}`} lang="c" />
+
+        <p class="text-monk-muted text-sm mt-4">
+            The while loop re-evaluates the condition each iteration. The condition itself might allocate a temp value that needs to be freed -- so the loop body handles that explicitly.
+        </p>
+    </section>
+
+    <!-- For-in loops -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">For-in: iterating over arrays.</h2>
+
+        <Code code={`for item in items {
+    show(item)
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">Becomes a C for-loop that walks the array's elements:</p>
+
+        <Code code={`for (int _i = 0; _i < monk_array_len(items); _i++) {
+    MonkValue item = monk_deep_copy(monk_array_get(items, _i));
+    monk_show(item);
+    monk_free(item);
+}`} lang="c" />
+
+        <p class="text-monk-muted text-sm mt-4">
+            Each element is deep-copied into the loop variable. Value semantics -- mutating <code class="bg-stone-100 px-1 rounded text-xs">item</code> inside the loop does not affect the original array.
+        </p>
+    </section>
+
+    <!-- Collections -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Arrays and records: compound values.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Arrays and records are built with variadic constructors that take the element count followed by the elements themselves.
+        </p>
+
+        <Code code={`let numbers = [1, 2, 3]
+let point = {x: 10, y: 20}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">Becomes:</p>
+
+        <Code code={`MonkValue numbers = monk_array(3, monk_int(1), monk_int(2), monk_int(3));
+MonkValue point = monk_record(2, "x", monk_int(10), "y", monk_int(20));`} lang="c" />
+
+        <p class="text-monk-muted text-sm mt-4">
+            The first argument is always the count. For records, field names alternate with their values. The runtime uses this to build the internal data structures.
+        </p>
+    </section>
+
+    <!-- Error handling -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Error handling: guard and against.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk's <code class="bg-stone-100 px-1 rounded text-xs">guard</code>/<code class="bg-stone-100 px-1 rounded text-xs">against</code> pattern maps to C's <code class="bg-stone-100 px-1 rounded text-xs">setjmp</code>/<code class="bg-stone-100 px-1 rounded text-xs">longjmp</code>. This is the non-local jump mechanism that C provides for error handling -- similar in spirit to try/catch, but lower level.
+        </p>
+
+        <Code code={`guard result = risky_call() against err {
+    show(err)
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The code generator emits a <code class="bg-stone-100 px-1 rounded text-xs">setjmp</code> call that saves the current execution state. If the guarded expression throws (via <code class="bg-stone-100 px-1 rounded text-xs">longjmp</code>), execution jumps back to the saved state and runs the <code class="bg-stone-100 px-1 rounded text-xs">against</code> block instead.
+        </p>
+
+        <p class="text-monk-muted text-sm mt-4">
+            The details of the setjmp/longjmp pattern are covered in the runtime phase (lesson 3.5). From codegen's perspective, the rule is: emit the jump setup, emit the guarded expression, emit the fallback block.
+        </p>
+    </section>
+
+    <!-- Function calls -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Function calls: built-ins and user functions.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Built-in functions like <code class="bg-stone-100 px-1 rounded text-xs">show</code>, <code class="bg-stone-100 px-1 rounded text-xs">len</code>, and <code class="bg-stone-100 px-1 rounded text-xs">push</code> map directly to C runtime functions:
+        </p>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm border-collapse">
+                <thead>
+                    <tr class="border-b border-monk-border">
+                        <th class="text-left py-3 px-4 font-semibold">Monk</th>
+                        <th class="text-left py-3 px-4 font-semibold">C</th>
+                    </tr>
+                </thead>
+                <tbody class="font-mono text-xs">
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">show(x)</td>
+                        <td class="py-3 px-4">monk_show(x)</td>
+                    </tr>
+                    <tr class="border-b border-monk-border/50">
+                        <td class="py-3 px-4">len(arr)</td>
+                        <td class="py-3 px-4">monk_len(arr)</td>
+                    </tr>
+                    <tr>
+                        <td class="py-3 px-4">push(arr, val)</td>
+                        <td class="py-3 px-4">monk_push(arr, val)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            User-defined functions are called by their hoisted C name. How that name is determined is the subject of the next lesson.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Each AST node type has exactly one translation rule. The code generator is a deterministic switch.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Assignment must compute the new value before freeing the old one. Reversing this order causes use-after-free bugs.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">No C arithmetic operators. Every operation goes through runtime functions that work on MonkValues.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Control flow conditions pass through <code class="bg-stone-100 px-1 rounded text-xs">monk_is_truthy()</code>. Arrays iterate with deep-copied loop variables.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-4-codegen/what-is-codegen"
+        prevLabel="Prev: What Is Code Generation?"
+        nextHref="/phase-4-codegen/function-hoisting"
+        nextLabel="Next: Function Hoisting"
+    />
+
+</LessonLayout>

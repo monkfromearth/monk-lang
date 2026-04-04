@@ -1,0 +1,378 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Designing Monk's AST" lessonNumber="2.3" section="Phase 2">
+
+    <LessonHeader lessonNumber="2.3" title="Designing Monk's AST" description="Every node type. Expressions vs statements. The full tree design.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Expressions vs statements -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The fundamental split: expressions vs statements.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every AST node is either an <strong>expression</strong> or a <strong>statement</strong>. The difference is simple: expressions produce a value, statements don't.
+        </p>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-3">Expressions (produce a value)</p>
+                <div class="space-y-2 text-sm text-monk-muted">
+                    <p><code class="bg-stone-100 px-1 rounded text-xs">42</code> — produces the number 42</p>
+                    <p><code class="bg-stone-100 px-1 rounded text-xs">a + b</code> — produces their sum</p>
+                    <p><code class="bg-stone-100 px-1 rounded text-xs">greet("world")</code> — produces the return value</p>
+                    <p><code class="bg-stone-100 px-1 rounded text-xs">(x int) int &#123; ... &#125;</code> — produces a function</p>
+                </div>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-3">Statements (perform an action)</p>
+                <div class="space-y-2 text-sm text-monk-muted">
+                    <p><code class="bg-stone-100 px-1 rounded text-xs">let x = 42</code> — declares a variable</p>
+                    <p><code class="bg-stone-100 px-1 rounded text-xs">x = 10</code> — assigns a value</p>
+                    <p><code class="bg-stone-100 px-1 rounded text-xs">if x > 0 &#123; ... &#125;</code> — controls flow</p>
+                    <p><code class="bg-stone-100 px-1 rounded text-xs">return x</code> — exits a function</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This split matters because it determines where things can appear. An expression can be used anywhere a value is expected — as an argument, in a condition, on the right side of <code class="bg-stone-100 px-1 rounded text-xs">=</code>. A statement cannot be used as a value.
+        </p>
+    </section>
+
+    <!-- Assignment as statement -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The key decision: assignment is a statement.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In C and JavaScript, assignment is an expression. <code class="bg-stone-100 px-1 rounded text-xs">x = 5</code> both assigns and produces the value 5. This enables patterns like <code class="bg-stone-100 px-1 rounded text-xs">while (line = readLine())</code>, but it also enables one of the most common bugs in programming:
+        </p>
+
+        <Code code={`// C / JavaScript: compiles fine, always true
+if (x = 5) {
+    // this was supposed to be x == 5
+    // but it assigns 5 to x and evaluates as true
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Monk makes assignment a <strong>statement</strong>. You cannot write <code class="bg-stone-100 px-1 rounded text-xs">if x = 5</code> — the parser rejects it because a statement can't appear where an expression is expected. This eliminates the bug entirely at the grammar level.
+        </p>
+
+        <Code code={`// Monk: assignment is a statement
+x = 5          // fine, standalone statement
+if x == 5 {    // fine, comparison expression
+    // ...
+}
+if x = 5 {     // PARSE ERROR: expected expression, got assignment
+    // ...
+}`} lang="javascript" />
+
+        <InsightBox>
+            <p class="text-sm"><strong>Trade-off acknowledged.</strong> You can't write <code class="bg-stone-100 px-1 rounded text-xs">while (ch = read())</code> in Monk. You need a separate assignment before the condition. Monk chose safety over brevity. Python, Go, and Rust made the same choice.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Expression nodes -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Expression nodes: 15 types.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every expression in Monk maps to one of these AST node types:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6">
+            <div class="divide-y divide-monk-border text-sm">
+                <div class="px-5 py-2.5 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Literals (leaf nodes, no children)</span>
+                </div>
+                {[
+                    ['NumberExpr', '42, 3.14, 0xFF', 'Integer or float value'],
+                    ['StringExpr', '"hello", `world`', 'String value'],
+                    ['BoolExpr', 'true, false', 'Boolean value'],
+                    ['NoneExpr', 'none', 'The absence of a value'],
+                    ['IdentExpr', 'x, name, counter', 'A variable reference'],
+                ].map(([name, examples, desc]) => (
+                    <div class="flex px-5 py-2.5 items-center">
+                        <code class="font-mono text-xs text-monk-accent w-32 flex-shrink-0 font-semibold">{name}</code>
+                        <code class="text-monk-muted text-xs font-mono w-44 flex-shrink-0">{examples}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+                <div class="px-5 py-2.5 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Operations (inner nodes, have children)</span>
+                </div>
+                {[
+                    ['UnaryExpr', '-x, !done, ~mask', 'Prefix operator + one operand'],
+                    ['BinaryExpr', 'a + b, x == y', 'Left operand + operator + right operand'],
+                    ['CallExpr', 'add(1, 2)', 'Function expression + argument list'],
+                    ['IndexExpr', 'arr[0]', 'Collection + index expression'],
+                    ['PropertyExpr', 'record.field', 'Object + field name'],
+                ].map(([name, examples, desc]) => (
+                    <div class="flex px-5 py-2.5 items-center">
+                        <code class="font-mono text-xs text-monk-accent w-32 flex-shrink-0 font-semibold">{name}</code>
+                        <code class="text-monk-muted text-xs font-mono w-44 flex-shrink-0">{examples}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+                <div class="px-5 py-2.5 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Compound expressions</span>
+                </div>
+                {[
+                    ['ArrayExpr', '[1, 2, 3]', 'List of element expressions'],
+                    ['RecordExpr', '{name: "Monk", v: 2}', 'List of key-value pairs'],
+                    ['FunctionExpr', '(a int) int { ... }', 'Params + return type + body'],
+                    ['ThrowExpr', 'throw "error"', 'Error value expression'],
+                    ['GroupExpr', '(a + b)', 'Parenthesized sub-expression'],
+                ].map(([name, examples, desc]) => (
+                    <div class="flex px-5 py-2.5 items-center">
+                        <code class="font-mono text-xs text-monk-accent w-32 flex-shrink-0 font-semibold">{name}</code>
+                        <code class="text-monk-muted text-xs font-mono w-44 flex-shrink-0">{examples}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    </section>
+
+    <!-- Functions are expressions -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Functions are values, not declarations.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In many languages, function declarations are special syntax at the statement level. Monk takes a different approach: <strong>a function literal is an expression</strong>, just like a number or a string. You assign it to a variable with <code class="bg-stone-100 px-1 rounded text-xs">let</code> or <code class="bg-stone-100 px-1 rounded text-xs">const</code>.
+        </p>
+
+        <Code code={`// The function literal (a int, b int) int { return a + b }
+// is an expression, just like 42 or "hello"
+const add = (a int, b int) int {
+    return a + b
+}
+
+// You can pass them directly as arguments
+let nums = [3, 1, 2]
+sort(nums, (a int, b int) int { return a - b })`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            In the AST, a FunctionExpr sits in the same position any other expression would. The parser treats <code class="bg-stone-100 px-1 rounded text-xs">(a int, b int) int &#123; return a + b &#125;</code> the same way it treats <code class="bg-stone-100 px-1 rounded text-xs">42</code> — it's a value that gets assigned, passed, or returned.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>No <code class="bg-stone-100 px-1 rounded text-xs">func</code> or <code class="bg-stone-100 px-1 rounded text-xs">function</code> keyword.</strong> There's no function declaration syntax in Monk. If it starts with <code class="bg-stone-100 px-1 rounded text-xs">(</code> and has parameters with types, it's a function expression. This keeps the grammar simpler — one fewer statement type to parse.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Statement nodes -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Statement nodes: 14 types.</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6">
+            <div class="divide-y divide-monk-border text-sm">
+                <div class="px-5 py-2.5 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Declarations</span>
+                </div>
+                {[
+                    ['VarDecl', 'let x int = 42', 'Name + optional type + optional init'],
+                    ['TypeDecl', 'type Point { x int, y int }', 'Named record shape'],
+                ].map(([name, examples, desc]) => (
+                    <div class="flex px-5 py-2.5 items-center">
+                        <code class="font-mono text-xs text-monk-accent w-32 flex-shrink-0 font-semibold">{name}</code>
+                        <code class="text-monk-muted text-xs font-mono w-52 flex-shrink-0">{examples}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+                <div class="px-5 py-2.5 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Assignment</span>
+                </div>
+                {[
+                    ['AssignStmt', 'x = 10, arr[0] = 5', 'Target + value expression'],
+                ].map(([name, examples, desc]) => (
+                    <div class="flex px-5 py-2.5 items-center">
+                        <code class="font-mono text-xs text-monk-accent w-32 flex-shrink-0 font-semibold">{name}</code>
+                        <code class="text-monk-muted text-xs font-mono w-52 flex-shrink-0">{examples}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+                <div class="px-5 py-2.5 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Control flow</span>
+                </div>
+                {[
+                    ['IfStmt', 'if cond { } else { }', 'Condition + then block + optional else'],
+                    ['WhileStmt', 'while cond { }', 'Condition + body'],
+                    ['ForStmt', 'for item in list { }', 'Variable + iterable + body'],
+                    ['ReturnStmt', 'return x + 1', 'Optional return value'],
+                    ['BreakStmt', 'break', 'Exit innermost loop'],
+                    ['ContinueStmt', 'continue', 'Skip to next iteration'],
+                ].map(([name, examples, desc]) => (
+                    <div class="flex px-5 py-2.5 items-center">
+                        <code class="font-mono text-xs text-monk-accent w-32 flex-shrink-0 font-semibold">{name}</code>
+                        <code class="text-monk-muted text-xs font-mono w-52 flex-shrink-0">{examples}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+                <div class="px-5 py-2.5 bg-monk-bg">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider">Error handling & modules</span>
+                </div>
+                {[
+                    ['GuardStmt', 'guard { } against e { }', 'Try block + error handler'],
+                    ['ExprStmt', 'doSomething()', 'Expression used as statement'],
+                    ['BlockStmt', '{ ... }', 'Sequence of statements'],
+                    ['UseStmt', 'use math', 'Import a module'],
+                    ['ExportStmt', 'export const pi = 3.14', 'Make declaration public'],
+                ].map(([name, examples, desc]) => (
+                    <div class="flex px-5 py-2.5 items-center">
+                        <code class="font-mono text-xs text-monk-accent w-32 flex-shrink-0 font-semibold">{name}</code>
+                        <code class="text-monk-muted text-xs font-mono w-52 flex-shrink-0">{examples}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm">
+            Note <code class="bg-stone-100 px-1 rounded text-xs">ExprStmt</code> — the bridge between the two worlds. When you write <code class="bg-stone-100 px-1 rounded text-xs">print("hello")</code> as a standalone line, the parser wraps the call expression in an ExprStmt. The expression produces a value (the return value of print), but it's used as a statement — the value is discarded.
+        </p>
+    </section>
+
+    <!-- Position tracking -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Every node knows where it came from.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every AST node embeds a position: <code class="bg-stone-100 px-1 rounded text-xs">Pos&#123;Line, Column&#125;</code>. This is the location in the source file where the node begins.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Why does this matter? Because every phase after parsing needs to point back to the source when something goes wrong:
+        </p>
+
+        <div class="space-y-3 mb-4">
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-accent font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Type checker</p>
+                    <p class="text-monk-muted text-sm">"Type mismatch at line 12, column 5" — uses the AST node's position.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-blueLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-blue font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Code generator</p>
+                    <p class="text-monk-muted text-sm">Emits <code class="bg-stone-100 px-1 rounded text-xs">#line 12 "main.monk"</code> directives in the generated C code, so runtime errors map back to Monk source.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-greenLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-green font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">LSP (future)</p>
+                    <p class="text-monk-muted text-sm">"Go to definition" needs to know where each identifier was defined.</p>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Lesson learned the hard way.</strong> Position tracking was added to Monk's AST after the initial implementation. Without it, the code generator couldn't emit <code class="bg-stone-100 px-1 rounded text-xs">#line</code> directives, making runtime errors nearly impossible to debug. Add positions from the start.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Type annotations -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Type annotations: space-separated, not colon-separated.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Most languages with type annotations use a colon: <code class="bg-stone-100 px-1 rounded text-xs">let x: int = 42</code>. Monk uses space separation instead: <code class="bg-stone-100 px-1 rounded text-xs">let x int = 42</code>.
+        </p>
+
+        <Code code={`// Monk's type syntax
+let count int = 0
+let names string[] = ["Alice", "Bob"]
+let maybe int? = none
+const greet = (name string) string {
+    return "Hello, " + name
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            In the AST, the type is stored as a string identifier. Array types get a <code class="bg-stone-100 px-1 rounded text-xs">[]</code> suffix, optional types get a <code class="bg-stone-100 px-1 rounded text-xs">?</code> suffix. The parser reads the type name as an identifier, then checks for these suffixes. No colon token needed — one fewer token to lex and parse.
+        </p>
+    </section>
+
+    <!-- A complete AST example -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A full program, fully parsed.</h2>
+
+        <Code code={`const double = (n int) int {
+    return n * 2
+}
+let result = double(21)`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">The complete AST:</p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-6">
+            <div class="font-mono text-xs space-y-1 text-monk-muted">
+                <p><span class="text-monk-accent font-semibold">Program</span></p>
+                <p class="ml-4"><span class="text-monk-accent font-semibold">VarDecl</span> (const, name: "double")</p>
+                <p class="ml-8">init: <span class="text-monk-accent font-semibold">FunctionExpr</span></p>
+                <p class="ml-12">params: [("n", type: "int")]</p>
+                <p class="ml-12">returnType: "int"</p>
+                <p class="ml-12">body: <span class="text-monk-accent font-semibold">BlockStmt</span></p>
+                <p class="ml-16"><span class="text-monk-accent font-semibold">ReturnStmt</span></p>
+                <p class="ml-20">value: <span class="text-monk-amber font-semibold">BinaryExpr (*)</span></p>
+                <p class="ml-24">left: <span class="text-stone-700">IdentExpr ("n")</span></p>
+                <p class="ml-24">right: <span class="text-monk-green">NumberExpr (2)</span></p>
+                <p class="ml-4"><span class="text-monk-accent font-semibold">VarDecl</span> (let, name: "result")</p>
+                <p class="ml-8">init: <span class="text-monk-amber font-semibold">CallExpr</span></p>
+                <p class="ml-12">func: <span class="text-stone-700">IdentExpr ("double")</span></p>
+                <p class="ml-12">args: [<span class="text-monk-green">NumberExpr (21)</span>]</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm mt-4">
+            Everything the compiler needs to generate code is in this tree. Variable names, types, function bodies, call arguments. The source text is no longer needed.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Expressions produce values, statements don't. Assignment is a statement in Monk — prevents <code class="bg-stone-100 px-1 rounded text-xs">if x = 5</code> bugs.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">29 node types: 15 expressions + 14 statements. Each is a struct with typed fields, not a generic "node" with string properties.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Functions are expressions assigned to variables. No function declaration syntax, no <code class="bg-stone-100 px-1 rounded text-xs">func</code> keyword.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Every node embeds <code class="bg-stone-100 px-1 rounded text-xs">Pos&#123;Line, Column&#125;</code>. Add position tracking from day one — you'll need it for error messages and source mapping.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-2-parser/operator-precedence"
+        prevLabel="Prev: Operator Precedence"
+        nextHref="/phase-2-parser/building-the-parser"
+        nextLabel="Next: Building the Parser"
+    />
+
+</LessonLayout>

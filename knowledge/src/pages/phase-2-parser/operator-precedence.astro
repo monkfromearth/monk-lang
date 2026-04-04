@@ -1,0 +1,268 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Operator Precedence" lessonNumber="2.2" section="Phase 2">
+
+    <LessonHeader lessonNumber="2.2" title="Operator Precedence" description="Why 1+2*3 is 7, not 9. How the parser encodes math rules into tree shape.">
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The problem -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The flat token problem.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The lexer gives us tokens in order. But order alone doesn't tell us grouping. Consider:
+        </p>
+
+        <Code code={`a + b * c - d`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Four tokens, three operators. Which operations happen first? In math class, you learned PEMDAS — multiplication before addition. But the parser doesn't know PEMDAS. It needs a systematic way to encode these rules into the tree it builds.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The answer: <strong>precedence levels</strong>. Each operator gets a number. Higher number = binds tighter = goes deeper in the tree. The parser uses these numbers to decide which operators "grab" their operands first.
+        </p>
+    </section>
+
+    <!-- Monk's 13 levels -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Monk's 13 precedence levels.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            From loosest (evaluated last) to tightest (evaluated first):
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6">
+            <div class="divide-y divide-monk-border text-sm">
+                <div class="px-5 py-2.5 bg-monk-bg flex">
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider w-12">Level</span>
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider w-40">Name</span>
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider flex-1">Operators</span>
+                    <span class="font-semibold text-xs text-monk-muted uppercase tracking-wider w-20">Assoc.</span>
+                </div>
+                {[
+                    ['1', 'Assignment', '= += -= *= /= %=', 'Right'],
+                    ['2', 'Logical OR', '|| or', 'Left'],
+                    ['3', 'Logical AND', '&& and', 'Left'],
+                    ['4', 'Bitwise OR', '|', 'Left'],
+                    ['5', 'Bitwise XOR', '^', 'Left'],
+                    ['6', 'Bitwise AND', '&', 'Left'],
+                    ['7', 'Equality', '== != is', 'Left'],
+                    ['8', 'Comparison', '< > <= >=', 'Left'],
+                    ['9', 'Shift', '<< >>', 'Left'],
+                    ['10', 'Addition', '+ -', 'Left'],
+                    ['11', 'Multiplication', '* / %', 'Left'],
+                    ['12', 'Unary', '- ! ~ not', 'Right'],
+                    ['13', 'Call / Index', '() [] .', 'Left'],
+                ].map(([level, name, ops, assoc]) => (
+                    <div class="px-5 py-2.5 flex items-center">
+                        <span class={`font-mono text-xs w-12 font-bold ${parseInt(level) <= 3 ? 'text-monk-muted' : parseInt(level) <= 9 ? 'text-monk-amber' : 'text-monk-accent'}`}>{level}</span>
+                        <span class="font-semibold text-sm w-40">{name}</span>
+                        <span class="text-monk-muted text-xs font-mono flex-1">{ops}</span>
+                        <span class="text-monk-muted text-xs w-20">{assoc}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Level 1 is the loosest — assignment happens after everything else on the right side is computed. Level 13 is the tightest — function calls and property access bind before any arithmetic.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>The tree shape IS the precedence.</strong> A level-11 operator (multiplication) ends up deeper in the tree than a level-10 operator (addition). Deeper means evaluated first. The precedence table is literally encoded as tree depth.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Left vs right associativity -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Left vs right associativity.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Precedence tells you which operator goes first when they're <em>different</em>. Associativity tells you which goes first when they're the <em>same</em>.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <strong>Left-associative</strong> (most operators): <code class="bg-stone-100 px-1 rounded text-xs">a - b - c</code> means <code class="bg-stone-100 px-1 rounded text-xs">(a - b) - c</code>. The leftmost operation happens first.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <strong>Right-associative</strong> (assignment, unary): <code class="bg-stone-100 px-1 rounded text-xs">a = b = c</code> would mean <code class="bg-stone-100 px-1 rounded text-xs">a = (b = c)</code>. The rightmost operation happens first. But in Monk, assignment is a statement — you can't chain assignments like this. Unary operators are naturally right-associative: <code class="bg-stone-100 px-1 rounded text-xs">--x</code> means <code class="bg-stone-100 px-1 rounded text-xs">-(-(x))</code>.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-4">
+            <p class="text-xs text-monk-muted mb-4 text-center">Left-associative: <code class="bg-stone-100 px-1 rounded text-xs">8 - 3 - 2</code> = <code class="bg-stone-100 px-1 rounded text-xs">(8 - 3) - 2</code> = 3</p>
+            <div class="flex flex-col items-center gap-2 font-mono text-sm">
+                <div class="bg-monk-amberLight text-monk-amber px-4 py-2 rounded-lg border border-amber-200 font-semibold">BinaryExpr (-)</div>
+                <div class="flex gap-16 items-start">
+                    <div class="flex flex-col items-center gap-2">
+                        <div class="w-px h-4 bg-monk-border"></div>
+                        <div class="bg-monk-amberLight text-monk-amber px-3 py-1.5 rounded-lg border border-amber-200 text-xs font-semibold">BinaryExpr (-)</div>
+                        <div class="flex gap-8">
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="w-px h-4 bg-monk-border"></div>
+                                <div class="bg-monk-greenLight text-monk-green px-3 py-1.5 rounded-lg border border-green-200 text-xs">NumberExpr (8)</div>
+                            </div>
+                            <div class="flex flex-col items-center gap-2">
+                                <div class="w-px h-4 bg-monk-border"></div>
+                                <div class="bg-monk-greenLight text-monk-green px-3 py-1.5 rounded-lg border border-green-200 text-xs">NumberExpr (3)</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col items-center gap-2">
+                        <div class="w-px h-4 bg-monk-border"></div>
+                        <div class="bg-monk-greenLight text-monk-green px-3 py-1.5 rounded-lg border border-green-200 text-xs">NumberExpr (2)</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm">
+            The left subtree is deeper. The left subtraction evaluates first: <code class="bg-stone-100 px-1 rounded text-xs">8 - 3 = 5</code>, then <code class="bg-stone-100 px-1 rounded text-xs">5 - 2 = 3</code>. If it were right-associative, you'd get <code class="bg-stone-100 px-1 rounded text-xs">8 - (3 - 2) = 7</code> — wrong answer.
+        </p>
+    </section>
+
+    <!-- How recursive descent handles this -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">How recursive descent encodes precedence.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The elegant trick: write one function per precedence level. Each function handles operators at its level, and calls the next-higher-level function for its operands. This naturally creates the right tree shape.
+        </p>
+
+        <Code code={`// Level 10: addition and subtraction
+func parseAddition() Node {
+    left := parseMultiplication()  // call the next level up
+    while currentToken is PLUS or MINUS {
+        op := consume()
+        right := parseMultiplication()
+        left = BinaryExpr(left, op, right)
+    }
+    return left
+}
+
+// Level 11: multiplication and division
+func parseMultiplication() Node {
+    left := parseUnary()  // call the next level up
+    while currentToken is STAR or SLASH or PERCENT {
+        op := consume()
+        right := parseUnary()
+        left = BinaryExpr(left, op, right)
+    }
+    return left
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            When <code class="bg-stone-100 px-1 rounded text-xs">parseAddition</code> needs an operand, it calls <code class="bg-stone-100 px-1 rounded text-xs">parseMultiplication</code>. That function will consume any <code class="bg-stone-100 px-1 rounded text-xs">*</code> or <code class="bg-stone-100 px-1 rounded text-xs">/</code> operators before returning. So by the time <code class="bg-stone-100 px-1 rounded text-xs">parseAddition</code> builds its node, all the multiplications are already buried deeper in the tree.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>The call stack IS the precedence.</strong> Each recursive call goes one level deeper. Multiplication's function is called by addition's function, so multiplication nodes end up as children (deeper) in the tree. The programming language's call stack mirrors the AST's nesting.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Walking through an example -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Tracing through <code class="bg-stone-100 px-1 rounded text-sm">a + b * c - d</code>.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Let's trace the recursive calls step by step:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6 text-sm">
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['parseAddition()', 'Calls parseMultiplication() for left operand'],
+                    ['  parseMultiplication()', 'Calls parseUnary(), gets IdentExpr(a). No * or / next, returns a'],
+                    ['parseAddition()', 'Sees PLUS. Consumes it. Calls parseMultiplication() for right operand'],
+                    ['  parseMultiplication()', 'Calls parseUnary(), gets IdentExpr(b). Sees STAR next!'],
+                    ['  parseMultiplication()', 'Consumes STAR. Calls parseUnary(), gets IdentExpr(c). Builds BinaryExpr(b * c)'],
+                    ['  parseMultiplication()', 'No more * or /. Returns BinaryExpr(b * c)'],
+                    ['parseAddition()', 'Builds BinaryExpr(a + (b*c)). Sees MINUS. Consumes it.'],
+                    ['  parseMultiplication()', 'Calls parseUnary(), gets IdentExpr(d). Returns d'],
+                    ['parseAddition()', 'Builds BinaryExpr((a + b*c) - d). Done.'],
+                ].map(([call, desc]) => (
+                    <div class="flex px-5 py-2.5">
+                        <code class="font-mono text-xs text-monk-accent w-56 flex-shrink-0 whitespace-pre">{call}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The key moment: when <code class="bg-stone-100 px-1 rounded text-xs">parseAddition</code> asks for the right operand of <code class="bg-stone-100 px-1 rounded text-xs">+</code>, it calls <code class="bg-stone-100 px-1 rounded text-xs">parseMultiplication</code>, which gobbles up the <code class="bg-stone-100 px-1 rounded text-xs">b * c</code> into a single node. By the time control returns to <code class="bg-stone-100 px-1 rounded text-xs">parseAddition</code>, the multiplication is already done and wrapped in a subtree.
+        </p>
+    </section>
+
+    <!-- Precedence climbing vs Pratt -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Precedence climbing vs Pratt parsing.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            What we described above — one function per level, each calling the next — is called <strong>precedence climbing</strong>. It's the most natural approach in recursive descent parsers.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            An alternative is <strong>Pratt parsing</strong> (also called "top-down operator precedence"). Instead of one function per level, you have a single function with a precedence parameter. Operators register their binding power in a table, and the parser uses the table to decide when to stop.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6 text-sm">
+            <div class="divide-y divide-monk-border">
+                <div class="flex px-5 py-3">
+                    <span class="font-semibold w-48">Precedence climbing</span>
+                    <span class="text-monk-muted">13 functions, each trivially simple. Easy to read, easy to debug. Monk uses this.</span>
+                </div>
+                <div class="flex px-5 py-3">
+                    <span class="font-semibold w-48">Pratt parsing</span>
+                    <span class="text-monk-muted">1 function, driven by a table. More compact. Harder to step through in a debugger.</span>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Both produce identical trees. The difference is code organization, not output. Monk chose precedence climbing because each level is a simple function you can set a breakpoint in. When something parses wrong, you know exactly which level to look at.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Precedence is encoded as tree depth. Higher-precedence operators end up deeper and evaluate first.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Monk has 13 precedence levels, from assignment (loosest) to call/index/property access (tightest).</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Left-associativity means <code class="bg-stone-100 px-1 rounded text-xs">a - b - c</code> = <code class="bg-stone-100 px-1 rounded text-xs">(a - b) - c</code>. Implemented with a while loop that builds left-to-right.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Recursive descent with precedence climbing: one function per level, each calling the next. The call stack mirrors the tree depth.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-2-parser/what-is-a-parser"
+        prevLabel="Prev: What Is a Parser?"
+        nextHref="/phase-2-parser/monks-ast"
+        nextLabel="Next: Designing Monk's AST"
+    />
+
+</LessonLayout>

@@ -1,0 +1,225 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Value Semantics" lessonNumber="3.3" section="Phase 3">
+
+    <LessonHeader lessonNumber="3.3" title="Value Semantics" description="Everything copies. Assignment copies. Function args copy. Why Monk chose this and what it means.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The core idea -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Your data is yours.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In Monk, when you assign a value to a variable, you get your own copy. Nobody else can change it. No function you call can modify your data behind your back. No closure can silently mutate what you thought was frozen.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is called <strong>value semantics</strong>. It means variables hold values, not references to values. When you copy a variable, you get a completely independent clone.
+        </p>
+
+        <Code code={`let a = [1, 2, 3]
+let b = a           // b is a COPY of a
+append(b, 4)
+show(a)              // [1, 2, 3] -- unchanged
+show(b)              // [1, 2, 3, 4]`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The array <code class="bg-stone-100 px-1 rounded text-xs">b</code> is a completely separate array. Appending to <code class="bg-stone-100 px-1 rounded text-xs">b</code> does not touch <code class="bg-stone-100 px-1 rounded text-xs">a</code>. This is how numbers already work in every language -- <code class="bg-stone-100 px-1 rounded text-xs">let x = 5; let y = x; y = 10</code> doesn't change <code class="bg-stone-100 px-1 rounded text-xs">x</code>. Monk extends this intuition to every type.
+        </p>
+    </section>
+
+    <!-- Comparison with reference semantics -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The alternative: reference semantics.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In JavaScript or Python, variables for objects and arrays are <strong>labels</strong> pointing to data in memory. Multiple labels can point to the same data. Change the data through one label, and every other label sees the change.
+        </p>
+
+        <Code code={`// JavaScript -- reference semantics
+let a = [1, 2, 3];
+let b = a;           // b points to the SAME array
+b.push(4);
+console.log(a);      // [1, 2, 3, 4] -- surprise!`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            This is convenient when you want shared state. But it's a source of subtle bugs when you don't. You pass an array to a function, and the function modifies it. You store a value in a closure, and the outer scope changes it. Debugging becomes archaeology -- tracing who changed what and when.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk's philosophy: <strong>explicit over implicit</strong>. If sharing is needed, it should be opt-in, not the default. For now, everything copies.
+        </p>
+    </section>
+
+    <!-- The three copy rules -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Three rules, no exceptions.</h2>
+
+        <div class="space-y-4 mb-6">
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-accent font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Assignment = deep copy.</p>
+                    <p class="text-monk-muted text-sm"><code class="bg-stone-100 px-1 rounded text-xs">let b = a</code> creates a fully independent clone of <code class="bg-stone-100 px-1 rounded text-xs">a</code>. If <code class="bg-stone-100 px-1 rounded text-xs">a</code> is an array of records, every record is copied too. All the way down.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-blueLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-blue font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Function arguments = deep copy.</p>
+                    <p class="text-monk-muted text-sm">When you call <code class="bg-stone-100 px-1 rounded text-xs">process(data)</code>, the function receives its own copy. The original <code class="bg-stone-100 px-1 rounded text-xs">data</code> cannot be modified by <code class="bg-stone-100 px-1 rounded text-xs">process</code>.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-greenLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-green font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Closures = deep copy of captured variables.</p>
+                    <p class="text-monk-muted text-sm">When a closure is created, it snapshots every variable it references. Later changes to the original variables don't affect the closure, and vice versa.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How deep copy works -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">How deep copy works under the hood.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The runtime provides a <code class="bg-stone-100 px-1 rounded text-xs">monk_deep_copy()</code> function. When called on a MonkValue, it checks the tag and decides what to do:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-green flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="text-sm"><strong>Int, float, bool, none:</strong> return a copy of the struct. These values live inline in the union, so copying the struct is enough. Cheap.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-amber flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="text-sm"><strong>String:</strong> allocate new memory, copy the bytes. The new MonkValue points to a fresh heap buffer.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-accent flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="text-sm"><strong>Array:</strong> allocate a new array, then deep-copy every element. If the array contains records, those records are copied too. Recursive.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-blue flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="text-sm"><strong>Record:</strong> allocate a new record, deep-copy every field value. Same recursive approach.</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Similarly, <code class="bg-stone-100 px-1 rounded text-xs">monk_free()</code> walks the same structure in reverse -- freeing nested heap allocations before freeing the parent. No value is leaked.
+        </p>
+    </section>
+
+    <!-- Deep const -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Deep const: freezing all the way down.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk has two variable keywords: <code class="bg-stone-100 px-1 rounded text-xs">let</code> (mutable) and <code class="bg-stone-100 px-1 rounded text-xs">const</code> (immutable). But Monk's <code class="bg-stone-100 px-1 rounded text-xs">const</code> goes deeper than most languages.
+        </p>
+
+        <Code code={`const config = { host: "localhost", port: 8080 }
+config.port = 9090   // ERROR: config is const`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            In JavaScript, <code class="bg-stone-100 px-1 rounded text-xs">const</code> prevents reassigning the variable but not mutating the object it points to. In Monk, <code class="bg-stone-100 px-1 rounded text-xs">const</code> freezes both the variable <strong>and</strong> its contents. The record's fields cannot be changed either. This is sometimes called "deep const" or "transitive immutability."
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <code class="bg-stone-100 px-1 rounded text-xs">let</code> means fully mutable -- the variable can be reassigned, and its contents can be modified.
+        </p>
+    </section>
+
+    <!-- The tradeoff -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The tradeoff: correctness vs. performance.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Deep copying everything is not free. Copying an array of 1,000 elements means allocating memory for 1,000 new elements and copying each one. If those elements are records, every record is cloned too.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Why accept this cost?
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Deterministic behavior.</strong> No spooky action at a distance. If a function doesn't touch a variable, the variable doesn't change. Period.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>No garbage collector.</strong> Values are freed when they go out of scope. The C stack handles the lifetime. No GC pauses, no reference counting overhead.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Simplicity.</strong> The ownership model is trivial: whoever holds the value owns it. No shared ownership, no cycles, no weak references.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Future optimizations like <strong>escape analysis</strong> (skip the copy if the original is never used again) and <strong>copy-on-write</strong> (share until someone mutates) can be added later without changing the language semantics. The program behaves the same -- it just gets faster.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>No garbage collector. No reference counting.</strong> Values are copied, used, and freed when they go out of scope. The C stack handles the rest.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Value semantics means assignment, function calls, and closures all produce independent copies.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Deep copy is recursive: arrays of records copy every record, all the way down.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><code class="bg-stone-100 px-1 rounded text-xs">const</code> freezes the variable AND its contents. <code class="bg-stone-100 px-1 rounded text-xs">let</code> is fully mutable.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">The tradeoff is performance (more copying) for correctness (no aliasing bugs) and simplicity (no GC).</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-3-runtime/values-in-memory"
+        prevLabel="Prev: Values and Types in Memory"
+        nextHref="/phase-3-runtime/builtins"
+        nextLabel="Next: Built-in Functions"
+    />
+
+</LessonLayout>

@@ -1,0 +1,145 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+---
+
+<LessonLayout title="References & Further Reading" lessonNumber="3.6" section="Phase 3">
+
+    <LessonHeader lessonNumber="3.6" title="References & Further Reading" description="C runtime design, tagged unions, value semantics, and setjmp/longjmp resources.">
+        <TagBadge variant="links">links</TagBadge>
+        <TagBadge variant="default">5 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Primary -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The essential reads.</h2>
+
+        <div class="space-y-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">C Interfaces and Implementations</h3>
+                        <p class="text-monk-muted text-sm mt-1">by David R. Hanson</p>
+                        <p class="text-monk-muted text-sm mt-2">The definitive book on building reusable C components. Covers tagged unions, memory management, exception handling with setjmp/longjmp, and arena allocation. Chapters 4 (Exceptions and Assertions) and 5 (Memory Management) map directly to what Monk's runtime does.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">Crafting Interpreters -- Chapters 7-11</h3>
+                        <p class="text-monk-muted text-sm mt-1">by Robert Nystrom</p>
+                        <p class="text-monk-muted text-sm mt-2">Nystrom builds a tree-walking evaluator with a tagged value type in Java, then a bytecode VM with a C value representation. Monk skips the tree-walking step and goes straight to C, but the value representation concepts are the same. Good for comparison.</p>
+                        <a href="https://craftinginterpreters.com/evaluating-expressions.html" class="text-monk-accent text-sm hover:underline mt-2 inline-block">craftinginterpreters.com/evaluating-expressions.html</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Why these two?</strong> Hanson teaches the C techniques (tagged unions, setjmp). Nystrom teaches how those techniques apply to language runtimes. Together they cover the theory and the practice behind Monk's runtime.</p>
+        </InsightBox>
+    </section>
+
+    <!-- setjmp/longjmp -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">setjmp/longjmp deep dives.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">C Standard Library: setjmp.h</h3>
+                <p class="text-monk-muted text-sm mt-2">The official specification. Dry but precise. Understand the rules: what state is saved, what happens to local variables, when the behavior is undefined. Essential reading before using setjmp in production.</p>
+                <a href="https://en.cppreference.com/w/c/program/setjmp" class="text-monk-accent text-sm hover:underline mt-2 inline-block">cppreference.com/w/c/program/setjmp</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Exceptions in C with setjmp/longjmp</h3>
+                <p class="text-monk-muted text-sm mt-2">Various blog posts and tutorials walk through building a try/catch mechanism in C using setjmp. Search for "exceptions in C setjmp" -- the patterns are well-documented and Monk's implementation follows the standard approach.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Value semantics -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Value semantics and memory models.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Sean Parent -- "Value Semantics and Concepts-Based Polymorphism"</h3>
+                <p class="text-monk-muted text-sm mt-2">A C++ talk, but the core idea transcends languages: values are independent, references create coupling. Parent makes the case for value semantics as the default, which is exactly what Monk does. The talk clarifies why "no shared mutable state" simplifies everything.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Swift's Value Types</h3>
+                <p class="text-monk-muted text-sm mt-2">Swift uses value semantics for structs and copy-on-write for collections. Monk's approach is simpler (always deep copy, no COW yet), but Swift's documentation explains the motivation well. Good for understanding where Monk might optimize in the future.</p>
+                <a href="https://developer.apple.com/swift/blog/?id=10" class="text-monk-accent text-sm hover:underline mt-2 inline-block">developer.apple.com/swift/blog/?id=10</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Runtime design inspiration -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Runtime design inspiration.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go's runtime package</h3>
+                <p class="text-monk-muted text-sm mt-2">Go's runtime is much larger than Monk's (goroutines, GC, reflection), but the built-in functions (<code class="bg-stone-100 px-1 rounded text-xs">len</code>, <code class="bg-stone-100 px-1 rounded text-xs">append</code>, <code class="bg-stone-100 px-1 rounded text-xs">copy</code>, <code class="bg-stone-100 px-1 rounded text-xs">make</code>) show how a language exposes runtime capabilities as built-ins. Monk's approach is structurally similar, just in C.</p>
+                <a href="https://pkg.go.dev/runtime" class="text-monk-accent text-sm hover:underline mt-2 inline-block">pkg.go.dev/runtime</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">musl libc source</h3>
+                <p class="text-monk-muted text-sm mt-2">A clean, readable implementation of the C standard library. If you want to see how production C libraries implement string functions, math functions, or setjmp -- musl is the best starting point. Much more readable than glibc.</p>
+                <a href="https://musl.libc.org/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">musl.libc.org</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Reading order -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Suggested reading order.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Crafting Interpreters Ch. 7-11</strong> -- understand how a language runtime represents values and evaluates expressions. Even though Monk compiles instead of interprets, the value representation is the same.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>C Interfaces and Implementations Ch. 4-5</strong> -- the C techniques behind Monk's runtime: exceptions and memory management.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>setjmp.h reference</strong> -- know the rules before you use the tool.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>Sean Parent's talk</strong> -- for the philosophical grounding on why value semantics is worth the cost.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">5</span></div>
+                <p class="text-sm"><strong>musl source</strong> -- only if you're curious how professional C libraries are built. Not required for Monk.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-3-runtime/error-handling"
+        prevLabel="Prev: Error Handling"
+        nextHref="/phase-4-codegen/what-is-codegen"
+        nextLabel="Next: What Is Code Generation?"
+    />
+
+</LessonLayout>

@@ -1,0 +1,171 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+---
+
+<LessonLayout title="References & Further Reading" lessonNumber="5.3" section="Phase 5">
+
+    <LessonHeader lessonNumber="5.3" title="References & Further Reading" description="CLI design, Go tooling, and compilation pipeline resources.">
+        <TagBadge variant="links">links</TagBadge>
+        <TagBadge variant="default">5 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- CLI design -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">CLI design principles.</h2>
+
+        <div class="space-y-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">Command Line Interface Guidelines</h3>
+                        <p class="text-monk-muted text-sm mt-1">clig.dev</p>
+                        <p class="text-monk-muted text-sm mt-2">The best single resource on CLI design. Covers conventions for flags, output, errors, exit codes, colors, and help text. Written by practitioners, not academics. If you read one thing on this list, read this.</p>
+                        <a href="https://clig.dev/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">clig.dev</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">12 Factor CLI Apps</h3>
+                        <p class="text-monk-muted text-sm mt-1">by Jeff Dickey</p>
+                        <p class="text-monk-muted text-sm mt-2">Adapts the 12-factor app methodology to CLI tools. Covers configuration, error handling, help text, and distribution. The "prefer flags over env vars, prefer env vars over config files" hierarchy is useful for any CLI.</p>
+                        <a href="https://medium.com/@jdxcode/12-factor-cli-apps-dd3c227a0e46" class="text-monk-accent text-sm hover:underline mt-2 inline-block">medium.com/@jdxcode/12-factor-cli-apps</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Monk's CLI follows the Unix tradition:</strong> do one thing, use exit codes, write errors to stderr, produce machine-parseable output. The resources above codify these conventions.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Go tooling -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Go standard library for CLIs.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go flag package</h3>
+                <p class="text-monk-muted text-sm mt-2">The standard library's flag parsing. No framework needed for simple CLIs. Handles <code class="bg-stone-100 px-1 rounded text-xs">-o</code>, <code class="bg-stone-100 px-1 rounded text-xs">-v</code>, boolean flags, string flags, and usage text. Monk uses this for the <code class="bg-stone-100 px-1 rounded text-xs">-o</code> output flag.</p>
+                <a href="https://pkg.go.dev/flag" class="text-monk-accent text-sm hover:underline mt-2 inline-block">pkg.go.dev/flag</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go embed package</h3>
+                <p class="text-monk-muted text-sm mt-2">Lets you bake files into the compiled Go binary at build time. Monk uses this to embed the C runtime (<code class="bg-stone-100 px-1 rounded text-xs">runtime.h</code> and <code class="bg-stone-100 px-1 rounded text-xs">runtime.c</code>) so users get a single binary with no external dependencies.</p>
+                <a href="https://pkg.go.dev/embed" class="text-monk-accent text-sm hover:underline mt-2 inline-block">pkg.go.dev/embed</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go os/exec package</h3>
+                <p class="text-monk-muted text-sm mt-2">Used to invoke the system C compiler. Provides process creation, stdin/stdout/stderr piping, and exit code retrieval. The interface between the Go compiler and the C compiler is just a subprocess call.</p>
+                <a href="https://pkg.go.dev/os/exec" class="text-monk-accent text-sm hover:underline mt-2 inline-block">pkg.go.dev/os/exec</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Compilation pipelines -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Compilation pipeline design.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">GCC Compilation Stages</h3>
+                <p class="text-monk-muted text-sm mt-2">GCC's pipeline (preprocessing, compilation, assembly, linking) is the reference model for how compilation works. Understanding GCC's stages helps explain why Monk's two-phase approach (Monk-to-C, then C-to-binary) is natural -- it's just inserting a step before GCC's own pipeline.</p>
+                <a href="https://gcc.gnu.org/onlinedocs/gcc/Overall-Options.html" class="text-monk-accent text-sm hover:underline mt-2 inline-block">gcc.gnu.org/onlinedocs/gcc/Overall-Options.html</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Clang Driver Architecture</h3>
+                <p class="text-monk-muted text-sm mt-2">Clang's driver is the CLI that orchestrates compilation. Its architecture documentation shows how a production compiler handles the same problems Monk solves: finding the right tools, managing temp files, chaining pipeline stages. A more complex version of the same pattern.</p>
+                <a href="https://clang.llvm.org/docs/DriverInternals.html" class="text-monk-accent text-sm hover:underline mt-2 inline-block">clang.llvm.org/docs/DriverInternals.html</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Inspiration -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Inspiration for the build/run split.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Rust's Cargo</h3>
+                <p class="text-monk-muted text-sm mt-2">Cargo's <code class="bg-stone-100 px-1 rounded text-xs">cargo build</code> and <code class="bg-stone-100 px-1 rounded text-xs">cargo run</code> established the pattern that Monk follows. Build produces an artifact. Run produces an artifact, executes it, and cleans up. The separation is about intent: are you producing something to ship, or just testing an idea?</p>
+                <a href="https://doc.rust-lang.org/cargo/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">doc.rust-lang.org/cargo</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go's go build / go run</h3>
+                <p class="text-monk-muted text-sm mt-2">Go itself uses the same split. <code class="bg-stone-100 px-1 rounded text-xs">go build</code> produces a binary. <code class="bg-stone-100 px-1 rounded text-xs">go run</code> compiles to a temp binary, runs it, and discards it. Monk's implementation mirrors this approach -- unsurprising, since Monk's compiler is written in Go.</p>
+                <a href="https://pkg.go.dev/cmd/go" class="text-monk-accent text-sm hover:underline mt-2 inline-block">pkg.go.dev/cmd/go</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Build system history -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Build systems and history.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Make -- the original build orchestrator</h3>
+                <p class="text-monk-muted text-sm mt-2">Before compilers had built-in build commands, Make handled the pipeline: which files to compile, in what order, with what flags. Understanding Make's dependency graph model explains why modern compilers internalize this logic. Monk's CLI does what a Makefile would have done -- but the user never writes one.</p>
+                <a href="https://www.gnu.org/software/make/manual/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">gnu.org/software/make/manual</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">"Recursive Make Considered Harmful"</h3>
+                <p class="text-monk-muted text-sm mt-1">by Peter Miller</p>
+                <p class="text-monk-muted text-sm mt-2">A classic paper on build system design. While Monk is too small to have build system problems, the paper explains why languages eventually absorb their build tools. Monk starts where Go and Rust ended up: the compiler IS the build system.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Reading order -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Suggested reading order.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Command Line Interface Guidelines</strong> -- the conventions Monk follows. Read this first to understand why the CLI is shaped the way it is.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Go flag and embed packages</strong> -- the two standard library packages that do the heavy lifting in Monk's CLI.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>GCC compilation stages</strong> -- for understanding the pipeline that Monk's generated C enters after the Monk compiler is done.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>Cargo and go build</strong> -- see how mature tools handle the same build/run split.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">5</span></div>
+                <p class="text-sm"><strong>Clang driver internals</strong> -- only if you're curious about how a production compiler CLI handles hundreds of flags and targets. Not needed for Monk's scale.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-5-cli/the-pipeline"
+        prevLabel="Prev: The Compilation Pipeline"
+    />
+
+</LessonLayout>

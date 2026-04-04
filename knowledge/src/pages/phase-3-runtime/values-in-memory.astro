@@ -1,0 +1,267 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Values and Types in Memory" lessonNumber="3.2" section="Phase 3">
+
+    <LessonHeader lessonNumber="3.2" title="Values and Types in Memory" description="MonkValue: the tagged union that represents every value in Monk. How types exist at runtime.">
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">12 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The problem -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">One variable, many shapes.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In Monk, a variable can hold an integer, a float, a string, a boolean, none, an array, a record, or a function. All of these are different shapes of data with different sizes in memory.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            C doesn't work this way. In C, every variable has a fixed type decided at compile time. An <code class="bg-stone-100 px-1 rounded text-xs">int</code> is always an int. A <code class="bg-stone-100 px-1 rounded text-xs">char*</code> is always a pointer to characters. There's no "this could be anything" type.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            So how do you represent Monk values in C? You build a container that can hold any of them, and you attach a label that says which one it's currently holding.
+        </p>
+    </section>
+
+    <!-- The tagged union concept -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The tagged union: a box with a label.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Imagine a box that can hold exactly one item at a time: a book, a mug, or a phone. The box is always the same size (big enough for the largest item). A sticker on the outside tells you what's currently inside.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            That's a tagged union. The "tag" is the sticker (an enum saying the type). The "union" is the box (memory that can hold any of the possible values). Together, they form a single structure that represents any Monk value.
+        </p>
+
+        <!-- Visual diagram -->
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-6">
+            <p class="text-xs text-monk-muted mb-4 font-semibold uppercase tracking-wide">MonkValue structure</p>
+            <div class="flex flex-col gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-24 text-right text-xs text-monk-muted font-semibold">tag</div>
+                    <div class="flex-1 bg-monk-accentLight border border-monk-accent/20 rounded-lg px-4 py-2.5 font-mono text-xs text-monk-accent">
+                        MONK_INT | MONK_FLOAT | MONK_STRING | MONK_BOOL | MONK_NONE | MONK_ARRAY | MONK_RECORD | MONK_FUNCTION
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="w-24 text-right text-xs text-monk-muted font-semibold">data</div>
+                    <div class="flex-1 border border-monk-border rounded-lg overflow-hidden">
+                        <div class="grid grid-cols-4 gap-0 divide-x divide-monk-border text-center">
+                            <div class="px-2 py-2.5 bg-monk-greenLight text-xs">int64</div>
+                            <div class="px-2 py-2.5 bg-monk-blueLight text-xs">double</div>
+                            <div class="px-2 py-2.5 bg-monk-amberLight text-xs">char*</div>
+                            <div class="px-2 py-2.5 bg-stone-50 text-xs">bool</div>
+                        </div>
+                        <div class="grid grid-cols-3 gap-0 divide-x divide-monk-border text-center border-t border-monk-border">
+                            <div class="px-2 py-2.5 bg-stone-50 text-xs">MonkArray*</div>
+                            <div class="px-2 py-2.5 bg-stone-50 text-xs">MonkRecord*</div>
+                            <div class="px-2 py-2.5 bg-stone-50 text-xs">MonkFunction*</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <p class="text-xs text-monk-muted mt-3">Only ONE of the data fields is active at a time. The tag tells you which one.</p>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Every Monk value at runtime is a MonkValue.</strong> The integer <code class="bg-stone-100 px-1 rounded text-xs">42</code>, the string <code class="bg-stone-100 px-1 rounded text-xs">"hello"</code>, the array <code class="bg-stone-100 px-1 rounded text-xs">[1, 2, 3]</code> -- same struct, different tag.</p>
+        </InsightBox>
+    </section>
+
+    <!-- How it works -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Reading and writing a tagged union.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            To create a MonkValue holding the integer 42, you set the tag to <code class="bg-stone-100 px-1 rounded text-xs">MONK_INT</code> and store 42 in the integer field of the union. In conceptual C:
+        </p>
+
+        <Code code={`// Creating a MonkValue for the integer 42
+MonkValue v;
+v.tag = MONK_INT;
+v.data.integer = 42;`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            To read it back, you check the tag first, then access the right field:
+        </p>
+
+        <Code code={`// Reading the value back
+if (v.tag == MONK_INT) {
+    int64_t n = v.data.integer;  // safe: tag confirms it's an int
+}`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Reading the wrong field (e.g., reading <code class="bg-stone-100 px-1 rounded text-xs">data.string</code> when the tag is <code class="bg-stone-100 px-1 rounded text-xs">MONK_INT</code>) is undefined behavior in C. The tag is your safety net. Always check it.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In practice, the runtime provides helper functions so you never construct MonkValues by hand. You call something like <code class="bg-stone-100 px-1 rounded text-xs">monk_int(42)</code> which returns a properly tagged MonkValue.
+        </p>
+    </section>
+
+    <!-- Why a union, not a struct -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Why a union, not a struct with all fields?</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            You might wonder: why not just put all fields in one struct? Have an int field, a float field, a string field, and so on. Use whichever one you need.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Memory. A struct allocates space for <strong>every</strong> field simultaneously. If you have 8 fields, you pay for all 8 even when you're only using one.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A union overlaps all fields in the same memory. It's only as large as its <strong>largest</strong> member. Since a MonkValue is only one type at a time, a union wastes nothing.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-5 mb-4">
+            <div class="grid grid-cols-2 gap-6 text-sm">
+                <div>
+                    <p class="font-semibold mb-2">Struct (wasteful)</p>
+                    <div class="space-y-1 font-mono text-xs text-monk-muted">
+                        <div class="bg-monk-greenLight px-2 py-1 rounded">int64: 8 bytes</div>
+                        <div class="bg-monk-blueLight px-2 py-1 rounded">double: 8 bytes</div>
+                        <div class="bg-monk-amberLight px-2 py-1 rounded">char*: 8 bytes</div>
+                        <div class="bg-stone-100 px-2 py-1 rounded">bool: 1 byte</div>
+                        <div class="bg-stone-100 px-2 py-1 rounded">...</div>
+                    </div>
+                    <p class="text-xs text-monk-muted mt-2">Total: sum of all fields</p>
+                </div>
+                <div>
+                    <p class="font-semibold mb-2">Union (efficient)</p>
+                    <div class="relative">
+                        <div class="space-y-0 font-mono text-xs text-monk-muted">
+                            <div class="bg-monk-greenLight px-2 py-1 rounded-t border-b border-white/50">int64: 8 bytes</div>
+                            <div class="bg-monk-blueLight px-2 py-1 border-b border-white/50 opacity-40">double: 8 bytes (overlapped)</div>
+                            <div class="bg-monk-amberLight px-2 py-1 border-b border-white/50 opacity-40">char*: 8 bytes (overlapped)</div>
+                            <div class="bg-stone-100 px-2 py-1 rounded-b opacity-40">bool: 1 byte (overlapped)</div>
+                        </div>
+                    </div>
+                    <p class="text-xs text-monk-muted mt-2">Total: size of largest field</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stack vs heap -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What lives on the stack vs. the heap.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The MonkValue struct itself always lives on the stack (or inline in an array). It's a fixed size. But some of the data it points to lives on the heap:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-green flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="font-semibold text-sm">Stack (inline in the union)</p>
+                    <p class="text-monk-muted text-xs">Integers (<code class="bg-stone-100 px-1 rounded text-xs">int64_t</code>), floats (<code class="bg-stone-100 px-1 rounded text-xs">double</code>), booleans (<code class="bg-stone-100 px-1 rounded text-xs">bool</code>), and none. These are small, fixed-size values that fit directly in the union.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-amber flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="font-semibold text-sm">Heap (pointer in the union)</p>
+                    <p class="text-monk-muted text-xs">Strings (<code class="bg-stone-100 px-1 rounded text-xs">char*</code>), arrays (<code class="bg-stone-100 px-1 rounded text-xs">MonkArray*</code>), records (<code class="bg-stone-100 px-1 rounded text-xs">MonkRecord*</code>), functions (<code class="bg-stone-100 px-1 rounded text-xs">MonkFunction*</code>). The union holds a pointer; the actual data is allocated on the heap.</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This matters because heap-allocated data needs to be freed when it's no longer used. The runtime's <code class="bg-stone-100 px-1 rounded text-xs">monk_free()</code> function checks the tag and, if the value points to heap data, frees it recursively.
+        </p>
+    </section>
+
+    <!-- The eight kinds -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The eight value kinds.</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm">
+            <div class="grid grid-cols-3 gap-0 divide-x divide-monk-border bg-monk-bg">
+                <div class="p-3 font-semibold">Tag</div>
+                <div class="p-3 font-semibold">C type</div>
+                <div class="p-3 font-semibold">Monk example</div>
+            </div>
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['MONK_INT', 'int64_t', '42'],
+                    ['MONK_FLOAT', 'double', '3.14'],
+                    ['MONK_STRING', 'char*', '"hello"'],
+                    ['MONK_BOOL', 'bool', 'true'],
+                    ['MONK_NONE', '(no data)', 'none'],
+                    ['MONK_ARRAY', 'MonkArray*', '[1, 2, 3]'],
+                    ['MONK_RECORD', 'MonkRecord*', '{ name: "Monk" }'],
+                    ['MONK_FUNCTION', 'MonkFunction*', '(x int) int { ... }'],
+                ].map(([tag, ctype, example]) => (
+                    <div class="grid grid-cols-3 gap-0 divide-x divide-monk-border">
+                        <div class="p-3 font-mono text-xs">{tag}</div>
+                        <div class="p-3 font-mono text-xs text-monk-muted">{ctype}</div>
+                        <div class="p-3 font-mono text-xs text-monk-muted">{example}</div>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm mt-4">
+            Note: <code class="bg-stone-100 px-1 rounded text-xs">MONK_NONE</code> uses no data at all. The tag alone is enough. It's the Monk equivalent of null, but explicit -- you always know when you're dealing with none.
+        </p>
+    </section>
+
+    <!-- Strings -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A note on strings.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk strings are heap-allocated, null-terminated, UTF-8 encoded. The <code class="bg-stone-100 px-1 rounded text-xs">char*</code> pointer in the union points to a dynamically allocated buffer on the heap.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            One consequence: getting the <code class="bg-stone-100 px-1 rounded text-xs">length</code> of a string counts UTF-8 codepoints, not bytes. The string "cafe" is 5 bytes in UTF-8 but <code class="bg-stone-100 px-1 rounded text-xs">length("cafe")</code> returns 4. This is an O(n) operation -- the runtime walks the string to count codepoints.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">MonkValue is a tagged union: a type tag plus a union of possible data fields. Only one field is active at a time.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Eight value kinds: int, float, string, bool, none, array, record, function.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Small values (int, float, bool) live inline in the union. Variable-size values (string, array, record) are heap-allocated, with a pointer in the union.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">A union is more memory-efficient than a struct because all fields overlap. You only pay for the largest one.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-3-runtime/why-a-runtime"
+        prevLabel="Prev: Why a Runtime Library?"
+        nextHref="/phase-3-runtime/value-semantics"
+        nextLabel="Next: Value Semantics"
+    />
+
+</LessonLayout>

@@ -1,0 +1,326 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import ExerciseBox from '../../components/ExerciseBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Building the Code Generator" lessonNumber="4.4" section="Phase 4">
+
+    <LessonHeader lessonNumber="4.4" title="Building the Code Generator" description="The emit pattern, temp variables, source mapping, and the bugs you will encounter.">
+        <TagBadge variant="build">build</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">20 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The emitter pattern -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The emitter: a struct with a string builder.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Think of the code generator as a writer at a typewriter. It has a blank page (a string builder) and types C code onto it line by line, indented properly. That's the emitter pattern.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The emitter struct holds a few things: the output buffer where C code accumulates, the current indentation level (incremented when entering a block, decremented when leaving), a counter for generating unique temp variable names, and a map of function names for hoisting.
+        </p>
+
+        <Code code={`// Pseudocode -- the emitter's shape
+Emitter {
+    output: StringBuilder
+    indent: int
+    tempCounter: int
+    functions: Map<string, string>  // monk name -> C name
+}
+
+emit(text):
+    output.write(indentSpaces + text + newline)
+
+emitNode(node):
+    switch node.type:
+        case NumberExpr:  return "monk_int(" + node.value + ")"
+        case StringExpr:  return "monk_string(\"" + node.value + "\")"
+        case BinaryExpr:  return emitBinary(node)
+        case VarDecl:     emitVarDecl(node)
+        case IfStmt:      emitIfStmt(node)
+        // ... one case per AST node type`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The key insight: some nodes are <strong>statements</strong> (they emit lines) and some are <strong>expressions</strong> (they return a C string to be embedded in a larger line). An <code class="bg-stone-100 px-1 rounded text-xs">IfStmt</code> emits multiple lines. A <code class="bg-stone-100 px-1 rounded text-xs">NumberExpr</code> returns <code class="bg-stone-100 px-1 rounded text-xs">"monk_int(42)"</code> that the caller embeds where needed.
+        </p>
+    </section>
+
+    <!-- Two-pass structure -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The two-pass structure in practice.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The top-level generate function orchestrates both passes:
+        </p>
+
+        <Code code={`// Pseudocode -- the two passes
+generate(program):
+    emit('#include "runtime.h"')
+    emit("")
+
+    // Pass 1: hoist functions
+    for each statement in program.statements:
+        if statement is VarDecl and value is FunctionExpr:
+            name = "_fn_" + statement.name
+            functions[statement.name] = name
+            emitFunction(name, statement.value)
+            emit("")
+
+    // Pass 2: emit main
+    emit("int main(int argc, char *argv[]) {")
+    indent++
+    emit("monk_init(argc, argv);")
+
+    for each statement in program.statements:
+        if statement is VarDecl and value is FunctionExpr:
+            continue  // already hoisted
+        emitNode(statement)
+
+    // Cleanup: free all top-level variables
+    for each variable declared in main:
+        emit("monk_free(" + variable + ");")
+    emit("return 0;")
+    indent--
+    emit("}")`} lang="javascript" />
+
+        <p class="text-monk-muted text-sm mt-4">
+            Pass 1 scans for function declarations and skips everything else. Pass 2 skips function declarations and emits everything else. Same AST, two different filters.
+        </p>
+    </section>
+
+    <!-- Temp variables -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Temp variables: when expressions need storage.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Some expressions can be emitted inline. <code class="bg-stone-100 px-1 rounded text-xs">monk_int(42)</code> doesn't need storage -- you just drop it into the surrounding expression. But compound expressions need intermediate results.
+        </p>
+
+        <Code code={`show(add(1, 2))`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            This cannot be emitted as a single C expression because <code class="bg-stone-100 px-1 rounded text-xs">add(1, 2)</code> returns a <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> that needs to be freed later. So the code generator breaks it into steps:
+        </p>
+
+        <Code code={`MonkValue _tmp_1 = _fn_add(monk_int(1), monk_int(2));
+monk_show(_tmp_1);
+monk_free(_tmp_1);`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The temp variable <code class="bg-stone-100 px-1 rounded text-xs">_tmp_1</code> holds the result so it can be passed to <code class="bg-stone-100 px-1 rounded text-xs">monk_show</code> and then freed. The name comes from incrementing the counter: <code class="bg-stone-100 px-1 rounded text-xs">_tmp_1</code>, <code class="bg-stone-100 px-1 rounded text-xs">_tmp_2</code>, <code class="bg-stone-100 px-1 rounded text-xs">_tmp_3</code>, and so on. The counter is global, so names never collide.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">A deeper nesting produces more temps:</p>
+
+        <Code code={`show(add(mul(2, 3), 4))`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">Becomes:</p>
+
+        <Code code={`MonkValue _tmp_1 = _fn_mul(monk_int(2), monk_int(3));
+MonkValue _tmp_2 = _fn_add(_tmp_1, monk_int(4));
+monk_show(_tmp_2);
+monk_free(_tmp_1);
+monk_free(_tmp_2);`} lang="c" />
+
+        <InsightBox>
+            <p class="text-sm">The temp counter is shared across the entire program. If the first expression uses <code class="bg-stone-100 px-1 rounded text-xs">_tmp_1</code> through <code class="bg-stone-100 px-1 rounded text-xs">_tmp_5</code>, the next expression starts at <code class="bg-stone-100 px-1 rounded text-xs">_tmp_6</code>. This guarantees uniqueness without any scope analysis.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Source mapping -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Source mapping: when C errors point to Monk.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When the compiled binary crashes, the error message should reference the original <code class="bg-stone-100 px-1 rounded text-xs">.monk</code> file, not the generated C. The C preprocessor has a directive for exactly this: <code class="bg-stone-100 px-1 rounded text-xs">#line</code>.
+        </p>
+
+        <Code code={`#line 7 "hello.monk"
+MonkValue x = monk_int(42);
+#line 8 "hello.monk"
+monk_show(x);`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The <code class="bg-stone-100 px-1 rounded text-xs">#line 7 "hello.monk"</code> directive tells the C compiler: "from here on, pretend we're on line 7 of hello.monk." If the C code on the next line triggers a warning, assertion failure, or runtime error, the reported location will be <code class="bg-stone-100 px-1 rounded text-xs">hello.monk:7</code> instead of <code class="bg-stone-100 px-1 rounded text-xs">output.c:23</code>.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This works because every AST node carries a <code class="bg-stone-100 px-1 rounded text-xs">Pos&#123;Line, Column&#125;</code> from the parser. Before emitting the C code for each statement, the code generator emits a <code class="bg-stone-100 px-1 rounded text-xs">#line</code> directive using that position. Cheap to generate, invaluable for debugging.
+        </p>
+    </section>
+
+    <!-- Memory safety pattern -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The memory safety pattern: a real bug story.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Early in Monk's development, the code generator had a use-after-free bug in compound assignments. The generated code for <code class="bg-stone-100 px-1 rounded text-xs">x += 1</code> looked like this:
+        </p>
+
+        <Code code={`// THE BUG: free before compute
+monk_free(x);
+x = monk_deep_copy(monk_add(x, monk_int(1)));
+// x was freed on the line above, but monk_add still reads it`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The problem: <code class="bg-stone-100 px-1 rounded text-xs">x</code> is freed before <code class="bg-stone-100 px-1 rounded text-xs">monk_add(x, monk_int(1))</code> executes. The <code class="bg-stone-100 px-1 rounded text-xs">monk_add</code> call reads freed memory. Sometimes it works (the memory hasn't been reused yet). Sometimes it corrupts data. Sometimes it segfaults. The worst kind of bug -- intermittent.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The fix established a pattern used everywhere in the code generator:
+        </p>
+
+        <Code code={`// THE FIX: compute, then free, then assign
+MonkValue _new = monk_add(x, monk_int(1));
+monk_free(x);
+x = _new;`} lang="c" />
+
+        <div class="space-y-3 mt-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Compute</strong> the new value while the old value is still alive.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Free</strong> the old value.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Assign</strong> the new value to the variable.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm mt-4">
+            This three-step pattern appears in every reassignment: plain assignment, compound operators (<code class="bg-stone-100 px-1 rounded text-xs">+=</code>, <code class="bg-stone-100 px-1 rounded text-xs">-=</code>), and loop variable updates. Get it wrong once, and you introduce silent memory corruption.
+        </p>
+    </section>
+
+    <!-- Integration testing -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Testing: compile it, run it, check the output.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            You might think code generator tests would check the generated C text. They don't. Checking text is brittle -- a renamed temp variable or a reordered <code class="bg-stone-100 px-1 rounded text-xs">#line</code> directive breaks the test even though the program is correct.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Instead, Monk's code generator tests are integration tests. Each test:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Takes a <code class="bg-stone-100 px-1 rounded text-xs">.monk</code> source string.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Parses it to an AST.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Generates C code.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Compiles the C with <code class="bg-stone-100 px-1 rounded text-xs">cc</code>.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">5</span></div>
+                <p class="text-sm">Runs the resulting binary.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">6</span></div>
+                <p class="text-sm">Checks that stdout matches the expected output.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This catches bugs that text-based tests miss: memory corruption (the binary crashes), wrong operator precedence (the output is a different number), and missing frees (detectable with sanitizers).
+        </p>
+
+        <Code code={`# Run the codegen tests
+go test ./codegen/ -v`} lang="bash" />
+
+        <p class="text-monk-muted text-sm mt-4">
+            Monk has 35 integration tests covering arithmetic, strings, control flow, functions, arrays, records, error handling, and nested expressions.
+        </p>
+    </section>
+
+    <!-- Common bugs -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Common bugs and how to spot them.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2">Use-after-free</p>
+                <p class="text-monk-muted text-sm">Freeing a value and then reading it. Symptom: intermittent crashes or garbage output. Fix: always compute-then-free-then-assign.</p>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2">Missing free</p>
+                <p class="text-monk-muted text-sm">Allocating a temp variable and never freeing it. Symptom: memory leak, no crash. Fix: every <code class="bg-stone-100 px-1 rounded text-xs">_tmp_N</code> must have a matching <code class="bg-stone-100 px-1 rounded text-xs">monk_free(_tmp_N)</code>.</p>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2">Double free</p>
+                <p class="text-monk-muted text-sm">Freeing the same value twice. Symptom: crash, usually immediate. Fix: track ownership. Once freed, the variable should never be freed again.</p>
+            </div>
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2">Wrong temp variable scope</p>
+                <p class="text-monk-muted text-sm">A temp variable allocated inside a loop but freed outside it (or vice versa). Symptom: variable not found at compile time, or freed too early. Fix: temps should be allocated and freed in the same scope.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Exercise -->
+    <section class="mb-14">
+        <ExerciseBox>
+            <p class="text-sm mb-3">
+                Write a test that compiles this Monk program, runs the binary, and verifies the output is <code class="bg-stone-100 px-1 rounded text-xs">7</code>:
+            </p>
+            <Code code={`let x = 1 + 2 * 3
+show(x)`} lang="javascript" />
+            <p class="text-sm mt-3">
+                This exercises the full pipeline: parsing (operator precedence ensures <code class="bg-stone-100 px-1 rounded text-xs">2 * 3</code> evaluates first), codegen (temp variables for the intermediate results), compilation (the generated C must be valid), and execution (the binary must print <code class="bg-stone-100 px-1 rounded text-xs">7</code>).
+            </p>
+        </ExerciseBox>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">The emitter is a struct with a string builder. It writes C code line by line, tracking indentation and temp variable names.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Temp variables hold intermediate expression results. A global counter ensures unique names.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><code class="bg-stone-100 px-1 rounded text-xs">#line</code> directives map C errors back to the original <code class="bg-stone-100 px-1 rounded text-xs">.monk</code> file. Every AST node carries its source position.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Tests are integration tests: parse, generate, compile, run, check stdout. Not text comparison.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-4-codegen/function-hoisting"
+        prevLabel="Prev: Function Hoisting"
+        nextHref="/phase-4-codegen/references"
+        nextLabel="Next: References"
+    />
+
+</LessonLayout>

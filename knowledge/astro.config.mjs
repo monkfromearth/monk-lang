@@ -25,6 +25,8 @@ const monkTheme = {
 };
 
 export default defineConfig({
+  site: 'https://monkfromearth.github.io',
+  base: '/monk-lang/',
   integrations: [solidJs(), tailwind()],
   output: 'static',
   markdown: {

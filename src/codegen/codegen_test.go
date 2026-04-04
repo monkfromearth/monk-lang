@@ -30,7 +30,10 @@ func runMonk(t *testing.T, source string) string {
 	binFile := filepath.Join(dir, "test")
 
 	// Find runtime path (relative to this test file)
-	runtimeDir, _ := filepath.Abs("../../runtime")
+	runtimeDir, err := filepath.Abs("../../runtime")
+	if err != nil {
+		t.Fatalf("failed to resolve runtime path: %v", err)
+	}
 	runtimeC := filepath.Join(runtimeDir, "runtime.c")
 
 	if err := os.WriteFile(cFile, []byte(cSource), 0644); err != nil {

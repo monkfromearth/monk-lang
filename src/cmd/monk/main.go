@@ -236,9 +236,11 @@ func findRuntime() string {
 		return "runtime"
 	}
 
-	// Try MONK_RUNTIME_DIR env var
+	// Try MONK_RUNTIME_DIR env var (validate it contains runtime.h)
 	if dir := os.Getenv("MONK_RUNTIME_DIR"); dir != "" {
-		return dir
+		if _, err := os.Stat(filepath.Join(dir, "runtime.h")); err == nil {
+			return dir
+		}
 	}
 
 	fatal("monk: cannot find runtime/ directory. Set MONK_RUNTIME_DIR or run from project root.")

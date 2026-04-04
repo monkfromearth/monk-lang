@@ -171,6 +171,36 @@ The learning course (`knowledge/`) teaches how the compiler is built. When any o
 
 Rule: if you change the spec or architecture and a knowledge/ page now says something wrong, fix the page in the same commit.
 
+## Workflow Rules (learned from building Phases 1-5)
+
+### Git Workflow
+- **Every phase gets its own branch.** `phase-N-name` branched from main.
+- **CodeRabbit review before merging.** Run `coderabbit review --plain -t committed --base main` on each branch.
+- **Fix ALL CodeRabbit findings** before merging. Don't skip any.
+- **Merge with `--no-ff`** so the merge commit is visible in history.
+- **Future: use PRs** instead of direct merges. Current direct-merge workflow is for first iteration speed only.
+
+### Code Quality
+- **Test before code.** Write the failing test first (Red), then the code (Green), then clean up (Refactor).
+- **Integration tests for codegen.** Codegen tests should compile AND run the generated binary, checking stdout. Not just "does the C look right."
+- **Design decision comments.** Every non-obvious choice in the code must have a comment linking back to the spec section.
+- **Update docs EVERY phase.** ROADMAP checkboxes, CLAUDE.md status, file tree. Not after — during the same commit.
+
+### Mistakes Made (don't repeat)
+- **Built a tree-walking interpreter** (Phases 3-4 originally) before realizing Monk is a compiler with no REPL. 2,792 lines deleted. Lesson: read the architecture doc before writing code.
+- **Chose Zig, then switched to Go.** The compiler is a text-in/text-out translator — Go's tree manipulation and strings are right for this. Zig/Rust are for the future native backend.
+- **AssignExpr instead of AssignStmt.** Assignment was an expression (interpreter thinking). Fixed: assignment is a statement in both the spec and the code.
+- **AST nodes had no position info.** Could not emit #line directives for source mapping. Fixed: every node embeds Pos{Line, Column}.
+- **Use-after-free in codegen.** `monk_free(old); old = monk_deep_copy(expr_using_old)` — freed before computing the new value. Fixed: compute first, then free.
+- **Made creative decisions without asking.** Sanskrit release names, FFI syntax, etc. Lesson: always present options for naming/branding/creative decisions.
+
+### Architecture Lessons
+- **Monk is a compiler.** Source → C → binary. No interpreter, no VM, no REPL.
+- **The C runtime is the foundation.** Generated code calls runtime functions. The runtime must be complete before codegen starts.
+- **Builtins are C functions,** not Go functions. The Go compiler generates calls to them; it doesn't implement them.
+- **Functions are hoisted** as static C functions above main(). Called directly by name, not through function pointers (closures deferred).
+- **`-o` flag controls output format.** `-o hello` = binary. `-o hello.c` = C source. Extension decides.
+
 ## Related Repos
 
 | Repo | Purpose | Status |

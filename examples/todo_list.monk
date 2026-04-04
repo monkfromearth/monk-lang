@@ -1,0 +1,70 @@
+// A simple todo list manager using records and arrays.
+// Demonstrates: records, arrays, for loops, string concatenation,
+// functions that return new data (value semantics).
+
+// Create a todo item
+let make_todo = (title string, done int) record {
+    return {title: title, done: done}
+}
+
+// Add a todo to the list (returns a new list — value semantics)
+let add_todo = (todos array, title string) array {
+    return append(todos, make_todo(title, 0))
+}
+
+// Mark a todo as done by index (returns a new list)
+// Since we can't modify records in place without creating new ones,
+// we rebuild the array
+let complete_todo = (todos array, index int) array {
+    let result = []
+    let i = 0
+    for todo in todos {
+        if i == index {
+            result = append(result, make_todo(todo.title, 1))
+        } else {
+            result = append(result, todo)
+        }
+        i += 1
+    }
+    return result
+}
+
+// Count completed todos
+let count_done = (todos array) int {
+    let count = 0
+    for todo in todos {
+        if todo.done == 1 { count += 1 }
+    }
+    return count
+}
+
+// Display the list
+let show_todos = (todos array) none {
+    show("--- Todo List ---")
+    let i = 0
+    for todo in todos {
+        let status = "[ ]"
+        if todo.done == 1 { status = "[x]" }
+        show(status + " " + to_string(i) + ". " + todo.title)
+        i += 1
+    }
+    show(to_string(count_done(todos)) + "/" + to_string(length(todos)) + " completed")
+    show("")
+}
+
+// Build the list
+let todos = []
+todos = add_todo(todos, "Design the language spec")
+todos = add_todo(todos, "Build the lexer")
+todos = add_todo(todos, "Build the parser")
+todos = add_todo(todos, "Write the C runtime")
+todos = add_todo(todos, "Implement code generation")
+
+show_todos(todos)
+
+// Complete some items
+todos = complete_todo(todos, 0)
+todos = complete_todo(todos, 1)
+todos = complete_todo(todos, 2)
+
+show_todos(todos)

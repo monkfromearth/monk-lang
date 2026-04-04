@@ -118,12 +118,15 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	switch target := s.Target.(type) {
 	case *syntax.IdentExpr:
 		name := mangleName(target.Name)
+		tmp := g.newTemp()
 		if s.Op == syntax.Equal {
-			g.emitLine("    monk_free(%s);\n", name)
-			g.emitLine("    %s = monk_deep_copy(%s);\n", name, value)
+			// Compute new value BEFORE freeing old (avoids use-after-free
+			// when the new value expression references the variable)
+			g.emitLine("    { MonkValue %s = monk_deep_copy(%s);\n", tmp, value)
+			g.emitLine("      monk_free(%s);\n", name)
+			g.emitLine("      %s = %s; }\n", name, tmp)
 		} else {
 			op := compoundToArith(s.Op)
-			tmp := g.newTemp()
 			g.emitLine("    { MonkValue %s = %s(%s, %s);\n", tmp, op, name, value)
 			g.emitLine("      monk_free(%s);\n", name)
 			g.emitLine("      %s = %s; }\n", name, tmp)

@@ -1,0 +1,12 @@
+for i in range(20) {
+    let n = i + 1
+    if n % 15 == 0 {
+        show("FizzBuzz")
+    } else if n % 3 == 0 {
+        show("Fizz")
+    } else if n % 5 == 0 {
+        show("Buzz")
+    } else {
+        show(to_string(n))
+    }
+}

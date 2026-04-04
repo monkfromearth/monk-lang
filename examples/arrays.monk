@@ -1,0 +1,14 @@
+let numbers = [1, 2, 3, 4, 5]
+
+show("Array: " + to_string(numbers))
+show("Length: " + to_string(length(numbers)))
+show("First: " + to_string(numbers[0]))
+
+let doubled = append(append(append(append(append([], numbers[0] * 2), numbers[1] * 2), numbers[2] * 2), numbers[3] * 2), numbers[4] * 2)
+show("Doubled: " + to_string(doubled))
+
+let sum = 0
+for x in numbers {
+    sum += x
+}
+show("Sum: " + to_string(sum))

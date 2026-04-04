@@ -1,0 +1,31 @@
+// The Collatz Conjecture: start with any positive integer.
+// If even, divide by 2. If odd, multiply by 3 and add 1.
+// The conjecture: you always reach 1.
+//
+// Demonstrates: while loops, conditionals, array building, modulo.
+// Nobody has proven this always terminates — but it does for every
+// number ever tested (up to 2^68).
+
+let collatz_sequence = (n int) array {
+    let seq = [n]
+    let current = n
+    while current != 1 {
+        if current % 2 == 0 {
+            current = current / 2
+        } else {
+            current = current * 3 + 1
+        }
+        seq = append(seq, current)
+    }
+    return seq
+}
+
+// Test a few starting numbers
+let numbers = [7, 27, 42, 1]
+
+for n in numbers {
+    let seq = collatz_sequence(n)
+    show("collatz(" + to_string(n) + "): " + to_string(length(seq)) + " steps")
+    show("  sequence: " + to_string(seq))
+    show("")
+}

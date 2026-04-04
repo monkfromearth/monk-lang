@@ -47,11 +47,15 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, `Usage: monk <command> [arguments]
 
 Commands:
-  build <file.monk> [-o output]   Compile to native binary
-  run <file.monk>                 Compile and run
-  check <file.monk>               Parse and validate
-  version                         Print version
-  help                            Show this help`)
+  build <file.monk> [-o output] [--emit-c]   Compile to native binary
+  run <file.monk> [--emit-c]                 Compile and run
+  check <file.monk>                          Parse and validate
+  version                                    Print version
+  help                                       Show this help
+
+Flags:
+  -o <output>    Set output binary name (build only)
+  --emit-c       Keep the generated .c file for inspection`)
 }
 
 // cmdBuild compiles a .monk file to a native binary.
@@ -62,12 +66,18 @@ func cmdBuild(args []string) {
 
 	sourceFile := args[0]
 	outputFile := ""
+	emitC := false
 
-	// Parse -o flag
+	// Parse flags
 	for i := 1; i < len(args); i++ {
-		if args[i] == "-o" && i+1 < len(args) {
-			outputFile = args[i+1]
-			i++
+		switch args[i] {
+		case "-o":
+			if i+1 < len(args) {
+				outputFile = args[i+1]
+				i++
+			}
+		case "--emit-c":
+			emitC = true
 		}
 	}
 
@@ -118,8 +128,12 @@ func cmdBuild(args []string) {
 		fatal("monk build: C compilation failed")
 	}
 
-	// Clean up .c file
-	os.Remove(cFile)
+	// Keep .c file if --emit-c was passed, otherwise clean up
+	if emitC {
+		fmt.Fprintf(os.Stderr, "monk: emitted %s\n", cFile)
+	} else {
+		os.Remove(cFile)
+	}
 
 	fmt.Fprintf(os.Stderr, "monk: built %s\n", outputFile)
 }
@@ -131,6 +145,12 @@ func cmdRun(args []string) {
 	}
 
 	sourceFile := args[0]
+	emitC := false
+	for _, a := range args[1:] {
+		if a == "--emit-c" {
+			emitC = true
+		}
+	}
 
 	// Read source
 	source, err := os.ReadFile(sourceFile)
@@ -146,6 +166,13 @@ func cmdRun(args []string) {
 
 	// Generate C
 	cSource := codegen.Generate(prog, sourceFile)
+
+	// If --emit-c, write the C to a file next to the source
+	if emitC {
+		cFile := strings.TrimSuffix(sourceFile, ".monk") + ".c"
+		os.WriteFile(cFile, []byte(cSource), 0644)
+		fmt.Fprintf(os.Stderr, "monk: emitted %s\n", cFile)
+	}
 
 	// Write temp files
 	dir, err := os.MkdirTemp("", "monk-run-*")

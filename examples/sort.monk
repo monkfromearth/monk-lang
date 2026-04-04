@@ -1,0 +1,36 @@
+// Bubble sort — the simplest sorting algorithm.
+// Demonstrates: nested while loops, array mutation, value semantics.
+//
+// Monk arrays use value semantics: when you pass an array to a function,
+// the function gets its own copy. The sorted result is returned as a
+// new array. The original is never modified.
+
+let bubble_sort = (arr array) array {
+    let n = length(arr)
+    let sorted = arr  // this is a COPY (value semantics)
+    let i = 0
+    while i < n {
+        let j = 0
+        while j < n - 1 - i {
+            if sorted[j] > sorted[j + 1] {
+                // Swap
+                let temp = sorted[j]
+                sorted[j] = sorted[j + 1]
+                sorted[j + 1] = temp
+            }
+            j += 1
+        }
+        i += 1
+    }
+    return sorted
+}
+
+let original = [64, 34, 25, 12, 22, 11, 90]
+let sorted = bubble_sort(original)
+
+show("Original: " + to_string(original))
+show("Sorted:   " + to_string(sorted))
+
+// Proof that value semantics work:
+// the original array is unchanged after sorting
+show("Original after sort: " + to_string(original))

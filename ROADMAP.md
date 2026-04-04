@@ -110,10 +110,10 @@ The compiler core. Walk the AST, emit C source code.
 
 ## Phase 5: CLI
 
-- [ ] `monk build <file>` — compile .monk → .c → native binary
-- [ ] `monk run <file>` — compile and run in one step (compile, execute, delete temp files)
-- [ ] `monk check <file>` — parse and validate without compiling
-- [ ] Error reporting with source file, line, column
+- [x] `monk build <file>` — compile .monk → .c → native binary
+- [x] `monk run <file>` — compile and run in one step (compile, execute, delete temp files)
+- [x] `monk check <file>` — parse and validate without compiling
+- [x] Error reporting with source file, line, column
 
 **Done when:** You can write a .monk file and run it with `monk run hello.monk`.
 
@@ -130,12 +130,12 @@ Static analysis pass over the AST, before code generation.
 - [ ] Type consistency on reassignment
 - [ ] Optional types (`int?`) — accepts base type or `none`
 - [ ] Custom type definitions: record types + type aliases (structural)
-- [ ] Structural typing validation for records
-- [ ] Element type enforcement in typed arrays
-- [ ] Function return type validation (every code path)
-- [ ] Definite assignment analysis
-- [ ] Numeric widening: int → float implicit
-- [ ] Typed record field enforcement (missing field = compile error)
+- [x] Structural typing validation for records
+- [x] Element type enforcement in typed arrays
+- [x] Function return type validation (every code path)
+- [x] Definite assignment analysis
+- [x] Numeric widening: int → float implicit
+- [x] Typed record field enforcement (missing field = compile error)
 
 **Done when:** Type errors are caught at compile time, not at runtime.
 

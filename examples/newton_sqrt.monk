@@ -1,0 +1,42 @@
+// Newton's method for square root approximation.
+// Demonstrates: recursion, float arithmetic, guard/throw, functions.
+//
+// The idea: to find sqrt(n), start with a guess and repeatedly improve it.
+// Each step: new_guess = (guess + n/guess) / 2
+// Stop when the guess is "close enough."
+
+let abs_val = (x float) float {
+    if x < 0.0 { return 0.0 - x }
+    return x
+}
+
+let sqrt_approx = (n float, guess float, depth int) float {
+    // Safety: bail after 100 iterations
+    if depth > 100 { throw "sqrt did not converge" }
+
+    // Check if guess is close enough
+    let diff = abs_val(guess * guess - n)
+    if diff < 0.0001 { return guess }
+
+    // Improve the guess
+    let better = (guess + n / guess) / 2.0
+    return sqrt_approx(n, better, depth + 1)
+}
+
+let my_sqrt = (n float) float {
+    if n < 0.0 { throw "cannot take sqrt of negative number" }
+    if n == 0.0 { return 0.0 }
+    return sqrt_approx(n, n / 2.0, 0)
+}
+
+// Test it
+show("sqrt(16) = " + to_string(my_sqrt(16.0)))
+show("sqrt(2) = " + to_string(my_sqrt(2.0)))
+show("sqrt(144) = " + to_string(my_sqrt(144.0)))
+
+// Handle the error case
+guard result = my_sqrt(0.0 - 1.0) against error {
+    show("Error: " + to_string(error))
+    result = 0.0 - 1.0
+}
+show("sqrt(-1) = " + to_string(result))

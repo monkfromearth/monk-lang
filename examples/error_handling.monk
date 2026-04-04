@@ -1,0 +1,15 @@
+let divide = (a int, b int) int {
+    if b == 0 { throw "division by zero" }
+    return a / b
+}
+
+guard result = divide(10, 3) against error {
+    result = -1
+}
+show("10 / 3 = " + to_string(result))
+
+guard result2 = divide(10, 0) against error {
+    show("Caught: " + to_string(error))
+    result2 = 0
+}
+show("10 / 0 = " + to_string(result2))

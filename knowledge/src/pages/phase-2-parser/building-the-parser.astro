@@ -1,0 +1,505 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import ExerciseBox from '../../components/ExerciseBox.astro';
+import StepNumber from '../../components/StepNumber.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Building the Parser" lessonNumber="2.4" section="Phase 2">
+
+    <LessonHeader lessonNumber="2.4" title="Building the Parser" description="Recursive descent, one grammar rule at a time. How to turn tokens into trees with TDD.">
+        <TagBadge variant="build">build</TagBadge>
+        <TagBadge variant="default">20 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The strategy -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">One function per grammar rule.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Recursive descent is a direct translation from grammar to code. Each grammar rule becomes a function. The function reads the tokens it expects, calls other rule functions for sub-parts, and returns an AST node.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The build order mirrors how you'd teach someone to read Monk: start with the simplest possible expressions, add operators, then statements, then compound structures. At every step, write a failing test first.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm">
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['1', 'Primary expressions', 'numbers, strings, booleans, identifiers, none'],
+                    ['2', 'Unary and binary expressions', 'operators with precedence climbing'],
+                    ['3', 'Call, index, property access', 'postfix operators on expressions'],
+                    ['4', 'Variable declarations', 'let/const with optional types'],
+                    ['5', 'Assignment', 'simple and compound (+=, -=, etc.)'],
+                    ['6', 'Control flow', 'if/else, while, for-in'],
+                    ['7', 'Functions', 'parameter lists, return types, bodies'],
+                    ['8', 'Arrays and records', 'collection literals with trailing commas'],
+                    ['9', 'Error handling', 'guard/against/throw'],
+                    ['10', 'Modules', 'use, export, type declarations'],
+                ].map(([num, name, details]) => (
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                            <span class="text-monk-accent font-bold text-xs">{num}</span>
+                        </div>
+                        <div class="flex-1">
+                            <span class="font-semibold">{name}</span>
+                            <span class="text-monk-muted text-xs ml-2">{details}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    </section>
+
+    <!-- The parser skeleton -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={1} color="accent" />
+            <h2 class="text-xl font-bold">The parser skeleton.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The parser holds a list of tokens (from the lexer), a cursor position, and the current token. Three helper methods do most of the work:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <code class="font-mono text-xs text-monk-accent font-semibold w-24 flex-shrink-0 mt-0.5">peek()</code>
+                <p class="text-monk-muted text-sm">Look at the current token without consuming it. Used to decide which parsing function to call.</p>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <code class="font-mono text-xs text-monk-accent font-semibold w-24 flex-shrink-0 mt-0.5">advance()</code>
+                <p class="text-monk-muted text-sm">Consume the current token and move to the next. Returns the consumed token.</p>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <code class="font-mono text-xs text-monk-accent font-semibold w-24 flex-shrink-0 mt-0.5">expect(type)</code>
+                <p class="text-monk-muted text-sm">Assert the current token is of the given type. If it matches, advance. If not, report a parse error with the token's position.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The main loop calls <code class="bg-stone-100 px-1 rounded text-xs">parseStatement()</code> repeatedly until it hits EOF, collecting statements into a Program node:
+        </p>
+
+        <Code code={`func Parse(tokens []Token) Program {
+    statements := []
+    while peek() is not EOF {
+        stmt := parseStatement()
+        statements = append(statements, stmt)
+    }
+    return Program{Statements: statements}
+}`} lang="go" />
+    </section>
+
+    <!-- Parsing expressions with precedence -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={2} color="accent" />
+            <h2 class="text-xl font-bold">Parsing expressions with precedence climbing.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The expression parser is a chain of functions. Each level handles its operators and delegates to the next level for operands. Start at the bottom and build up:
+        </p>
+
+        <Code code={`// The entry point: parse any expression
+func parseExpression() Expr {
+    return parseLogicalOr()  // start at the lowest precedence
+}
+
+// Each level follows the same pattern
+func parseLogicalOr() Expr {
+    left := parseLogicalAnd()  // next level up
+    while peek() is OR_OR or OR {
+        op := advance()
+        right := parseLogicalAnd()
+        left = BinaryExpr{Left: left, Op: op, Right: right}
+    }
+    return left
+}
+
+// ... 8 more levels with identical structure ...
+
+func parseMultiplication() Expr {
+    left := parseUnary()
+    while peek() is STAR or SLASH or PERCENT {
+        op := advance()
+        right := parseUnary()
+        left = BinaryExpr{Left: left, Op: op, Right: right}
+    }
+    return left
+}
+
+// Unary is different: it's right-associative and recursive
+func parseUnary() Expr {
+    if peek() is MINUS or BANG or TILDE or NOT {
+        op := advance()
+        operand := parseUnary()  // recurse, not loop
+        return UnaryExpr{Op: op, Operand: operand}
+    }
+    return parseCall()
+}`} lang="go" />
+
+        <InsightBox>
+            <p class="text-sm"><strong>Pattern recognition.</strong> Every binary level is the same structure: parse the higher level for the left side, loop while you see your operator, parse the higher level for the right side, wrap in BinaryExpr. Once you've written one, you've written them all.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Parsing primary expressions -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={3} color="accent" />
+            <h2 class="text-xl font-bold">Primary expressions: the base case.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            At the bottom of the precedence chain is <code class="bg-stone-100 px-1 rounded text-xs">parsePrimary()</code> — the function that handles literals, identifiers, and parenthesized groups. This is where recursion bottoms out.
+        </p>
+
+        <Code code={`func parsePrimary() Expr {
+    switch peek().Type {
+    case INT, FLOAT:
+        return NumberExpr{Value: advance().Literal}
+    case STRING:
+        return StringExpr{Value: advance().Literal}
+    case TRUE, FALSE:
+        return BoolExpr{Value: advance().Type == TRUE}
+    case NONE:
+        advance()
+        return NoneExpr{}
+    case IDENT:
+        return IdentExpr{Name: advance().Literal}
+    case LPAREN:
+        advance()  // consume (
+        // Could be a grouped expression or a function literal
+        // The parser needs to look ahead to decide
+        expr := parseExpression()
+        expect(RPAREN)
+        return GroupExpr{Expr: expr}
+    case LBRACKET:
+        return parseArrayLiteral()
+    case LBRACE:
+        return parseRecordLiteral()
+    default:
+        error("expected expression, got " + peek().Literal)
+    }
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The tricky case: <code class="bg-stone-100 px-1 rounded text-xs">(</code> could start a grouped expression like <code class="bg-stone-100 px-1 rounded text-xs">(a + b)</code> or a function literal like <code class="bg-stone-100 px-1 rounded text-xs">(x int) int &#123; ... &#125;</code>. The parser needs to look ahead — if there's an identifier followed by a type, it's a function. This is the kind of ambiguity that makes hand-written parsers earn their keep.
+        </p>
+    </section>
+
+    <!-- Parsing statements -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={4} color="accent" />
+            <h2 class="text-xl font-bold">Parsing statements: the top-level switch.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Statement parsing starts with a switch on the current token. Each keyword gets its own parsing function:
+        </p>
+
+        <Code code={`func parseStatement() Stmt {
+    switch peek().Type {
+    case LET, CONST:
+        return parseVarDecl()
+    case IF:
+        return parseIfStmt()
+    case WHILE:
+        return parseWhileStmt()
+    case FOR:
+        return parseForStmt()
+    case RETURN:
+        return parseReturnStmt()
+    case BREAK:
+        return parseBreakStmt()
+    case CONTINUE:
+        return parseContinueStmt()
+    case GUARD:
+        return parseGuardStmt()
+    case TYPE:
+        return parseTypeDecl()
+    case USE:
+        return parseUseStmt()
+    case EXPORT:
+        return parseExportStmt()
+    default:
+        // Not a statement keyword — try parsing as expression
+        return parseExpressionStatement()
+    }
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The default case is important. When the token doesn't match any statement keyword, it might be an expression statement (a function call, for example) or an assignment. The parser tries parsing an expression first, then checks if the next token is <code class="bg-stone-100 px-1 rounded text-xs">=</code> or a compound assignment operator.
+        </p>
+    </section>
+
+    <!-- Parsing variable declarations -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={5} color="accent" />
+            <h2 class="text-xl font-bold">Variable declarations: the details.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A variable declaration has several optional parts:
+        </p>
+
+        <Code code={`let x = 42              // no type
+let x int = 42          // with type
+let x int               // no initializer (will be zero-valued)
+const PI float = 3.14   // const with type`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The parsing logic handles each case:
+        </p>
+
+        <Code code={`func parseVarDecl() VarDecl {
+    isConst := advance().Type == CONST  // consume let/const
+    name := expect(IDENT)               // variable name
+
+    // Optional type annotation (space-separated)
+    var typeName string
+    if peek() is IDENT and peek() is not ASSIGN {
+        typeName = advance().Literal
+        // Check for array suffix [] or optional suffix ?
+        if peek() is LBRACKET { ... }
+        if peek() is QUESTION { ... }
+    }
+
+    // Optional initializer
+    var init Expr
+    if peek() is ASSIGN {
+        advance()  // consume =
+        init = parseExpression()
+    }
+
+    return VarDecl{
+        IsConst: isConst,
+        Name: name,
+        Type: typeName,
+        Init: init,
+    }
+}`} lang="go" />
+
+        <InsightBox>
+            <p class="text-sm"><strong>The type-vs-equals ambiguity.</strong> After the variable name, the next token could be a type (<code class="bg-stone-100 px-1 rounded text-xs">int</code>) or <code class="bg-stone-100 px-1 rounded text-xs">=</code>. Since type names are identifiers and <code class="bg-stone-100 px-1 rounded text-xs">=</code> is a distinct token, there's no real ambiguity — but the parser must check before consuming the identifier as a type.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Parsing functions -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={6} color="accent" />
+            <h2 class="text-xl font-bold">Parsing function expressions.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Function literals are the most complex expression to parse. They start with <code class="bg-stone-100 px-1 rounded text-xs">(</code>, which is ambiguous — is this a grouped expression or a function? The parser must look ahead.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The heuristic: if the token after <code class="bg-stone-100 px-1 rounded text-xs">(</code> is <code class="bg-stone-100 px-1 rounded text-xs">)</code> (empty params), or if there's an identifier followed by a type identifier, it's a function. Otherwise, it's a grouped expression.
+        </p>
+
+        <Code code={`// Function: (a int, b int) int { return a + b }
+// Parts:    params          return  body
+func parseFunctionExpr() FunctionExpr {
+    expect(LPAREN)
+
+    // Parse parameter list
+    params := []
+    while peek() is not RPAREN {
+        name := expect(IDENT)
+        typeName := parseType()
+        params = append(params, Param{Name: name, Type: typeName})
+        if peek() is COMMA { advance() }  // trailing comma OK
+    }
+    expect(RPAREN)
+
+    // Optional return type
+    returnType := ""
+    if peek() is IDENT {
+        returnType = parseType()
+    }
+
+    // Body block
+    body := parseBlock()
+
+    return FunctionExpr{Params: params, ReturnType: returnType, Body: body}
+}`} lang="go" />
+    </section>
+
+    <!-- Parsing control flow -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={7} color="accent" />
+            <h2 class="text-xl font-bold">Control flow: if, while, for-in.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Control flow statements follow predictable patterns. Each one reads its keyword, parses a condition or binding, then parses a block body:
+        </p>
+
+        <Code code={`func parseIfStmt() IfStmt {
+    advance()  // consume "if"
+    condition := parseExpression()
+    thenBlock := parseBlock()
+
+    var elseBlock *BlockStmt
+    if peek() is ELSE {
+        advance()  // consume "else"
+        if peek() is IF {
+            // "else if" chains: parse as nested IfStmt wrapped in a block
+            elseBlock = Block{parseIfStmt()}
+        } else {
+            elseBlock = parseBlock()
+        }
+    }
+    return IfStmt{Condition: condition, Then: thenBlock, Else: elseBlock}
+}
+
+func parseForStmt() ForStmt {
+    advance()         // consume "for"
+    variable := expect(IDENT)
+    expect(IN)        // consume "in"
+    iterable := parseExpression()
+    body := parseBlock()
+    return ForStmt{Var: variable, Iterable: iterable, Body: body}
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Notice how <code class="bg-stone-100 px-1 rounded text-xs">else if</code> isn't a special case in the grammar. An <code class="bg-stone-100 px-1 rounded text-xs">else</code> branch just contains another <code class="bg-stone-100 px-1 rounded text-xs">if</code> statement. The parser handles chaining naturally through recursion.
+        </p>
+    </section>
+
+    <!-- Error recovery -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={8} color="accent" />
+            <h2 class="text-xl font-bold">Error recovery: don't stop at the first problem.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When the parser hits an unexpected token, it has two choices: crash, or recover and keep going. A good parser recovers. The strategy is called <strong>synchronization</strong> — skip tokens until you find a safe point to resume parsing.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Safe points are statement boundaries: keywords like <code class="bg-stone-100 px-1 rounded text-xs">let</code>, <code class="bg-stone-100 px-1 rounded text-xs">const</code>, <code class="bg-stone-100 px-1 rounded text-xs">if</code>, <code class="bg-stone-100 px-1 rounded text-xs">return</code>, or a closing brace <code class="bg-stone-100 px-1 rounded text-xs">&#125;</code>. When recovery kicks in, the parser discards the current broken statement and starts fresh at the next one.
+        </p>
+
+        <Code code={`func synchronize() {
+    // Skip tokens until we find a statement boundary
+    for peek() is not EOF {
+        // These tokens typically start new statements
+        if peek() is LET or CONST or IF or WHILE or
+           FOR or RETURN or GUARD or TYPE or USE {
+            return  // resume parsing here
+        }
+        advance()  // discard and move on
+    }
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            This means a file with three errors will report all three, not just the first. The parser collects errors into a list and returns them alongside whatever AST it managed to build.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>The 80/20 of error recovery.</strong> Synchronizing on statement boundaries catches most real-world errors. More sophisticated recovery (inserting missing tokens, suggesting fixes) is possible but rarely worth the complexity for a first implementation.</p>
+        </InsightBox>
+    </section>
+
+    <!-- TDD approach -->
+    <section class="mb-14">
+        <div class="flex items-center gap-3 mb-4">
+            <StepNumber number={9} color="accent" />
+            <h2 class="text-xl font-bold">TDD: one grammar rule at a time.</h2>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The parser is ideal for test-driven development because each grammar rule is independent. The test for parsing <code class="bg-stone-100 px-1 rounded text-xs">if</code> statements doesn't affect the test for parsing <code class="bg-stone-100 px-1 rounded text-xs">while</code> loops.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The pattern for every test:
+        </p>
+
+        <Code code={`func TestParseVarDecl(t *testing.T) {
+    // 1. Lex the source
+    tokens := Scan("let x int = 42")
+
+    // 2. Parse
+    program := Parse(tokens)
+
+    // 3. Assert the AST shape
+    assert(len(program.Statements) == 1)
+
+    varDecl := program.Statements[0].(VarDecl)
+    assert(varDecl.Name == "x")
+    assert(varDecl.Type == "int")
+    assert(varDecl.IsConst == false)
+
+    init := varDecl.Init.(NumberExpr)
+    assert(init.Value == "42")
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Build up gradually. Start with <code class="bg-stone-100 px-1 rounded text-xs">42</code> (just a number). Then <code class="bg-stone-100 px-1 rounded text-xs">1 + 2</code> (binary expression). Then <code class="bg-stone-100 px-1 rounded text-xs">1 + 2 * 3</code> (precedence). Then <code class="bg-stone-100 px-1 rounded text-xs">let x = 1 + 2 * 3</code> (declaration wrapping an expression). Each test builds on the last.
+        </p>
+    </section>
+
+    <!-- Exercise -->
+    <section class="mb-14">
+        <ExerciseBox title="Parser test challenge">
+            <p class="text-sm text-monk-muted mb-3">Write a test that parses <code class="bg-stone-100 px-1 rounded text-xs">let x = 1 + 2 * 3</code> and verifies the AST has the correct shape:</p>
+            <div class="font-mono text-xs text-monk-muted space-y-1 ml-2">
+                <p>VarDecl (name: "x", no type)</p>
+                <p class="ml-4">init: BinaryExpr (+)</p>
+                <p class="ml-8">left: NumberExpr (1)</p>
+                <p class="ml-8">right: BinaryExpr (*)</p>
+                <p class="ml-12">left: NumberExpr (2)</p>
+                <p class="ml-12">right: NumberExpr (3)</p>
+            </div>
+            <p class="text-sm text-monk-muted mt-3">If the multiplication is a child of the addition (not the other way around), your precedence climbing is working correctly.</p>
+        </ExerciseBox>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Recursive descent: one function per grammar rule. Expressions use precedence climbing (chain of functions). Statements use a switch on the token type.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Three helper methods do most of the work: <code class="bg-stone-100 px-1 rounded text-xs">peek()</code>, <code class="bg-stone-100 px-1 rounded text-xs">advance()</code>, <code class="bg-stone-100 px-1 rounded text-xs">expect()</code>.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Error recovery synchronizes on statement boundaries — skip broken tokens, resume at the next keyword. Report all errors, not just the first.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">TDD is natural here. Each grammar rule gets its own test. Build up from <code class="bg-stone-100 px-1 rounded text-xs">42</code> to full programs incrementally.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-2-parser/monks-ast"
+        prevLabel="Prev: Designing Monk's AST"
+        nextHref="/phase-2-parser/references"
+        nextLabel="Next: References"
+    />
+
+</LessonLayout>

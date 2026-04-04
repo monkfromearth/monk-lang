@@ -1,0 +1,242 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Function Hoisting" lessonNumber="4.3" section="Phase 4">
+
+    <LessonHeader lessonNumber="4.3" title="Function Hoisting" description="Why functions are lifted above main(), and how the two-pass approach makes it work.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The problem -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Two languages, two rules about order.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In Monk, you can define a function anywhere. It's just a value assigned to a variable. You can put it inside a block, after the code that calls it, wherever you like:
+        </p>
+
+        <Code code={`let result = add(3, 4)
+show(result)
+
+let add = (a int, b int) int {
+    return a + b
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            C does not allow this. In C, a function must be declared before it's called. And C does not allow function definitions inside other functions -- every function must be at the top level of the file.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This creates a mismatch. Monk says "functions are values, put them anywhere." C says "functions are top-level declarations, define them before use." The code generator needs to bridge this gap.
+        </p>
+    </section>
+
+    <!-- The solution -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The solution: hoist everything.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The code generator takes every function expression in the Monk program and lifts it out of wherever it appears. Each one becomes a <code class="bg-stone-100 px-1 rounded text-xs">static</code> C function placed above <code class="bg-stone-100 px-1 rounded text-xs">main()</code>. The original variable assignment is replaced with a direct call to that C function.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Here's what the previous example becomes:</p>
+
+        <Code code={`#include "runtime.h"
+
+// Hoisted: "add" becomes _fn_add
+static MonkValue _fn_add(MonkValue a, MonkValue b) {
+    MonkValue _ret = monk_add(a, b);
+    return _ret;
+}
+
+int main(int argc, char *argv[]) {
+    monk_init(argc, argv);
+
+    MonkValue result = _fn_add(monk_int(3), monk_int(4));
+    monk_show(result);
+
+    monk_free(result);
+    return 0;
+}`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The function moved to the top. The call site now references <code class="bg-stone-100 px-1 rounded text-xs">_fn_add</code> directly. No function pointers, no indirection. Just a normal C function call.
+        </p>
+    </section>
+
+    <!-- Two-pass approach -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Two passes, not one.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The code generator walks the AST twice. Each pass has a specific job.
+        </p>
+
+        <div class="space-y-4 mb-6">
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-accent font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">First pass: collect functions.</p>
+                    <p class="text-monk-muted text-sm">Scan the entire AST for function expression nodes. For each one, assign a unique C name (like <code class="bg-stone-100 px-1 rounded text-xs">_fn_add</code> or <code class="bg-stone-100 px-1 rounded text-xs">_fn_1</code>) and record the mapping: Monk variable name to C function name. Then emit the C function definition.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-blueLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-blue font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Second pass: emit main body.</p>
+                    <p class="text-monk-muted text-sm">Walk the AST again and emit all non-function statements into <code class="bg-stone-100 px-1 rounded text-xs">main()</code>. When a function call is encountered, look up the C name from the map and emit a direct call.</p>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm">Two passes, not one. The first pass finds functions. The second pass emits code. This is why the code generator needs the full AST, not a stream of tokens.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Naming scheme -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">How functions get their C names.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When a function expression is assigned to a named variable, the code generator can use that name: <code class="bg-stone-100 px-1 rounded text-xs">add</code> becomes <code class="bg-stone-100 px-1 rounded text-xs">_fn_add</code>. The <code class="bg-stone-100 px-1 rounded text-xs">_fn_</code> prefix avoids collisions with C standard library functions and runtime functions.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            For anonymous functions or when names collide, a counter provides uniqueness: <code class="bg-stone-100 px-1 rounded text-xs">_fn_1</code>, <code class="bg-stone-100 px-1 rounded text-xs">_fn_2</code>, etc. The counter increments globally, so every function in the program gets a distinct C name regardless of scope.
+        </p>
+
+        <Code code={`let add = (a int, b int) int { return a + b }
+let mul = (a int, b int) int { return a * b }
+let apply = (f, x int, y int) int { return f(x, y) }`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">These might become:</p>
+
+        <Code code={`static MonkValue _fn_add(MonkValue a, MonkValue b) { ... }
+static MonkValue _fn_mul(MonkValue a, MonkValue b) { ... }
+static MonkValue _fn_apply(MonkValue f, MonkValue x, MonkValue y) { ... }`} lang="c" />
+
+        <p class="text-monk-muted text-sm mt-4">
+            The <code class="bg-stone-100 px-1 rounded text-xs">static</code> keyword limits the function's visibility to the current file. This prevents name collisions with other C files that might be linked in.
+        </p>
+    </section>
+
+    <!-- Multiple functions example -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A complete example with multiple functions.</h2>
+
+        <Code code={`let square = (n int) int {
+    return n * n
+}
+
+let sum_of_squares = (a int, b int) int {
+    return square(a) + square(b)
+}
+
+let result = sum_of_squares(3, 4)
+show(result)`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">The code generator produces:</p>
+
+        <Code code={`#include "runtime.h"
+
+static MonkValue _fn_square(MonkValue n) {
+    MonkValue _ret = monk_mul(n, n);
+    return _ret;
+}
+
+static MonkValue _fn_sum_of_squares(MonkValue a, MonkValue b) {
+    MonkValue _tmp_1 = _fn_square(a);
+    MonkValue _tmp_2 = _fn_square(b);
+    MonkValue _ret = monk_add(_tmp_1, _tmp_2);
+    monk_free(_tmp_1);
+    monk_free(_tmp_2);
+    return _ret;
+}
+
+int main(int argc, char *argv[]) {
+    monk_init(argc, argv);
+
+    MonkValue result = _fn_sum_of_squares(monk_int(3), monk_int(4));
+    monk_show(result);
+
+    monk_free(result);
+    return 0;
+}`} lang="c" />
+
+        <p class="text-monk-muted text-sm mt-4">
+            Both functions are hoisted. <code class="bg-stone-100 px-1 rounded text-xs">_fn_sum_of_squares</code> calls <code class="bg-stone-100 px-1 rounded text-xs">_fn_square</code> directly -- no lookup, no indirection. The hoisting ensures <code class="bg-stone-100 px-1 rounded text-xs">_fn_square</code> is defined before <code class="bg-stone-100 px-1 rounded text-xs">_fn_sum_of_squares</code> uses it.
+        </p>
+    </section>
+
+    <!-- What this means for closures -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The trade-off: what about closures?</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Hoisting functions as static C functions is simple and fast. But it has a limitation: closures.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A closure is a function that captures variables from its enclosing scope. When a function is hoisted out of its original scope and placed at the top level, those captured variables are no longer accessible.
+        </p>
+
+        <Code code={`let make_adder = (n int) {
+    return (x int) int {
+        return x + n  // captures "n" from outer scope
+    }
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            In the current design, closures capture by copy at the time the function is created. The inner function gets its own copy of <code class="bg-stone-100 px-1 rounded text-xs">n</code>. This aligns with Monk's value semantics -- no shared mutable state.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Full mutable closure support (where the inner function could mutate the outer variable and the outer scope would see the change) is deferred. For now, functions are compiled as real C functions, not as function pointers with captured environments. This is simpler, faster, and sufficient for most programs.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Monk allows functions anywhere. C requires them at the top level, declared before use. Hoisting bridges this gap.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Two passes: first collects and emits functions above <code class="bg-stone-100 px-1 rounded text-xs">main()</code>, second emits the program body inside <code class="bg-stone-100 px-1 rounded text-xs">main()</code>.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Each function gets a unique C name (<code class="bg-stone-100 px-1 rounded text-xs">_fn_add</code>, <code class="bg-stone-100 px-1 rounded text-xs">_fn_1</code>) and is marked <code class="bg-stone-100 px-1 rounded text-xs">static</code> for file-level isolation.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Functions are compiled as real C functions, not function pointers. Simple and fast, but full mutable closures are deferred.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-4-codegen/translation-rules"
+        prevLabel="Prev: Translation Rules"
+        nextHref="/phase-4-codegen/building-codegen"
+        nextLabel="Next: Building the Code Generator"
+    />
+
+</LessonLayout>

@@ -1,0 +1,305 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Built-in Functions" lessonNumber="3.4" section="Phase 3">
+
+    <LessonHeader lessonNumber="3.4" title="Built-in Functions" description="The 40+ functions available in every Monk program without importing anything.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- What built-ins are -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Functions that come with the house.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every Monk program has access to a set of functions without importing anything. No <code class="bg-stone-100 px-1 rounded text-xs">import</code>, no <code class="bg-stone-100 px-1 rounded text-xs">require</code>, no setup. They just exist.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            These built-in functions are implemented in C as part of the runtime library. When you write <code class="bg-stone-100 px-1 rounded text-xs">show(42)</code> in Monk, the code generator emits <code class="bg-stone-100 px-1 rounded text-xs">monk_show(monk_int(42))</code> in C. No magic dispatch, no reflection, no function pointer lookup. It's a direct C function call.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Built-in functions are just C functions.</strong> When you write <code class="bg-stone-100 px-1 rounded text-xs">show(42)</code> in Monk, the code generator emits <code class="bg-stone-100 px-1 rounded text-xs">monk_show(monk_int(42))</code> in C. No magic dispatch, no reflection.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Output -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Output.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            One function: <code class="bg-stone-100 px-1 rounded text-xs">show()</code>. It prints any MonkValue to stdout. Integers print as numbers, strings print without quotes, arrays print with brackets, records print as key-value pairs. It handles every tag.
+        </p>
+
+        <Code code={`show(42)              // 42
+show("hello")         // hello
+show([1, 2, 3])       // [1, 2, 3]
+show(true)            // true
+show(none)            // none`} lang="javascript" />
+    </section>
+
+    <!-- Type functions -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Type conversion and checking.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Two categories: functions that convert between types, and functions that tell you what type a value is.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm mb-6">
+            <div class="grid grid-cols-3 gap-0 divide-x divide-monk-border bg-monk-bg">
+                <div class="p-3 font-semibold">Function</div>
+                <div class="p-3 font-semibold">Purpose</div>
+                <div class="p-3 font-semibold">Example</div>
+            </div>
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['typeof(v)', 'Returns the type as a string', 'typeof(42) -> "int"'],
+                    ['to_string(v)', 'Converts any value to string', 'to_string(42) -> "42"'],
+                    ['to_int(v)', 'Converts to integer', 'to_int("42") -> 42'],
+                    ['to_float(v)', 'Converts to float', 'to_float("3.14") -> 3.14'],
+                ].map(([fn, purpose, example]) => (
+                    <div class="grid grid-cols-3 gap-0 divide-x divide-monk-border">
+                        <div class="p-3 font-mono text-xs">{fn}</div>
+                        <div class="p-3 text-monk-muted text-xs">{purpose}</div>
+                        <div class="p-3 font-mono text-xs text-monk-muted">{example}</div>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Type checks return booleans:
+        </p>
+
+        <Code code={`is_number(42)         // true
+is_string("hello")    // true
+is_boolean(false)     // true
+is_number("hello")    // false`} lang="javascript" />
+    </section>
+
+    <!-- Math -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Math: 17 functions.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            All the standard math operations. These map directly to C standard library math functions.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-5 mb-6">
+            <div class="grid grid-cols-3 gap-3 text-sm">
+                <div>
+                    <p class="font-semibold text-xs text-monk-muted uppercase tracking-wide mb-2">Rounding</p>
+                    <div class="space-y-1 font-mono text-xs">
+                        <p>abs(x)</p>
+                        <p>floor(x)</p>
+                        <p>ceil(x)</p>
+                        <p>round(x)</p>
+                    </div>
+                </div>
+                <div>
+                    <p class="font-semibold text-xs text-monk-muted uppercase tracking-wide mb-2">Powers & Logs</p>
+                    <div class="space-y-1 font-mono text-xs">
+                        <p>sqrt(x)</p>
+                        <p>pow(x, y)</p>
+                        <p>log(x)</p>
+                        <p>log10(x)</p>
+                        <p>exp(x)</p>
+                    </div>
+                </div>
+                <div>
+                    <p class="font-semibold text-xs text-monk-muted uppercase tracking-wide mb-2">Trigonometry</p>
+                    <div class="space-y-1 font-mono text-xs">
+                        <p>sin(x), cos(x), tan(x)</p>
+                        <p>asin(x), acos(x), atan(x)</p>
+                        <p>min(x, y)</p>
+                        <p>max(x, y)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <Code code={`let hypotenuse = sqrt(pow(3, 2) + pow(4, 2))
+show(hypotenuse)      // 5`} lang="javascript" />
+    </section>
+
+    <!-- String operations -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">String operations.</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm mb-6">
+            <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border bg-monk-bg">
+                <div class="p-3 font-semibold">Function</div>
+                <div class="p-3 font-semibold">Example</div>
+            </div>
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['length(s)', 'length("hello") -> 5'],
+                    ['substring(s, start, end)', 'substring("hello", 1, 3) -> "el"'],
+                    ['index_of(s, sub)', 'index_of("hello", "ll") -> 2'],
+                    ['split(s, sep)', 'split("a,b,c", ",") -> ["a", "b", "c"]'],
+                    ['trim(s)', 'trim("  hi  ") -> "hi"'],
+                    ['to_upper_case(s)', 'to_upper_case("hello") -> "HELLO"'],
+                    ['to_lower_case(s)', 'to_lower_case("HELLO") -> "hello"'],
+                ].map(([fn, example]) => (
+                    <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border">
+                        <div class="p-3 font-mono text-xs">{fn}</div>
+                        <div class="p-3 font-mono text-xs text-monk-muted">{example}</div>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Note: <code class="bg-stone-100 px-1 rounded text-xs">length()</code> counts UTF-8 codepoints, not bytes. This is an O(n) operation. The runtime walks the string to count characters.
+        </p>
+    </section>
+
+    <!-- Array operations -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Array operations: always new arrays.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every array operation returns a <strong>new array</strong>. This is value semantics in action. The original array is never modified.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm mb-6">
+            <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border bg-monk-bg">
+                <div class="p-3 font-semibold">Function</div>
+                <div class="p-3 font-semibold">Behavior</div>
+            </div>
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['append(arr, val)', 'Returns new array with val added at end'],
+                    ['prepend(arr, val)', 'Returns new array with val added at start'],
+                    ['pop(arr)', 'Returns new array without the last element'],
+                    ['drop(arr, n)', 'Returns new array without the first n elements'],
+                    ['take(arr, n)', 'Returns new array with only the first n elements'],
+                    ['slice(arr, start, end)', 'Returns a sub-array from start to end'],
+                    ['range(start, end)', 'Creates a new array [start, start+1, ..., end-1]'],
+                ].map(([fn, behavior]) => (
+                    <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border">
+                        <div class="p-3 font-mono text-xs">{fn}</div>
+                        <div class="p-3 text-monk-muted text-xs">{behavior}</div>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <Code code={`let nums = [1, 2, 3]
+let more = append(nums, 4)
+show(nums)            // [1, 2, 3] -- untouched
+show(more)            // [1, 2, 3, 4]`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Monk arrays are homogeneous: all elements must be the same type. No mixing integers and strings in one array. Use records for mixed data.
+        </p>
+    </section>
+
+    <!-- Graceful reads, strict operations -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Graceful on reads, strict on operations.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk applies a consistent philosophy to edge cases:
+        </p>
+
+        <div class="space-y-4 mb-6">
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-greenLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-green font-bold text-sm">R</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Reading out-of-bounds returns none.</p>
+                    <p class="text-monk-muted text-sm">Accessing index 10 of a 3-element array gives you <code class="bg-stone-100 px-1 rounded text-xs">none</code>. No crash. Graceful degradation.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-amberLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-amber font-bold text-sm">W</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Writing out-of-bounds is an error.</p>
+                    <p class="text-monk-muted text-sm">Trying to assign to index 10 of a 3-element array throws an error. Operations that modify data must be explicit about what they're doing.</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This shows up across the built-ins. Missing record fields return <code class="bg-stone-100 px-1 rounded text-xs">none</code>. <code class="bg-stone-100 px-1 rounded text-xs">index_of()</code> returns <code class="bg-stone-100 px-1 rounded text-xs">-1</code> when not found (graceful). But <code class="bg-stone-100 px-1 rounded text-xs">to_int("abc")</code> throws (strict -- you asked for a conversion that can't work).
+        </p>
+    </section>
+
+    <!-- File I/O and Environment -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">File I/O and environment.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A small set of functions for interacting with the outside world:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm mb-4">
+            <div class="divide-y divide-monk-border">
+                {[
+                    ['file_read(path)', 'Read entire file as string'],
+                    ['file_write(path, content)', 'Write string to file (creates or overwrites)'],
+                    ['file_exists(path)', 'Check if file exists (returns bool)'],
+                    ['env_get(key)', 'Read an environment variable'],
+                    ['args()', 'Get command-line arguments as string array'],
+                    ['exit(code)', 'Terminate with exit code'],
+                ].map(([fn, desc]) => (
+                    <div class="flex items-center gap-4 px-5 py-3">
+                        <code class="font-mono text-xs bg-stone-100 px-2 py-0.5 rounded flex-shrink-0">{fn}</code>
+                        <span class="text-monk-muted text-xs">{desc}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <Code code={`let content = file_read("config.txt")
+if content != none {
+    show(content)
+}`} lang="javascript" />
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Built-in functions are C functions in the runtime, called directly by the generated code. No indirection.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">All array operations return new arrays. The original is never modified (value semantics).</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Reading missing data is graceful (returns none). Operating on invalid data is strict (throws an error).</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">40+ functions across output, types, math, strings, arrays, files, and environment. All available without imports.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-3-runtime/value-semantics"
+        prevLabel="Prev: Value Semantics"
+        nextHref="/phase-3-runtime/error-handling"
+        nextLabel="Next: Error Handling"
+    />
+
+</LessonLayout>

@@ -1,0 +1,265 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Building the CLI" lessonNumber="5.1" section="Phase 5">
+
+    <LessonHeader lessonNumber="5.1" title="Building the CLI" description="The user-facing tool that ties lexer, parser, runtime, and codegen into one command.">
+        <TagBadge variant="build">build</TagBadge>
+        <TagBadge variant="go">go</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The analogy -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The front door to the compiler.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            You have a lexer that turns source into tokens. A parser that turns tokens into an AST. A code generator that turns the AST into C. A runtime that makes the C work. Four separate machines, each doing one job.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The CLI is the hallway that connects all four rooms. The user walks in the front door, says what they want (<code class="bg-stone-100 px-1 rounded text-xs">build</code>, <code class="bg-stone-100 px-1 rounded text-xs">run</code>, <code class="bg-stone-100 px-1 rounded text-xs">check</code>), and the CLI routes them through the right sequence of rooms. Without the CLI, the compiler is four libraries with no way to call them.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is the simplest phase in the entire project. No new algorithms, no data structures, no language theory. Just plumbing -- reading arguments, calling functions, printing results. But it's the phase where the compiler becomes a <strong>tool</strong>.
+        </p>
+    </section>
+
+    <!-- Go's approach -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Go makes CLIs trivial.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Some languages need a CLI framework. Go doesn't. The standard library gives you everything: <code class="bg-stone-100 px-1 rounded text-xs">os.Args</code> for raw arguments, <code class="bg-stone-100 px-1 rounded text-xs">flag</code> for parsing flags, <code class="bg-stone-100 px-1 rounded text-xs">fmt</code> for output, <code class="bg-stone-100 px-1 rounded text-xs">os</code> for exit codes. No third-party dependencies.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The pattern is simple: read <code class="bg-stone-100 px-1 rounded text-xs">os.Args</code>, match the first argument against your known commands, dispatch. A switch statement is your router. For flags like <code class="bg-stone-100 px-1 rounded text-xs">-o</code>, Go's <code class="bg-stone-100 px-1 rounded text-xs">flag</code> package handles parsing and validation.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk's entire CLI is about 255 lines of Go. One file. One <code class="bg-stone-100 px-1 rounded text-xs">main</code> function. No frameworks, no config files, no plugins.
+        </p>
+    </section>
+
+    <!-- Command structure -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Six commands, six jobs.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every compiler needs these verbs. Here's what each one does:
+        </p>
+
+        <div class="space-y-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2"><code class="bg-stone-100 px-1 rounded text-xs">monk build hello.monk</code></p>
+                <p class="text-monk-muted text-sm">Compile a Monk source file to a native binary. This is the full pipeline: lex, parse, generate C, invoke the system C compiler, produce an executable. The output file name matches the input (<code class="bg-stone-100 px-1 rounded text-xs">hello.monk</code> becomes <code class="bg-stone-100 px-1 rounded text-xs">hello</code>).</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2"><code class="bg-stone-100 px-1 rounded text-xs">monk build -o hello.c hello.monk</code></p>
+                <p class="text-monk-muted text-sm">Emit C source instead of a binary. The <code class="bg-stone-100 px-1 rounded text-xs">-o</code> flag controls the output path, and the <strong>file extension decides the format</strong>. If it ends in <code class="bg-stone-100 px-1 rounded text-xs">.c</code>, you get C source. Anything else, you get a binary. No separate <code class="bg-stone-100 px-1 rounded text-xs">--emit-c</code> flag needed.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2"><code class="bg-stone-100 px-1 rounded text-xs">monk run hello.monk</code></p>
+                <p class="text-monk-muted text-sm">Compile and run in one step. Internally it runs the full build pipeline to a temp binary, executes it, then deletes the temp file. Syntactic sugar for development -- you don't want to name a binary every time you test a change.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2"><code class="bg-stone-100 px-1 rounded text-xs">monk check hello.monk</code></p>
+                <p class="text-monk-muted text-sm">Parse and validate without compiling. Runs the lexer and parser only -- no codegen, no C compilation. Fast enough for editor integration and CI checks. If the syntax is valid, it prints nothing and exits 0.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2"><code class="bg-stone-100 px-1 rounded text-xs">monk version</code></p>
+                <p class="text-monk-muted text-sm">Print the version string. Semantic versioning: <code class="bg-stone-100 px-1 rounded text-xs">monk version X.Y.Z</code>.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <p class="font-semibold text-sm mb-2"><code class="bg-stone-100 px-1 rounded text-xs">monk help</code></p>
+                <p class="text-monk-muted text-sm">Print usage information. Lists all commands with one-line descriptions.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- How commands map to pipeline stages -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Each command uses a different slice of the pipeline.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Not every command needs every stage. The CLI decides how far down the pipeline to go:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm mb-6">
+            <div class="grid grid-cols-6 gap-0 divide-x divide-monk-border">
+                <div class="p-3 bg-monk-bg font-semibold">Command</div>
+                <div class="p-3 bg-monk-bg font-semibold">Lex</div>
+                <div class="p-3 bg-monk-bg font-semibold">Parse</div>
+                <div class="p-3 bg-monk-bg font-semibold">Codegen</div>
+                <div class="p-3 bg-monk-bg font-semibold">C Compile</div>
+                <div class="p-3 bg-monk-bg font-semibold">Run</div>
+            </div>
+            <div class="divide-y divide-monk-border">
+                <div class="grid grid-cols-6 gap-0 divide-x divide-monk-border">
+                    <div class="p-3 text-monk-muted font-medium">check</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-muted">--</div>
+                    <div class="p-3 text-monk-muted">--</div>
+                    <div class="p-3 text-monk-muted">--</div>
+                </div>
+                <div class="grid grid-cols-6 gap-0 divide-x divide-monk-border">
+                    <div class="p-3 text-monk-muted font-medium">build -o x.c</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-muted">--</div>
+                    <div class="p-3 text-monk-muted">--</div>
+                </div>
+                <div class="grid grid-cols-6 gap-0 divide-x divide-monk-border">
+                    <div class="p-3 text-monk-muted font-medium">build</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-muted">--</div>
+                </div>
+                <div class="grid grid-cols-6 gap-0 divide-x divide-monk-border">
+                    <div class="p-3 text-monk-muted font-medium">run</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                    <div class="p-3 text-monk-accent font-bold">yes</div>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is why the compiler is built as separate packages. The CLI imports the scanner, parser, and codegen, then chains them together as needed. Each command is just a different stopping point.
+        </p>
+    </section>
+
+    <!-- The -o flag -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The <code class="bg-stone-100 px-1 rounded text-xs">-o</code> flag: one flag, two formats.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Most compilers have separate flags for "emit intermediate representation" vs "produce a binary." Monk uses a simpler approach: the <code class="bg-stone-100 px-1 rounded text-xs">-o</code> flag sets the output path, and the <strong>file extension decides the format</strong>.
+        </p>
+
+        <Code code={`# Produce a native binary
+monk build -o hello hello.monk
+
+# Emit C source code
+monk build -o hello.c hello.monk`} lang="bash" />
+
+        <p class="text-monk-muted leading-relaxed mb-4 mt-4">
+            If <code class="bg-stone-100 px-1 rounded text-xs">-o</code> ends with <code class="bg-stone-100 px-1 rounded text-xs">.c</code>, write C source. Otherwise, compile all the way to a binary. One flag, zero ambiguity. The convention is self-documenting -- you can see what format you're getting from the filename alone.
+        </p>
+    </section>
+
+    <!-- Error reporting -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Errors that tell you where to look.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When the compiler finds a problem, it reports file, line, and column:
+        </p>
+
+        <Code code={`hello.monk:3:12: error: undefined variable "x"
+hello.monk:7:1: error: expected "end" to close function`} lang="bash" />
+
+        <p class="text-monk-muted leading-relaxed mb-4 mt-4">
+            This format is deliberate. Most editors can parse <code class="bg-stone-100 px-1 rounded text-xs">file:line:column: message</code> and jump directly to the error. GCC, Clang, and Go all use this format. Following the convention means free editor integration.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Exit codes follow Unix convention: <strong>0</strong> for success, <strong>1</strong> for compile errors (your code has a problem), <strong>2</strong> for usage errors (you called the CLI wrong). Scripts and CI pipelines rely on these.
+        </p>
+    </section>
+
+    <!-- Testing -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Testing a CLI means testing the whole compiler.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            CLI tests are integration tests by nature. They exercise the full pipeline end-to-end. The strategy:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Create a temp <code class="bg-stone-100 px-1 rounded text-xs">.monk</code> file with known source code.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Run the CLI command (<code class="bg-stone-100 px-1 rounded text-xs">build</code>, <code class="bg-stone-100 px-1 rounded text-xs">run</code>, <code class="bg-stone-100 px-1 rounded text-xs">check</code>) against that file.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Check stdout, stderr, and the exit code.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">For <code class="bg-stone-100 px-1 rounded text-xs">build</code>: verify the output file exists and is executable. For <code class="bg-stone-100 px-1 rounded text-xs">build -o x.c</code>: verify the output contains valid C.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">5</span></div>
+                <p class="text-sm">Clean up temp files.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            28 tests cover every command, every flag, every error path. Each test is self-contained -- creates its own files, runs the command, checks the result, cleans up. No test depends on another.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>The CLI is about 255 lines.</strong> No framework, no config files, no plugins. One Go file, one switch statement, done. Keep it simple until you need more.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">The CLI is the user's interface to the compiler. It routes commands to the right pipeline stages.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Go's standard library is all you need. <code class="bg-stone-100 px-1 rounded text-xs">os.Args</code>, <code class="bg-stone-100 px-1 rounded text-xs">flag</code>, and a switch statement.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">The <code class="bg-stone-100 px-1 rounded text-xs">-o</code> flag's file extension decides the output format. <code class="bg-stone-100 px-1 rounded text-xs">.c</code> = C source, anything else = binary.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Error format follows <code class="bg-stone-100 px-1 rounded text-xs">file:line:column: message</code> -- the universal convention that editors can parse.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">5</span></div>
+                <p class="text-sm">CLI tests are integration tests. They write .monk files, run the compiler, and check everything end-to-end.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-4-codegen/references"
+        prevLabel="Prev: References"
+        nextHref="/phase-5-cli/the-pipeline"
+        nextLabel="Next: The Compilation Pipeline"
+    />
+
+</LessonLayout>

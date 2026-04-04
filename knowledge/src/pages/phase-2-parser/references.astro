@@ -1,0 +1,149 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+---
+
+<LessonLayout title="References & Further Reading" lessonNumber="2.5" section="Phase 2">
+
+    <LessonHeader lessonNumber="2.5" title="References & Further Reading" description="Crafting Interpreters Ch. 5-8, Pratt parsing, and recursive descent resources.">
+        <TagBadge variant="links">links</TagBadge>
+        <TagBadge variant="default">5 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Primary -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The essential reads.</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-6">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                </div>
+                <div>
+                    <h3 class="font-bold">Crafting Interpreters — Chapters 5-8</h3>
+                    <p class="text-monk-muted text-sm mt-1">by Robert Nystrom</p>
+                    <p class="text-monk-muted text-sm mt-2">Four chapters that build a complete parser. Ch. 5 (Representing Code) designs the AST with the visitor pattern. Ch. 6 (Parsing Expressions) implements a recursive descent expression parser. Ch. 7 (Evaluating Expressions) shows why the tree shape matters. Ch. 8 (Statements and State) adds variable declarations and blocks. Read these chapters alongside building Monk's parser — the architecture maps almost 1:1.</p>
+                    <a href="https://craftinginterpreters.com/representing-code.html" class="text-monk-accent text-sm hover:underline mt-2 inline-block">craftinginterpreters.com/representing-code.html</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-6">
+            <div class="flex items-start gap-4">
+                <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                </div>
+                <div>
+                    <h3 class="font-bold">Writing An Interpreter In Go — Chapters 2-3</h3>
+                    <p class="text-monk-muted text-sm mt-1">by Thorsten Ball</p>
+                    <p class="text-monk-muted text-sm mt-2">Builds a Pratt parser for the Monkey language in Go. Ch. 2 implements parsing with prefix and infix functions. Ch. 3 extends it with if expressions, function literals, and call expressions. The code is Go, making it directly applicable to Monk's implementation. Ball's approach uses Pratt parsing rather than precedence climbing, so comparing the two side by side is instructive.</p>
+                    <a href="https://interpreterbook.com/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">interpreterbook.com</a>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Read both.</strong> Nystrom teaches the concepts; Ball shows you how to write them in Go. Together they cover everything needed to build Monk's parser.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Pratt parsing -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Pratt parsing deep dives.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Bob Nystrom — "Pratt Parsers: Expression Parsing Made Easy"</h3>
+                <p class="text-monk-muted text-sm mt-2">The clearest explanation of Pratt parsing ever written. Builds a complete expression parser in Java, explaining each concept as it goes. Even though Monk uses precedence climbing instead of Pratt, understanding Pratt parsing shows you the elegant alternative and why some language authors prefer it.</p>
+                <a href="https://journal.stuffwithstuff.com/2011/03/19/pratt-parsers-expression-parsing-made-easy/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">journal.stuffwithstuff.com/.../pratt-parsers-expression-parsing-made-easy</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Douglas Crockford — "Top Down Operator Precedence"</h3>
+                <p class="text-monk-muted text-sm mt-2">The paper that brought Pratt parsing back from obscurity. Crockford (of JavaScript fame) implemented a Pratt parser for a subset of JavaScript. More academic than Nystrom's blog post, but historically important — this paper inspired many modern parsers.</p>
+                <a href="https://crockford.com/javascript/tdop/tdop.html" class="text-monk-accent text-sm hover:underline mt-2 inline-block">crockford.com/javascript/tdop/tdop.html</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Vaughan Pratt — "Top Down Operator Precedence" (1973)</h3>
+                <p class="text-monk-muted text-sm mt-2">The original paper. Dense and academic (it's from 1973), but short. Worth reading after you've understood the concept from Nystrom or Crockford, just to see how the idea was first articulated.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Go-specific -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Go parser implementations to study.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go's own parser: <code class="bg-stone-100 px-1 rounded text-xs">go/parser</code></h3>
+                <p class="text-monk-muted text-sm mt-2">The Go standard library includes a complete hand-written recursive descent parser for Go itself. It handles operator precedence, statement parsing, and error recovery — all the same problems Monk's parser solves. Production-quality code, well-commented, excellent for browsing once your parser is working.</p>
+                <a href="https://pkg.go.dev/go/parser" class="text-monk-accent text-sm hover:underline mt-2 inline-block">pkg.go.dev/go/parser</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go AST package: <code class="bg-stone-100 px-1 rounded text-xs">go/ast</code></h3>
+                <p class="text-monk-muted text-sm mt-2">The AST node types for Go. Compare with Monk's AST design — similar expression/statement split, similar node types. Notice how Go uses interfaces for the Node, Expr, and Stmt types with a marker method pattern.</p>
+                <a href="https://pkg.go.dev/go/ast" class="text-monk-accent text-sm hover:underline mt-2 inline-block">pkg.go.dev/go/ast</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Theory -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">If you want the theory.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Engineering a Compiler — Ch. 3: Parsers</h3>
+                <p class="text-monk-muted text-sm mt-1">by Cooper & Torczon</p>
+                <p class="text-monk-muted text-sm mt-2">The formal treatment: context-free grammars, LL and LR parsing, FIRST and FOLLOW sets. Explains why recursive descent is a specific case of LL(1) parsing. Not required for building Monk, but gives you the vocabulary to read other compiler literature.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Compilers: Principles, Techniques, and Tools (Dragon Book) — Ch. 4</h3>
+                <p class="text-monk-muted text-sm mt-1">by Aho, Lam, Sethi, Ullman</p>
+                <p class="text-monk-muted text-sm mt-2">The classic textbook treatment of syntax analysis. Covers more parsing strategies than you'll ever need. Good as a reference when you encounter terms like "LR(1)" or "LALR" in other resources.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Suggested reading order -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Suggested reading order.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Crafting Interpreters Ch. 5-6</strong> — read alongside building Monk's expression parser. AST design and recursive descent.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Nystrom's Pratt parsing blog post</strong> — after your expression parser works. Understand the alternative approach.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Writing An Interpreter In Go Ch. 2-3</strong> — to see the same ideas implemented in Go with Pratt parsing.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>Crafting Interpreters Ch. 7-8</strong> — after adding statements. See how evaluation uses the tree structure your parser built.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">5</span></div>
+                <p class="text-sm"><strong>Go's <code class="bg-stone-100 px-1 rounded text-xs">go/parser</code> source</strong> — after your parser is complete. Compare production patterns with yours.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-2-parser/building-the-parser"
+        prevLabel="Prev: Building the Parser"
+    />
+
+</LessonLayout>

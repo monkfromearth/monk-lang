@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import TagBadge from '../components/TagBadge.astro';
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 ---
 
 <!DOCTYPE html>
@@ -26,9 +27,9 @@ import TagBadge from '../components/TagBadge.astro';
                 </div>
             </div>
             <div class="flex items-center gap-4 text-sm text-monk-muted">
-                <span>9 units</span>
+                <span>6 units</span>
                 <span class="text-monk-border">|</span>
-                <span>30 lessons</span>
+                <span>25 lessons</span>
             </div>
         </div>
     </header>
@@ -113,7 +114,7 @@ import TagBadge from '../components/TagBadge.astro';
                         </div>
                     </div>
                     <div class="divide-y divide-monk-border">
-                        <a href="/foundations/how-compilers-work" class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
+                        <a href={base + "/foundations/how-compilers-work"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
                             <div class="w-8 h-8 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0">
                                 <span class="text-monk-accent font-semibold text-sm">0.1</span>
                             </div>
@@ -123,7 +124,7 @@ import TagBadge from '../components/TagBadge.astro';
                             </div>
                             <TagBadge variant="concepts">concepts</TagBadge>
                         </a>
-                        <a href="/foundations/setting-up" class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
+                        <a href={base + "/foundations/setting-up"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
                             <div class="w-8 h-8 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0">
                                 <span class="text-monk-accent font-semibold text-sm">0.2</span>
                             </div>
@@ -155,22 +156,22 @@ import TagBadge from '../components/TagBadge.astro';
                         </div>
                     </div>
                     <div class="divide-y divide-monk-border">
-                        <a href="/phase-1-lexer/what-is-a-lexer" class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
+                        <a href={base + "/phase-1-lexer/what-is-a-lexer"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
                             <div class="w-8 h-8 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0"><span class="text-monk-blue font-semibold text-sm">1.1</span></div>
                             <div class="flex-1"><h4 class="font-semibold text-sm">What Is a Lexer?</h4><p class="text-monk-muted text-xs mt-0.5">Characters flow in, tokens flow out. The word splitter.</p></div>
                             <TagBadge variant="concepts">concepts</TagBadge>
                         </a>
-                        <a href="/phase-1-lexer/monks-tokens" class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
+                        <a href={base + "/phase-1-lexer/monks-tokens"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
                             <div class="w-8 h-8 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0"><span class="text-monk-blue font-semibold text-sm">1.2</span></div>
                             <div class="flex-1"><h4 class="font-semibold text-sm">Designing Monk's Token Set</h4><p class="text-monk-muted text-xs mt-0.5">Every keyword, operator, delimiter mapped to a token type.</p></div>
                             <TagBadge variant="monk">monk</TagBadge>
                         </a>
-                        <a href="/phase-1-lexer/building-the-lexer" class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
+                        <a href={base + "/phase-1-lexer/building-the-lexer"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
                             <div class="w-8 h-8 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0"><span class="text-monk-blue font-semibold text-sm">1.3</span></div>
                             <div class="flex-1"><h4 class="font-semibold text-sm">Building the Lexer</h4><p class="text-monk-muted text-xs mt-0.5">Step by step: scanning, keywords, literals, line tracking. TDD.</p></div>
                             <div class="flex gap-1.5"><TagBadge variant="build">build</TagBadge></div>
                         </a>
-                        <a href="/phase-1-lexer/references" class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
+                        <a href={base + "/phase-1-lexer/references"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
                             <div class="w-8 h-8 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0"><span class="text-monk-blue font-semibold text-sm">1.4</span></div>
                             <div class="flex-1"><h4 class="font-semibold text-sm">References & Further Reading</h4><p class="text-monk-muted text-xs mt-0.5">Crafting Interpreters Ch. 4, lexer blog posts.</p></div>
                             <TagBadge variant="links">links</TagBadge>
@@ -197,86 +198,137 @@ import TagBadge from '../components/TagBadge.astro';
                         </div>
                     </div>
                     <div class="divide-y divide-monk-border">
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.1</span></div><div class="flex-1"><h4 class="font-semibold text-sm">What Is a Parser?</h4><p class="text-monk-muted text-xs mt-0.5">Tokens in, tree out. The sentence diagrammer.</p></div><TagBadge variant="concepts">concepts</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.2</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Operator Precedence</h4><p class="text-monk-muted text-xs mt-0.5">Why 1+2*3 is 7, not 9. Pratt parsing visualized.</p></div><TagBadge variant="concepts">concepts</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.3</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Designing Monk's AST</h4><p class="text-monk-muted text-xs mt-0.5">Every node type. Expressions vs statements. The full tree.</p></div><TagBadge variant="monk">monk</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.4</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Building the Parser</h4><p class="text-monk-muted text-xs mt-0.5">Recursive descent, one grammar rule at a time. TDD.</p></div><TagBadge variant="build">build</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.5</span></div><div class="flex-1"><h4 class="font-semibold text-sm">References & Further Reading</h4><p class="text-monk-muted text-xs mt-0.5">Crafting Interpreters Ch. 5-8, Pratt parsing.</p></div><TagBadge variant="links">links</TagBadge></div>
+                        <a href={base + "/phase-2-parser/what-is-a-parser"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.1</span></div><div class="flex-1"><h4 class="font-semibold text-sm">What Is a Parser?</h4><p class="text-monk-muted text-xs mt-0.5">Tokens in, tree out. The sentence diagrammer.</p></div><TagBadge variant="concepts">concepts</TagBadge></a>
+                        <a href={base + "/phase-2-parser/operator-precedence"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.2</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Operator Precedence</h4><p class="text-monk-muted text-xs mt-0.5">Why 1+2*3 is 7, not 9. 13 levels of precedence.</p></div><TagBadge variant="concepts">concepts</TagBadge></a>
+                        <a href={base + "/phase-2-parser/monks-ast"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.3</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Designing Monk's AST</h4><p class="text-monk-muted text-xs mt-0.5">29 node types. Expressions vs statements. Assignment is a statement.</p></div><TagBadge variant="monk">monk</TagBadge></a>
+                        <a href={base + "/phase-2-parser/building-the-parser"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.4</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Building the Parser</h4><p class="text-monk-muted text-xs mt-0.5">Recursive descent, one grammar rule at a time. TDD.</p></div><TagBadge variant="build">build</TagBadge></a>
+                        <a href={base + "/phase-2-parser/references"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-tealLight flex items-center justify-center flex-shrink-0"><span class="text-monk-teal font-semibold text-sm">2.5</span></div><div class="flex-1"><h4 class="font-semibold text-sm">References & Further Reading</h4><p class="text-monk-muted text-xs mt-0.5">Crafting Interpreters Ch. 5-8, Pratt parsing.</p></div><TagBadge variant="links">links</TagBadge></a>
                     </div>
                 </div>
             </div>
 
-            <!-- Unit 3: Runtime -->
+            <!-- Unit 3: C Runtime -->
             <div class="mb-10">
                 <div class="flex items-center gap-2 mb-4">
                     <span class="tag text-monk-green bg-monk-greenLight px-2 py-0.5 rounded-full">Phase 3</span>
-                    <span class="text-monk-muted text-sm">Build the runtime</span>
+                    <span class="text-monk-muted text-sm">Build the C runtime library</span>
                 </div>
 
                 <div class="unit-card bg-white rounded-2xl border border-monk-border overflow-hidden">
                     <div class="p-6 border-b border-monk-border bg-gradient-to-r from-monk-greenLight to-white">
                         <div class="flex items-start justify-between">
                             <div>
-                                <h3 class="font-bold text-xl">Unit 3 — The Runtime</h3>
-                                <p class="text-monk-muted mt-1">Evaluate the tree. Values, scopes, functions, closures, errors.</p>
+                                <h3 class="font-bold text-xl">Unit 3 — The C Runtime</h3>
+                                <p class="text-monk-muted mt-1">The small C library inside every Monk binary. Values, builtins, error handling.</p>
                             </div>
-                            <span class="tag text-monk-green bg-white px-2 py-0.5 rounded-full border border-green-200">8 lessons</span>
+                            <span class="tag text-monk-green bg-white px-2 py-0.5 rounded-full border border-green-200">6 lessons</span>
                         </div>
                     </div>
                     <div class="divide-y divide-monk-border">
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.1</span></div><div class="flex-1"><h4 class="font-semibold text-sm">What Is an Interpreter?</h4><p class="text-monk-muted text-xs mt-0.5">Walking the tree, evaluating nodes, values bubbling up.</p></div><TagBadge variant="concepts">concepts</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.2</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Values and Types in Memory</h4><p class="text-monk-muted text-xs mt-0.5">The MonkValue tagged union. Stack vs heap. Type tags.</p></div><TagBadge variant="concepts">concepts</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.3</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Scopes and Environments</h4><p class="text-monk-muted text-xs mt-0.5">Scope chains, variable lookup, shadowing.</p></div><TagBadge variant="concepts">concepts</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.4</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Functions and Closures</h4><p class="text-monk-muted text-xs mt-0.5">Function values, capture by copy, why create_counter works.</p></div><TagBadge variant="monk">monk</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.5</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Control Flow</h4><p class="text-monk-muted text-xs mt-0.5">If, while, for, break, continue, return as signals.</p></div><TagBadge variant="concepts">concepts</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.6</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Error Handling</h4><p class="text-monk-muted text-xs mt-0.5">Guard/against/throw. Save a checkpoint, jump back to it.</p></div><TagBadge variant="monk">monk</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.7</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Value Semantics</h4><p class="text-monk-muted text-xs mt-0.5">Deep copy on assign. Deep const. Why everything copies.</p></div><TagBadge variant="monk">monk</TagBadge></div>
-                        <div class="lesson-item flex items-center gap-4 px-6 py-4"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.8</span></div><div class="flex-1"><h4 class="font-semibold text-sm">References</h4><p class="text-monk-muted text-xs mt-0.5">Crafting Interpreters Ch. 7-11.</p></div><TagBadge variant="links">links</TagBadge></div>
+                        <a href={base + "/phase-3-runtime/why-a-runtime"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.1</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Why a Runtime Library?</h4><p class="text-monk-muted text-xs mt-0.5">The small C library that lives inside every Monk binary.</p></div><div class="flex gap-1.5"><TagBadge variant="concepts">concepts</TagBadge><TagBadge variant="c">c</TagBadge></div></a>
+                        <a href={base + "/phase-3-runtime/values-in-memory"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.2</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Values and Types in Memory</h4><p class="text-monk-muted text-xs mt-0.5">MonkValue: the tagged union. Stack vs heap. Type tags.</p></div><div class="flex gap-1.5"><TagBadge variant="concepts">concepts</TagBadge><TagBadge variant="c">c</TagBadge></div></a>
+                        <a href={base + "/phase-3-runtime/value-semantics"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.3</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Value Semantics</h4><p class="text-monk-muted text-xs mt-0.5">Deep copy on assign. No GC. Your data is yours.</p></div><TagBadge variant="monk">monk</TagBadge></a>
+                        <a href={base + "/phase-3-runtime/builtins"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.4</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Built-in Functions</h4><p class="text-monk-muted text-xs mt-0.5">40+ functions: math, strings, arrays, file I/O, type checking.</p></div><div class="flex gap-1.5"><TagBadge variant="monk">monk</TagBadge><TagBadge variant="c">c</TagBadge></div></a>
+                        <a href={base + "/phase-3-runtime/error-handling"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.5</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Error Handling</h4><p class="text-monk-muted text-xs mt-0.5">guard/against/throw via setjmp/longjmp.</p></div><div class="flex gap-1.5"><TagBadge variant="monk">monk</TagBadge><TagBadge variant="c">c</TagBadge></div></a>
+                        <a href={base + "/phase-3-runtime/references"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0"><span class="text-monk-green font-semibold text-sm">3.6</span></div><div class="flex-1"><h4 class="font-semibold text-sm">References & Further Reading</h4><p class="text-monk-muted text-xs mt-0.5">Tagged unions, value semantics, setjmp/longjmp resources.</p></div><TagBadge variant="links">links</TagBadge></a>
                     </div>
                 </div>
             </div>
 
-            <!-- Units 4-8: Locked -->
+            <!-- Unit 4: C Code Generation -->
+            <div class="mb-10">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="tag text-monk-amber bg-monk-amberLight px-2 py-0.5 rounded-full">Phase 4</span>
+                    <span class="text-monk-muted text-sm">Generate C from the AST</span>
+                </div>
+
+                <div class="unit-card bg-white rounded-2xl border border-monk-border overflow-hidden">
+                    <div class="p-6 border-b border-monk-border bg-gradient-to-r from-monk-amberLight to-white">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h3 class="font-bold text-xl">Unit 4 — Code Generation</h3>
+                                <p class="text-monk-muted mt-1">Walk the AST, write C. Translation rules, function hoisting, source mapping.</p>
+                            </div>
+                            <div class="flex gap-1.5"><span class="tag text-monk-amber bg-white px-2 py-0.5 rounded-full border border-amber-200">5 lessons</span><TagBadge variant="c">c</TagBadge></div>
+                        </div>
+                    </div>
+                    <div class="divide-y divide-monk-border">
+                        <a href={base + "/phase-4-codegen/what-is-codegen"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0"><span class="text-monk-amber font-semibold text-sm">4.1</span></div><div class="flex-1"><h4 class="font-semibold text-sm">What Is Code Generation?</h4><p class="text-monk-muted text-xs mt-0.5">The final step. Walk the tree, write C. Readable output.</p></div><div class="flex gap-1.5"><TagBadge variant="concepts">concepts</TagBadge><TagBadge variant="c">c</TagBadge></div></a>
+                        <a href={base + "/phase-4-codegen/translation-rules"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0"><span class="text-monk-amber font-semibold text-sm">4.2</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Translation Rules</h4><p class="text-monk-muted text-xs mt-0.5">How each Monk construct becomes C. The systematic mapping.</p></div><div class="flex gap-1.5"><TagBadge variant="monk">monk</TagBadge><TagBadge variant="c">c</TagBadge></div></a>
+                        <a href={base + "/phase-4-codegen/function-hoisting"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0"><span class="text-monk-amber font-semibold text-sm">4.3</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Function Hoisting</h4><p class="text-monk-muted text-xs mt-0.5">Why functions are lifted above main(). The two-pass approach.</p></div><div class="flex gap-1.5"><TagBadge variant="monk">monk</TagBadge><TagBadge variant="c">c</TagBadge></div></a>
+                        <a href={base + "/phase-4-codegen/building-codegen"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0"><span class="text-monk-amber font-semibold text-sm">4.4</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Building the Code Generator</h4><p class="text-monk-muted text-xs mt-0.5">Emitter pattern, temp variables, source mapping, real bugs.</p></div><TagBadge variant="build">build</TagBadge></a>
+                        <a href={base + "/phase-4-codegen/references"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0"><span class="text-monk-amber font-semibold text-sm">4.5</span></div><div class="flex-1"><h4 class="font-semibold text-sm">References & Further Reading</h4><p class="text-monk-muted text-xs mt-0.5">Compile-to-C strategies, lcc, Chicken Scheme.</p></div><TagBadge variant="links">links</TagBadge></a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Unit 5: CLI -->
+            <div class="mb-10">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="tag text-stone-600 bg-stone-100 px-2 py-0.5 rounded-full">Phase 5</span>
+                    <span class="text-monk-muted text-sm">Build the CLI</span>
+                </div>
+
+                <div class="unit-card bg-white rounded-2xl border border-monk-border overflow-hidden">
+                    <div class="p-6 border-b border-monk-border bg-gradient-to-r from-stone-100 to-white">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h3 class="font-bold text-xl">Unit 5 — The CLI</h3>
+                                <p class="text-monk-muted mt-1">monk build, monk run, monk check. The user-facing tool that ties it all together.</p>
+                            </div>
+                            <span class="tag text-stone-600 bg-white px-2 py-0.5 rounded-full border border-stone-300">3 lessons</span>
+                        </div>
+                    </div>
+                    <div class="divide-y divide-monk-border">
+                        <a href={base + "/phase-5-cli/building-the-cli"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-stone-600 font-semibold text-sm">5.1</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Building the CLI</h4><p class="text-monk-muted text-xs mt-0.5">Commands, flags, error format. ~255 lines, no framework.</p></div><div class="flex gap-1.5"><TagBadge variant="build">build</TagBadge><TagBadge variant="go">go</TagBadge></div></a>
+                        <a href={base + "/phase-5-cli/the-pipeline"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-stone-600 font-semibold text-sm">5.2</span></div><div class="flex-1"><h4 class="font-semibold text-sm">The Compilation Pipeline</h4><p class="text-monk-muted text-xs mt-0.5">From monk build to native binary. Every step, every file.</p></div><div class="flex gap-1.5"><TagBadge variant="monk">monk</TagBadge><TagBadge variant="concepts">concepts</TagBadge></div></a>
+                        <a href={base + "/phase-5-cli/references"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-stone-600 font-semibold text-sm">5.3</span></div><div class="flex-1"><h4 class="font-semibold text-sm">References & Further Reading</h4><p class="text-monk-muted text-xs mt-0.5">CLI design, Go tooling, compilation pipelines.</p></div><TagBadge variant="links">links</TagBadge></a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Units 6-11: Coming Up -->
             <div class="mb-10">
                 <div class="flex items-center gap-2 mb-4">
                     <span class="tag text-monk-muted bg-stone-100 px-2 py-0.5 rounded-full">Coming Up</span>
-                    <span class="text-monk-muted text-sm">Built as you reach each phase</span>
+                    <span class="text-monk-muted text-sm">Built as each phase is completed</span>
                 </div>
 
                 <div class="grid gap-4">
                     <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
                         <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">4</span></div>
-                            <div class="flex-1"><h3 class="font-bold">Built-in Functions</h3><p class="text-monk-muted text-sm">Registering native functions. Math, strings, arrays, type checking.</p></div>
-                            <span class="tag text-monk-locked bg-stone-100 px-2 py-0.5 rounded-full">3 lessons</span>
-                        </div>
-                    </div>
-                    <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
-                        <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">5</span></div>
-                            <div class="flex-1"><h3 class="font-bold">Type System</h3><p class="text-monk-muted text-sm">Type checking, inference, structural typing, optionals.</p></div>
-                            <span class="tag text-monk-locked bg-stone-100 px-2 py-0.5 rounded-full">4 lessons</span>
-                        </div>
-                    </div>
-                    <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
-                        <div class="flex items-center gap-4">
                             <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">6</span></div>
-                            <div class="flex-1"><h3 class="font-bold">Modules</h3><p class="text-monk-muted text-sm">File loading, imports, exports, scope isolation.</p></div>
-                            <span class="tag text-monk-locked bg-stone-100 px-2 py-0.5 rounded-full">3 lessons</span>
+                            <div class="flex-1"><h3 class="font-bold">Type System</h3><p class="text-monk-muted text-sm">Static analysis. Type checking, inference, structural typing, optionals.</p></div>
                         </div>
                     </div>
                     <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
                         <div class="flex items-center gap-4">
                             <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">7</span></div>
-                            <div class="flex-1"><h3 class="font-bold">C Code Generation</h3><p class="text-monk-muted text-sm">Learn C. The runtime library. AST to C translation. Linking.</p></div>
-                            <div class="flex gap-1.5"><span class="tag text-monk-locked bg-stone-100 px-2 py-0.5 rounded-full">6 lessons</span><TagBadge variant="c">c</TagBadge></div>
+                            <div class="flex-1"><h3 class="font-bold">Module System</h3><p class="text-monk-muted text-sm">Multi-file programs. use/export, scope isolation, dependency resolution.</p></div>
                         </div>
                     </div>
                     <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
                         <div class="flex items-center gap-4">
                             <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">8</span></div>
-                            <div class="flex-1"><h3 class="font-bold">CLI & LSP</h3><p class="text-monk-muted text-sm">monk build/run/check/repl. Language server for editors.</p></div>
-                            <span class="tag text-monk-locked bg-stone-100 px-2 py-0.5 rounded-full">3 lessons</span>
+                            <div class="flex-1"><h3 class="font-bold">C FFI</h3><p class="text-monk-muted text-sm">Calling C from Monk. Linking external libraries.</p></div>
+                        </div>
+                    </div>
+                    <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">9</span></div>
+                            <div class="flex-1"><h3 class="font-bold">Linter & Formatter</h3><p class="text-monk-muted text-sm">monk fmt, monk lint. Code style and static analysis tooling.</p></div>
+                        </div>
+                    </div>
+                    <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">10</span></div>
+                            <div class="flex-1"><h3 class="font-bold">LSP & Editor Support</h3><p class="text-monk-muted text-sm">Language server protocol. VS Code extension. Syntax highlighting.</p></div>
+                        </div>
+                    </div>
+                    <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">11</span></div>
+                            <div class="flex-1"><h3 class="font-bold">Distribution</h3><p class="text-monk-muted text-sm">Homebrew, installers, cross-compilation. Shipping the compiler.</p></div>
                         </div>
                     </div>
                 </div>
@@ -308,7 +360,7 @@ import TagBadge from '../components/TagBadge.astro';
                             <svg class="w-5 h-5 text-monk-amber" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
                             <span class="font-semibold text-sm">C knowledge</span>
                         </div>
-                        <p class="text-monk-muted text-xs">Not needed upfront. Taught in Phase 7 when we generate C code.</p>
+                        <p class="text-monk-muted text-xs">Not needed upfront. Taught in Phase 3 (runtime) and Phase 4 (codegen).</p>
                     </div>
                 </div>
             </div>

@@ -1,0 +1,147 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+---
+
+<LessonLayout title="References & Further Reading" lessonNumber="4.5" section="Phase 4">
+
+    <LessonHeader lessonNumber="4.5" title="References & Further Reading" description="Compile-to-C strategies, code generation patterns, and source mapping.">
+        <TagBadge variant="links">links</TagBadge>
+        <TagBadge variant="default">5 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Primary -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The essential reads.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">Crafting Interpreters -- Chapters 14-30</h3>
+                        <p class="text-monk-muted text-sm mt-1">by Robert Nystrom</p>
+                        <p class="text-monk-muted text-sm mt-2">The second half of the book builds a bytecode compiler and virtual machine in C. Monk doesn't target bytecode, but the code generation principles are the same: walking an AST, emitting instructions, managing local variables, and handling function compilation. Chapters 22-25 (locals, functions, closures, garbage collection) are especially relevant to understanding the trade-offs Monk makes.</p>
+                        <a href="https://craftinginterpreters.com/chunks-of-bytecode.html" class="text-monk-accent text-sm hover:underline mt-2 inline-block">craftinginterpreters.com/chunks-of-bytecode.html</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">A Retargetable C Compiler: Design and Implementation</h3>
+                        <p class="text-monk-muted text-sm mt-1">by Christopher Fraser and David Hanson</p>
+                        <p class="text-monk-muted text-sm mt-2">The book behind lcc, the classic compile-to-C compiler. Fraser and Hanson built a full C compiler that emits C as an intermediate step. The architecture -- front end, IR, code generation -- maps directly to what Monk does, just at a much larger scale. The discussion of code shape (how to emit C constructs that C compilers optimize well) is particularly instructive.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-monk-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">Engineering a Compiler -- Chapter 7: Code Shape</h3>
+                        <p class="text-monk-muted text-sm mt-1">by Keith Cooper and Linda Torczon</p>
+                        <p class="text-monk-muted text-sm mt-2">Chapter 7 covers how a compiler decides what shape the generated code should take -- how to translate boolean expressions, array accesses, function calls, and control flow into lower-level constructs. The "code shape" concept is exactly what Monk's translation rules implement: each AST node type maps to a specific pattern of C code.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Compile-to-C languages -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Languages that compile to C.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk is not alone in targeting C. Several successful languages took the same path, each for different reasons.
+        </p>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Chicken Scheme</h3>
+                <p class="text-monk-muted text-sm mt-2">A Scheme implementation that compiles to C using a continuation-passing style with Cheney on the MTA (a clever garbage collection technique that uses the C stack as a nursery). Demonstrates that compile-to-C can be both portable and performant. The generated C is less readable than Monk's, but the compilation strategy is remarkable.</p>
+                <a href="https://www.call-cc.org/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">call-cc.org</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Cython</h3>
+                <p class="text-monk-muted text-sm mt-2">Compiles a Python-like language to C, bridging Python's ease of use with C's performance. Like Monk, it generates readable C that calls into a runtime library (CPython's). The translation rules are more complex because Cython must interop with Python objects, but the architecture is structurally similar.</p>
+                <a href="https://cython.org/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">cython.org</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Nim</h3>
+                <p class="text-monk-muted text-sm mt-2">Nim compiles to C (and also to C++, JavaScript, and LLVM IR). Its C backend produces surprisingly readable code. Worth studying to see how a more mature language handles the compile-to-C approach, especially for generics, closures, and garbage collection.</p>
+                <a href="https://nim-lang.org/" class="text-monk-accent text-sm hover:underline mt-2 inline-block">nim-lang.org</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Source mapping -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Source mapping and debugging.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">GCC #line Directive Documentation</h3>
+                <p class="text-monk-muted text-sm mt-2">The official documentation for the <code class="bg-stone-100 px-1 rounded text-xs">#line</code> preprocessor directive. Covers the exact syntax, behavior with warnings and errors, and interaction with debuggers. Short and precise.</p>
+                <a href="https://gcc.gnu.org/onlinedocs/cpp/Line-Control.html" class="text-monk-accent text-sm hover:underline mt-2 inline-block">gcc.gnu.org/onlinedocs/cpp/Line-Control.html</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Source Maps (JavaScript)</h3>
+                <p class="text-monk-muted text-sm mt-2">JavaScript's source map format solves the same problem as <code class="bg-stone-100 px-1 rounded text-xs">#line</code> directives: mapping generated code back to source. The format is more complex (base64 VLQ encoding) because it maps columns as well as lines. Useful context for understanding why Monk's approach is simpler -- C's preprocessor gives us source mapping for free.</p>
+                <a href="https://developer.chrome.com/docs/devtools/javascript/source-maps" class="text-monk-accent text-sm hover:underline mt-2 inline-block">developer.chrome.com/docs/devtools/javascript/source-maps</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Suggested reading order -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Suggested reading order.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Crafting Interpreters Ch. 14-17</strong> -- understand bytecode compilation. Even though Monk emits C, the concept of walking an AST and emitting instructions is identical.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Engineering a Compiler Ch. 7</strong> -- code shape theory. What patterns of generated code work well, and why.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Chicken Scheme docs</strong> -- a successful compile-to-C language. See how they solved closures and GC.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>GCC #line docs</strong> -- quick reference for source mapping, which you will use constantly.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">5</span></div>
+                <p class="text-sm"><strong>Fraser & Hanson (lcc)</strong> -- only if you want to go deep on compile-to-C architecture. Heavy but rewarding.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-4-codegen/building-codegen"
+        prevLabel="Prev: Building the Code Generator"
+        nextHref="/phase-5-cli/building-the-cli"
+        nextLabel="Next: Building the CLI"
+    />
+
+</LessonLayout>

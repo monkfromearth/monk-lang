@@ -1,0 +1,215 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="What Is Code Generation?" lessonNumber="4.1" section="Phase 4">
+
+    <LessonHeader lessonNumber="4.1" title="What Is Code Generation?" description="The final compiler step. Walk the tree, write C. Every AST node has a translation rule.">
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">10 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The analogy -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Translation, not transformation.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Think about translating a book from English to Spanish. You don't change the story. You don't rearrange the chapters. You express the same ideas in a different language, following that language's grammar and conventions.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Code generation is exactly this. The AST is your outline -- the structure of the program, fully understood. The code generator walks that outline node by node and writes the equivalent C code. Same program, different language.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            By the time we reach code generation, the hard work is done. The lexer found the tokens. The parser built the tree. The checker (when it exists) verified types. Now we just need to express the same program in C, and let a C compiler handle the rest.
+        </p>
+    </section>
+
+    <!-- Why C -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Why C and not something else.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk compiles to C, not LLVM IR, not assembly, not bytecode. This is a deliberate choice with real trade-offs.
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-accent font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Zero dependencies.</p>
+                    <p class="text-monk-muted text-sm">Every machine has a C compiler. No LLVM installation, no JVM, no runtime download. Just <code class="bg-stone-100 px-1 rounded text-xs">cc</code>.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-blueLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-blue font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Inspectable output.</p>
+                    <p class="text-monk-muted text-sm">You can open the generated <code class="bg-stone-100 px-1 rounded text-xs">.c</code> file and read it. Try reading LLVM IR or JVM bytecode -- it's possible, but not pleasant.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-greenLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-green font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Free optimizations.</p>
+                    <p class="text-monk-muted text-sm">GCC and Clang have decades of optimization passes. Monk gets them all for free by targeting C. No need to write our own optimizer.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-amberLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-amber font-bold text-sm">4</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Universal portability.</p>
+                    <p class="text-monk-muted text-sm">C runs on everything -- from microcontrollers to mainframes. Monk inherits all of that for free.</p>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm">You can read the generated C. <code class="bg-stone-100 px-1 rounded text-xs">monk build -o hello.c hello.monk</code> writes the C source. Open it. It's not obfuscated -- it's just C.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Side by side -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A simple program, two languages.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Here's a Monk program:</p>
+
+        <Code code={`let greeting = "hello world"
+show(greeting)`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">And here's the C code the generator produces:</p>
+
+        <Code code={`#include "runtime.h"
+
+int main(int argc, char *argv[]) {
+    monk_init(argc, argv);
+
+    #line 1 "hello.monk"
+    MonkValue greeting = monk_string("hello world");
+    #line 2 "hello.monk"
+    monk_show(greeting);
+
+    monk_free(greeting);
+    return 0;
+}`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Every line of Monk maps to one or more lines of C. The structure is preserved. The meaning is preserved. The only new things are C-specific bookkeeping: including the runtime header, initializing the runtime, freeing memory at the end, and <code class="bg-stone-100 px-1 rounded text-xs">#line</code> directives for source mapping.
+        </p>
+    </section>
+
+    <!-- Structure of generated C -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The anatomy of a generated C file.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every generated C file follows the same structure, regardless of how complex the Monk program is:
+        </p>
+
+        <Code code={`#include "runtime.h"
+
+// 1. Hoisted functions (from Monk function expressions)
+static MonkValue _fn_add(MonkValue a, MonkValue b) {
+    // function body
+}
+
+// 2. Main function (everything else)
+int main(int argc, char *argv[]) {
+    monk_init(argc, argv);
+
+    // Program body: declarations, expressions, control flow
+    MonkValue x = monk_int(42);
+    MonkValue result = _fn_add(x, monk_int(8));
+    monk_show(result);
+
+    // Cleanup
+    monk_free(x);
+    monk_free(result);
+    return 0;
+}`} lang="c" />
+
+        <div class="space-y-3 mt-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Runtime include.</strong> The runtime header provides <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>, all the <code class="bg-stone-100 px-1 rounded text-xs">monk_*</code> functions, and memory management.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Hoisted functions.</strong> All function expressions are lifted out and placed above <code class="bg-stone-100 px-1 rounded text-xs">main()</code> as <code class="bg-stone-100 px-1 rounded text-xs">static</code> C functions. More on this in lesson 4.3.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Program body.</strong> The rest of the program -- variable declarations, function calls, control flow -- goes inside <code class="bg-stone-100 px-1 rounded text-xs">main()</code>.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>Cleanup.</strong> Every <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> allocated in <code class="bg-stone-100 px-1 rounded text-xs">main()</code> gets freed before returning.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why runtime functions -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Why everything goes through the runtime.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            You might wonder: if <code class="bg-stone-100 px-1 rounded text-xs">x</code> is an integer, why not just emit <code class="bg-stone-100 px-1 rounded text-xs">int x = 42;</code> in C? Why wrap everything in <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>?
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Because Monk values aren't raw C types. A <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> is a tagged union -- it knows its own type at runtime. When you write <code class="bg-stone-100 px-1 rounded text-xs">x + y</code> in Monk, the runtime checks that both values are numbers before adding them. If one is a string, it produces a proper error instead of silently corrupting memory.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is why <code class="bg-stone-100 px-1 rounded text-xs">x + y</code> becomes <code class="bg-stone-100 px-1 rounded text-xs">monk_add(x, y)</code>, not <code class="bg-stone-100 px-1 rounded text-xs">x + y</code> in the generated C. Every operation goes through a runtime function that enforces type safety and proper value semantics. The C code is the vehicle, but the runtime is the engine.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Code generation walks the AST and writes equivalent C. Same program, different language.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Monk targets C for zero dependencies, readable output, and free optimizations from mature C compilers.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Generated C files have a fixed structure: runtime include, hoisted functions, main body, cleanup.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">All operations go through runtime functions. No direct C arithmetic -- the runtime enforces type safety.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-3-runtime/references"
+        prevLabel="Prev: References"
+        nextHref="/phase-4-codegen/translation-rules"
+        nextLabel="Next: Translation Rules"
+    />
+
+</LessonLayout>

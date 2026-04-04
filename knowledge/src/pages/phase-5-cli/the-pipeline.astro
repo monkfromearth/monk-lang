@@ -1,0 +1,287 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="The Compilation Pipeline" lessonNumber="5.2" section="Phase 5">
+
+    <LessonHeader lessonNumber="5.2" title="The Compilation Pipeline" description="What happens between monk build hello.monk and a running binary. Every step, every file.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="default">12 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The analogy -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">From text to machine code in seven steps.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A compilation pipeline is an assembly line. Raw material enters one end (your source code), passes through a series of stations (lexer, parser, codegen, C compiler), and a finished product rolls off the other end (a native binary). Each station transforms the material into a new shape. No station skips ahead or looks back.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Let's trace a real program through every station. We'll start with the simplest possible Monk file and follow it all the way to an executable.
+        </p>
+    </section>
+
+    <!-- The example -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The program we're tracing.</h2>
+
+        <Code code={`show("Hello, world!")`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mb-4 mt-4">
+            One line. One function call. But to produce a working binary from this, the compiler does seven distinct things. Let's walk through each one.
+        </p>
+    </section>
+
+    <!-- Step by step -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 1: Read the source file.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The CLI reads <code class="bg-stone-100 px-1 rounded text-xs">hello.monk</code> from disk into a string. Nothing fancy -- just <code class="bg-stone-100 px-1 rounded text-xs">os.ReadFile</code>. If the file doesn't exist or can't be read, the CLI prints an error and exits with code 1.
+        </p>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 2: Lex -- source text to tokens.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The scanner walks through the string character by character and produces a flat list of tokens:
+        </p>
+
+        <Code code={`IDENTIFIER "show"
+LPAREN    "("
+STRING    "Hello, world!"
+RPAREN    ")"
+EOF`} lang="bash" />
+
+        <p class="text-monk-muted leading-relaxed mb-4 mt-4">
+            Each token carries its type, its literal value, and its position (line and column). The position data flows all the way through the pipeline -- it's how error messages know where to point.
+        </p>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 3: Parse -- tokens to AST.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The parser reads the token stream and builds an abstract syntax tree. For our one-line program, the AST is a single <code class="bg-stone-100 px-1 rounded text-xs">CallExpr</code> node with the function name <code class="bg-stone-100 px-1 rounded text-xs">show</code> and one argument (a string literal).
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The parser also checks structure. Missing parentheses, unexpected tokens, incomplete statements -- all caught here. If there are parse errors, the CLI reports them all (not just the first one) and exits. No point generating code from a broken tree.
+        </p>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 4: Generate C -- AST to C source.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The code generator walks the AST and emits C code. For our program, the output looks roughly like this:
+        </p>
+
+        <Code code={`#include "runtime.h"
+
+int main(void) {
+    monk_show(monk_new_string("Hello, world!"));
+    return 0;
+}`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mb-4 mt-4">
+            The <code class="bg-stone-100 px-1 rounded text-xs">show()</code> call in Monk becomes <code class="bg-stone-100 px-1 rounded text-xs">monk_show()</code> in C. The string literal becomes a <code class="bg-stone-100 px-1 rounded text-xs">monk_new_string()</code> call that creates a runtime value. The <code class="bg-stone-100 px-1 rounded text-xs">#include "runtime.h"</code> at the top brings in all the type definitions and function declarations the generated code needs.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            If <code class="bg-stone-100 px-1 rounded text-xs">-o</code> ends with <code class="bg-stone-100 px-1 rounded text-xs">.c</code>, the pipeline stops here. The C source is written to disk and the CLI exits. This is useful for debugging the compiler itself -- you can read the C output and see exactly what the code generator produced.
+        </p>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 5: Write temp files and embed the runtime.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            To produce a binary, the generated C needs to be compiled by a real C compiler. But the C compiler needs files on disk -- it can't work from strings in memory. So the CLI:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Creates a temp directory in the OS temp space.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Writes the generated C source to a temp <code class="bg-stone-100 px-1 rounded text-xs">.c</code> file.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Writes <code class="bg-stone-100 px-1 rounded text-xs">runtime.h</code> and <code class="bg-stone-100 px-1 rounded text-xs">runtime.c</code> to the same temp directory.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Where do the runtime files come from? They're <strong>embedded in the Go binary</strong> itself. Go's <code class="bg-stone-100 px-1 rounded text-xs">embed</code> package lets you bake files into the compiled Go executable at build time. When you install Monk, you get a single binary that carries its own runtime inside it. No separate runtime installation, no "runtime not found" errors.
+        </p>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 6: Invoke the C compiler.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The CLI calls the system's C compiler to turn the temp files into a binary:
+        </p>
+
+        <Code code={`cc -o hello temp/generated.c temp/runtime.c -I temp/ -lm`} lang="bash" />
+
+        <p class="text-monk-muted leading-relaxed mb-4 mt-4">
+            By default, Monk uses <code class="bg-stone-100 px-1 rounded text-xs">cc</code> (the system's default C compiler). If you set the <code class="bg-stone-100 px-1 rounded text-xs">CC</code> environment variable, Monk respects it. Want to use Clang? <code class="bg-stone-100 px-1 rounded text-xs">CC=clang monk build hello.monk</code>. Want a cross-compiler? Set <code class="bg-stone-100 px-1 rounded text-xs">CC</code> accordingly.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is where all the optimization happens. The C compiler has decades of optimization passes -- dead code elimination, register allocation, loop unrolling, vectorization. Monk gets all of it for free by targeting C instead of emitting machine code directly.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Two compilations happen:</strong> Monk to C (by the Monk compiler, written in Go) and C to binary (by your system's C compiler). The second one is where optimization happens -- all of <code class="bg-stone-100 px-1 rounded text-xs">cc</code>'s decades of work, for free.</p>
+        </InsightBox>
+    </section>
+
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 7: Clean up and deliver.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            After the C compiler succeeds, the CLI deletes the temp directory. The user gets a clean native binary -- no <code class="bg-stone-100 px-1 rounded text-xs">.c</code> files left behind, no <code class="bg-stone-100 px-1 rounded text-xs">.o</code> files, no build artifacts. Just the executable.
+        </p>
+
+        <Code code={`$ monk build hello.monk
+$ ls
+hello      hello.monk
+$ ./hello
+Hello, world!`} lang="bash" />
+    </section>
+
+    <!-- monk run vs monk build -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What <code class="bg-stone-100 px-1 rounded text-xs">monk run</code> does differently.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <code class="bg-stone-100 px-1 rounded text-xs">monk run</code> executes the exact same pipeline as <code class="bg-stone-100 px-1 rounded text-xs">monk build</code>, with two additions at the end:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">The binary is built to a temp location (not the current directory).</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">The binary is executed immediately, with its stdout/stderr connected to your terminal.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">After execution, the temp binary is deleted.</p>
+            </div>
+        </div>
+
+        <Code code={`$ monk run hello.monk
+Hello, world!
+$ ls
+hello.monk    # no binary left behind`} lang="bash" />
+
+        <p class="text-monk-muted leading-relaxed mb-4 mt-4">
+            This is directly inspired by <code class="bg-stone-100 px-1 rounded text-xs">cargo run</code> in Rust and <code class="bg-stone-100 px-1 rounded text-xs">go run</code> in Go. During development, you don't care about the binary -- you just want to see the output. <code class="bg-stone-100 px-1 rounded text-xs">monk run</code> is the fastest path from edit to feedback.
+        </p>
+    </section>
+
+    <!-- monk check -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What <code class="bg-stone-100 px-1 rounded text-xs">monk check</code> skips.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <code class="bg-stone-100 px-1 rounded text-xs">monk check</code> runs only steps 1-3: read file, lex, parse. No codegen, no C compilation, no temp files. It validates that your code is syntactically correct and exits.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This makes it fast -- essentially instant for any reasonable file size. No waiting for the C compiler, no disk I/O for temp files. Fast enough that an editor can run it on every keystroke, and a CI pipeline can run it on every commit without adding meaningful build time.
+        </p>
+
+        <Code code={`$ monk check hello.monk          # valid -- no output, exit 0
+$ monk check broken.monk
+broken.monk:3:1: error: expected "end" to close function`} lang="bash" />
+    </section>
+
+    <!-- Pipeline visual summary -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The full picture.</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-6">
+            <div class="space-y-4 text-sm">
+                <div class="flex items-center gap-3">
+                    <div class="w-28 text-right font-semibold text-monk-muted">Source</div>
+                    <div class="w-4 text-monk-accent font-bold text-center">--</div>
+                    <div class="font-mono text-xs bg-stone-100 px-2 py-1 rounded">show("Hello, world!")</div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="w-28 text-right font-semibold text-monk-muted">Tokens</div>
+                    <div class="w-4 text-monk-accent font-bold text-center">--</div>
+                    <div class="font-mono text-xs bg-stone-100 px-2 py-1 rounded">IDENT "show", LPAREN, STRING "Hello, world!", RPAREN, EOF</div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="w-28 text-right font-semibold text-monk-muted">AST</div>
+                    <div class="w-4 text-monk-accent font-bold text-center">--</div>
+                    <div class="font-mono text-xs bg-stone-100 px-2 py-1 rounded">CallExpr(name: "show", args: [StringLit("Hello, world!")])</div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="w-28 text-right font-semibold text-monk-muted">C Source</div>
+                    <div class="w-4 text-monk-accent font-bold text-center">--</div>
+                    <div class="font-mono text-xs bg-stone-100 px-2 py-1 rounded">monk_show(monk_new_string("Hello, world!"))</div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="w-28 text-right font-semibold text-monk-muted">Binary</div>
+                    <div class="w-4 text-monk-accent font-bold text-center">--</div>
+                    <div class="font-mono text-xs bg-stone-100 px-2 py-1 rounded">./hello (native executable)</div>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Five representations of the same program. Each one is a step closer to the machine. The compiler's job is to translate faithfully between each pair -- never losing meaning, never adding meaning.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">The pipeline has seven steps: read, lex, parse, codegen, write temps, C compile, clean up.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">The runtime is embedded in the Go binary and extracted to temp files for compilation. Users install one binary, not a toolchain.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">Monk uses the system's C compiler (<code class="bg-stone-100 px-1 rounded text-xs">cc</code> or <code class="bg-stone-100 px-1 rounded text-xs">CC</code> env var) for the final compilation. All optimization comes from the C compiler.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm"><code class="bg-stone-100 px-1 rounded text-xs">monk run</code> = build + execute + delete. <code class="bg-stone-100 px-1 rounded text-xs">monk check</code> = lex + parse only. Different stopping points on the same pipeline.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-5-cli/building-the-cli"
+        prevLabel="Prev: Building the CLI"
+        nextHref="/phase-5-cli/references"
+        nextLabel="Next: References"
+    />
+
+</LessonLayout>

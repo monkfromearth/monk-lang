@@ -1,0 +1,223 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Why a Runtime Library?" lessonNumber="3.1" section="Phase 3">
+
+    <LessonHeader lessonNumber="3.1" title="Why a Runtime Library?" description="The small C library that lives inside every Monk binary. What it does and why it exists.">
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">10 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The analogy -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The code you didn't write.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When you write <code class="bg-stone-100 px-1 rounded text-xs">show("hello")</code> in Monk, the compiler turns it into C. But the C code can't just call <code class="bg-stone-100 px-1 rounded text-xs">printf</code> directly. Monk has dynamic types, tagged unions, deep copying, error handling. None of that exists in C out of the box.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Somebody has to provide those capabilities. That somebody is the <strong>runtime library</strong> -- a small piece of C code that gets compiled alongside every Monk program. Your program calls functions from the runtime. The runtime does the heavy lifting.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Think of it like the engine in a car. You turn the steering wheel (your Monk code), but the engine (the runtime) is doing the actual work under the hood. You didn't build the engine. It was already there when you got the car.
+        </p>
+    </section>
+
+    <!-- Why Monk needs one -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Why Monk can't skip this.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Three problems make a runtime necessary:
+        </p>
+
+        <div class="space-y-4 mb-6">
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-accent font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Dynamic types need a container.</p>
+                    <p class="text-monk-muted text-sm">Monk variables can hold integers, strings, arrays, records -- all different shapes. C has no such container. The runtime provides a tagged union that can hold any Monk value.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-blueLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-blue font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Built-in functions need implementations.</p>
+                    <p class="text-monk-muted text-sm">When a Monk program calls <code class="bg-stone-100 px-1 rounded text-xs">show()</code>, <code class="bg-stone-100 px-1 rounded text-xs">append()</code>, or <code class="bg-stone-100 px-1 rounded text-xs">split()</code>, the code generator emits a call to a C function. That function has to exist somewhere. The runtime is where it lives.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-4 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-monk-greenLight flex items-center justify-center flex-shrink-0">
+                    <span class="text-monk-green font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Error handling needs setjmp/longjmp.</p>
+                    <p class="text-monk-muted text-sm">Monk's <code class="bg-stone-100 px-1 rounded text-xs">guard/against/throw</code> system is implemented with C's checkpoint mechanism. The runtime sets up and manages those checkpoints.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- What goes where -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Runtime vs. code generator: who does what?</h2>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden text-sm mb-6">
+            <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border">
+                <div class="p-4 bg-monk-bg font-semibold">Runtime (C library)</div>
+                <div class="p-4 bg-monk-bg font-semibold">Code Generator (Go compiler)</div>
+            </div>
+            <div class="divide-y divide-monk-border">
+                <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border">
+                    <div class="p-4 text-monk-muted">MonkValue tagged union</div>
+                    <div class="p-4 text-monk-muted">Decides which tag to assign</div>
+                </div>
+                <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border">
+                    <div class="p-4 text-monk-muted">Deep copy, free, compare</div>
+                    <div class="p-4 text-monk-muted">Inserts copy/free calls at the right places</div>
+                </div>
+                <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border">
+                    <div class="p-4 text-monk-muted">Built-in functions (show, append, split...)</div>
+                    <div class="p-4 text-monk-muted">Translates Monk calls to C function calls</div>
+                </div>
+                <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border">
+                    <div class="p-4 text-monk-muted">setjmp/longjmp error handling</div>
+                    <div class="p-4 text-monk-muted">Emits guard/against blocks as setjmp/longjmp</div>
+                </div>
+                <div class="grid grid-cols-2 gap-0 divide-x divide-monk-border">
+                    <div class="p-4 text-monk-muted">Truthiness checks</div>
+                    <div class="p-4 text-monk-muted">Emits truthiness calls in if/while conditions</div>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The runtime is <strong>passive</strong>. It doesn't know about Monk syntax, AST nodes, or the compilation pipeline. It just provides functions that the generated C code calls. The code generator is the one that knows how to translate Monk into the right sequence of runtime calls.
+        </p>
+    </section>
+
+    <!-- How it gets linked -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">How the runtime gets into your binary.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When you run <code class="bg-stone-100 px-1 rounded text-xs">monk build hello.monk</code>, here's what happens:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">The Go compiler reads <code class="bg-stone-100 px-1 rounded text-xs">hello.monk</code>, lexes it, parses it, and generates C source code.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">The generated C includes <code class="bg-stone-100 px-1 rounded text-xs">#include "runtime.h"</code> at the top.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">The C compiler (gcc/clang) compiles both your generated code and <code class="bg-stone-100 px-1 rounded text-xs">runtime.c</code> together.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">The linker produces a single native binary. The runtime is baked in.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The entire runtime is roughly <strong>2-5 KB of C</strong>. Smaller than a JPEG. Every Monk binary carries it, and the cost is negligible.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>The runtime is built BEFORE the code generator.</strong> Generated C calls runtime functions. If the runtime doesn't exist, there's nothing to call. That's why this is Phase 3 and code generation is Phase 4.</p>
+        </InsightBox>
+    </section>
+
+    <!-- What's in it -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What's inside.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The runtime is two files: a header and an implementation. Together they provide everything a compiled Monk program needs:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-accent flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="font-semibold text-sm">MonkValue</p>
+                    <p class="text-monk-muted text-xs">A tagged union representing every possible Monk value -- integers, floats, strings, booleans, none, arrays, records, functions.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-blue flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="font-semibold text-sm">Value operations</p>
+                    <p class="text-monk-muted text-xs">Deep copy, free, compare, arithmetic, truthiness. The fundamental operations on MonkValues.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-green flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="font-semibold text-sm">40+ built-in functions</p>
+                    <p class="text-monk-muted text-xs">Output, type conversion, math, string operations, array operations, file I/O, environment access.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-2 h-2 rounded-full bg-monk-amber flex-shrink-0 mt-1.5"></div>
+                <div>
+                    <p class="font-semibold text-sm">Error handling</p>
+                    <p class="text-monk-muted text-xs">setjmp/longjmp infrastructure for guard/against/throw.</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Pure C. No C++ features, no external dependencies beyond the C standard library. Maximum portability.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">A runtime library is the code your program needs at execution time but you didn't write.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm">Monk needs a runtime because C doesn't have dynamic types, built-in functions, or structured error handling.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">The runtime is compiled together with the generated C code into a single binary. About 2-5 KB.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">The runtime must exist before the code generator, because generated code calls runtime functions.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-2-parser/references"
+        prevLabel="Prev: References"
+        nextHref="/phase-3-runtime/values-in-memory"
+        nextLabel="Next: Values and Types in Memory"
+    />
+
+</LessonLayout>

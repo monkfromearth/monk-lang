@@ -270,6 +270,16 @@ let add = (a int, b int) int { return a + b }
 let op BinaryOp = add`)
 }
 
+// Regression: before CodeRabbit CR-2, funcExactMatch used AssignableTo on
+// params, which allowed int->float widening. That's unsound: a fn typed
+// (float) -> int accessed via a (int) -> int slot would let callers pass
+// a float where the underlying fn expects an int.
+func TestCheckFuncTypeParamWidenRejected(t *testing.T) {
+	expectErr(t, `type FloatFn = (float) -> int
+let intFn = (n int) int { return n }
+let f FloatFn = intFn`, "cannot assign")
+}
+
 // ─── Control flow ─────────────────────────────────────────────────────────
 
 func TestCheckForOverArray(t *testing.T) {

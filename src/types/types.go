@@ -225,16 +225,23 @@ func recordAssignable(src, dst *Type) bool {
 	return true
 }
 
+// funcExactMatch enforces exact equality on params and return type.
+// We deliberately don't use AssignableTo (which permits int->float widening)
+// because a function typed (float) -> int being called via a (int) -> int
+// slot would let callers pass a float where the callee expects an int.
+// Proper contravariance requires dst.Params[i] to be assignable to
+// src.Params[i], not the other way round — but that's overkill for pre-1.0,
+// so we require exact matching until we have a concrete need for variance.
 func funcExactMatch(src, dst *Type) bool {
 	if len(src.Params) != len(dst.Params) {
 		return false
 	}
 	for i := range src.Params {
-		if !AssignableTo(src.Params[i], dst.Params[i]) {
+		if !Equal(src.Params[i], dst.Params[i]) {
 			return false
 		}
 	}
-	return AssignableTo(src.Return, dst.Return)
+	return Equal(src.Return, dst.Return)
 }
 
 // Equal reports whether two types are structurally identical.

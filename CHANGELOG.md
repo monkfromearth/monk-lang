@@ -95,7 +95,6 @@ Unboxed codegen deferred to Phase 6.5 (needs this checker's type info).
 
 ### What's not here yet
 
-- Type system (static analysis) — Phase 6
 - Module system (use/export) — Phase 7
 - C FFI — Phase 8
 - Linter and formatter — Phase 9

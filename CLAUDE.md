@@ -105,7 +105,7 @@ src/                     — Go compiler (module root)
   go.mod                     github.com/monkfromearth/monk-lang
   syntax/                    Lexer + Parser + AST (195 tests)
   types/                     Static type checker (112 tests)
-  codegen/                   AST → C emitter + scalar unboxing (59 tests)
+  codegen/                   AST → C emitter + scalar unboxing (63 tests)
   runtime/                   C runtime library (151 tests, embedded into the binary)
     runtime.h                    MonkValue tagged union, function declarations
     runtime.c                    Builtins, deep copy, error handling

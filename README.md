@@ -9,7 +9,7 @@
 A minimalist, readable, and performant programming language for the modern age.
 
 [![Build](https://img.shields.io/badge/build-passing-brightgreen?style=flat)](#status)
-[![Tests](https://img.shields.io/badge/tests-556_passing-brightgreen?style=flat)](#status)
+[![Tests](https://img.shields.io/badge/tests-560_passing-brightgreen?style=flat)](#status)
 [![Phase](https://img.shields.io/badge/phase-6_of_11-blue?style=flat)](#status)
 [![Go](https://img.shields.io/badge/Go-1.26.1+-00ADD8?style=flat&logo=go&logoColor=white)](#install)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat)](#license)
@@ -252,7 +252,7 @@ Three rules resolve every edge case:
 
 ## Status
 
-**0.0.1 — Buniyaad** (2026-04-04). 556 tests passing (405 Go + 151 C runtime).
+**0.0.1 — Buniyaad** (2026-04-04). 560 tests passing (409 Go + 151 C runtime).
 
 | Phase | Status |
 |-------|--------|
@@ -276,7 +276,7 @@ src/                Go compiler (module root)
   embed.go            Embedded runtime (self-contained binary)
   syntax/             Lexer + Parser + AST (195 tests)
   types/              Static type checker (112 tests)
-  codegen/            AST → C code generator + scalar unboxing (59 tests)
+  codegen/            AST → C code generator + scalar unboxing (63 tests)
   runtime/            C runtime library (runtime.h, runtime.c, 151 C tests)
 spec/               Language specification (REFERENCE.md is the source of truth)
 knowledge/          Learning course — monkfromearth.github.io/monk-lang/

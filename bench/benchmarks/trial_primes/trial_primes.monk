@@ -11,7 +11,7 @@ while n <= N {
     while d * d <= n {
         if n % d == 0 {
             is_prime = false
-            d = n  // break the inner loop
+            break
         }
         d += 1
     }

@@ -6,6 +6,7 @@ package codegen
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/monkfromearth/monk-lang/syntax"
@@ -70,6 +71,22 @@ func (g *generator) varStorage(monkName string) storageKind {
 		return k
 	}
 	return storeBoxed
+}
+
+// saveStorage takes a snapshot of g.storage that can be restored later.
+// Used around scope boundaries (function bodies, loop bodies, if/else
+// branches) so a `let x = ...` inside a nested scope that shadows an outer
+// `x` doesn't leak its storage decision to the outer scope on exit.
+//
+// The returned value is an opaque snapshot; pass it to restoreStorage.
+func (g *generator) saveStorage() map[string]storageKind {
+	snap := make(map[string]storageKind, len(g.storage))
+	maps.Copy(snap, g.storage)
+	return snap
+}
+
+func (g *generator) restoreStorage(snap map[string]storageKind) {
+	g.storage = snap
 }
 
 // newTemp returns a unique C temp variable name.
@@ -310,16 +327,20 @@ func stripOuterParens(s string) string {
 // emitIf handles if/else-if/else chains recursively.
 func (g *generator) emitIf(s *syntax.IfStmt) {
 	g.emitLine("    if (%s) {\n", g.emitCondition(s.Condition))
+	thenSnap := g.saveStorage()
 	for _, stmt := range s.Then.Stmts {
 		g.emitStmt(stmt)
 	}
+	g.restoreStorage(thenSnap)
 	if s.Else != nil {
 		switch e := s.Else.(type) {
 		case *syntax.BlockStmt:
 			g.emitLine("    } else {\n")
+			elseSnap := g.saveStorage()
 			for _, stmt := range e.Stmts {
 				g.emitStmt(stmt)
 			}
+			g.restoreStorage(elseSnap)
 			g.emitLine("    }\n")
 			return
 		case *syntax.IfStmt:
@@ -335,16 +356,20 @@ func (g *generator) emitIf(s *syntax.IfStmt) {
 // emitIfInline emits an if statement without the leading indent (for else-if chains).
 func (g *generator) emitIfInline(s *syntax.IfStmt) {
 	fmt.Fprintf(&g.body, "if (%s) {\n", g.emitCondition(s.Condition))
+	thenSnap := g.saveStorage()
 	for _, stmt := range s.Then.Stmts {
 		g.emitStmt(stmt)
 	}
+	g.restoreStorage(thenSnap)
 	if s.Else != nil {
 		switch e := s.Else.(type) {
 		case *syntax.BlockStmt:
 			g.emitLine("    } else {\n")
+			elseSnap := g.saveStorage()
 			for _, stmt := range e.Stmts {
 				g.emitStmt(stmt)
 			}
+			g.restoreStorage(elseSnap)
 			g.emitLine("    }\n")
 			return
 		case *syntax.IfStmt:
@@ -358,9 +383,11 @@ func (g *generator) emitIfInline(s *syntax.IfStmt) {
 
 func (g *generator) emitWhile(s *syntax.WhileStmt) {
 	g.emitLine("    while (%s) {\n", g.emitCondition(s.Condition))
+	snap := g.saveStorage()
 	for _, stmt := range s.Body.Stmts {
 		g.emitStmt(stmt)
 	}
+	g.restoreStorage(snap)
 	g.emitLine("    }\n")
 }
 
@@ -373,9 +400,14 @@ func (g *generator) emitFor(s *syntax.ForStmt) {
 	g.emitLine("        if (_iter.kind == MONK_ARRAY) {\n")
 	g.emitLine("            for (int64_t _i = 0; _i < _iter.array_val->length; _i++) {\n")
 	g.emitLine("                MonkValue %s = monk_deep_copy(_iter.array_val->data[_i]);\n", varName)
+	// Inner block so user code can safely shadow the loop variable.
+	g.emitLine("                {\n")
+	arrSnap := g.saveStorage()
 	for _, stmt := range s.Body.Stmts {
 		g.emitStmt(stmt)
 	}
+	g.restoreStorage(arrSnap)
+	g.emitLine("                }\n")
 	g.emitLine("                monk_free(%s);\n", varName)
 	g.emitLine("            }\n")
 	g.emitLine("        } else if (_iter.kind == MONK_STRING) {\n")
@@ -387,9 +419,13 @@ func (g *generator) emitFor(s *syntax.ForStmt) {
 	g.emitLine("                memcpy(_ch, _iter.str_val + _i, _clen);\n")
 	g.emitLine("                _ch[_clen] = '\\0';\n")
 	g.emitLine("                MonkValue %s = (MonkValue){.kind = MONK_STRING, .str_val = _ch};\n", varName)
+	g.emitLine("                {\n")
+	strSnap := g.saveStorage()
 	for _, stmt := range s.Body.Stmts {
 		g.emitStmt(stmt)
 	}
+	g.restoreStorage(strSnap)
+	g.emitLine("                }\n")
 	g.emitLine("                free(_ch);\n")
 	g.emitLine("                _i += _clen;\n")
 	g.emitLine("            }\n")
@@ -678,20 +714,27 @@ func (g *generator) hoistFunction(cName string, e *syntax.FuncExpr) {
 
 	// Emit body into funcs buffer (swap body temporarily). Track the expected
 	// return storage so emitReturn can coerce.
+	// Wrap the body in an inner block so user code can safely shadow params:
+	//   let f = (x int) int { let x = "y"; ... }
+	// would otherwise redeclare mk_x at the same C scope.
 	savedBody := g.body
 	savedRet := g.retStorage
+	savedStorage := g.saveStorage()
 	g.body = strings.Builder{}
 	if sig.All {
 		g.retStorage = sig.Return
 	} else {
 		g.retStorage = storeBoxed
 	}
+	g.body.WriteString("    {\n")
 	for _, stmt := range e.Body.Stmts {
 		g.emitStmt(stmt)
 	}
+	g.body.WriteString("    }\n")
 	g.funcs.WriteString(g.body.String())
 	g.body = savedBody
 	g.retStorage = savedRet
+	g.restoreStorage(savedStorage)
 
 	// Fallback return at the end of function body.
 	if sig.All {
@@ -708,12 +751,7 @@ func (g *generator) hoistFunction(cName string, e *syntax.FuncExpr) {
 	}
 	g.funcs.WriteString("}\n\n")
 
-	// Drop the per-param storage bindings — they're scoped to this function's body.
-	if sig.All {
-		for _, p := range e.Params {
-			delete(g.storage, mangleName(p.Name))
-		}
-	}
+	// Param storage bindings are already cleared by restoreStorage above.
 }
 
 // deriveFuncStorage consults the checker's Info to figure out each param's

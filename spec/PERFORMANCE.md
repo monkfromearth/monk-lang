@@ -26,7 +26,7 @@ See `bench/` for methodology and `bench/results/` for raw data.
 
 **Why fibonacci / mandelbrot / leibniz hit C parity.** Scalar unboxing (see below) emits raw `int64_t` and `double` everywhere — no MonkValue wrapping, no tag checks, no function calls for arithmetic. The generated C is indistinguishable from a hand-written scalar loop.
 
-**Why matmul is 14× C.** The inner loop does:
+**Why matmul is ~12× C.** The inner loop does:
 ```
 C[i*N+j] = C[i*N+j] + aik * B[k*N+j]
 ```

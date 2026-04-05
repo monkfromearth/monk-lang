@@ -22,7 +22,7 @@ Tokenize source code into a stream of tokens.
 - [x] Line and column tracking
 - [x] EOF and illegal token handling
 
-**Status:** 100 tests passing. `src/syntax/scanner.go`
+**Status:** 112 tests passing. `src/syntax/scanner.go`
 
 ---
 
@@ -37,7 +37,7 @@ Transform token stream into an Abstract Syntax Tree (AST).
 - [x] Type annotations on variables
 - [x] Error messages with line/column
 
-**Status:** 119 tests passing. `src/syntax/parser.go`, `src/syntax/ast.go`
+**Status:** 77 tests passing. `src/syntax/parser.go`, `src/syntax/ast.go`
 
 ---
 
@@ -104,7 +104,7 @@ The compiler core. Walk the AST, emit C source code.
 - [x] Generate `main()` that runs top-level statements
 - [x] `#line` directives mapping back to `.monk` source
 
-**Status:** 39 tests passing. `src/codegen/codegen.go`
+**Status:** 45 tests passing. `src/codegen/codegen.go`
 
 ---
 
@@ -116,7 +116,7 @@ The compiler core. Walk the AST, emit C source code.
 - [x] `monk check <file>` — parse and validate without compiling
 - [x] Error reporting with source file, line, column
 
-**Status:** 28 tests passing. `src/main.go`
+**Status:** 39 tests passing. `src/main.go`
 
 ---
 
@@ -141,7 +141,7 @@ Static analysis pass over the AST, before code generation.
 - [x] Loop variable is const
 - [x] All-paths-return analysis
 
-**Status:** 110 checker tests + 11 unboxing codegen tests. `src/types/` + `src/codegen/unbox.go`. Wired into `monk build/run/check`.
+**Status:** 112 checker tests + 14 unboxing codegen tests. `src/types/` + `src/codegen/unbox.go`. Wired into `monk build/run/check`.
 
 **Unboxing already delivered in Phase 6:**
 - [x] Scalar variables (`int`/`float`/`bool`) stored as raw C types

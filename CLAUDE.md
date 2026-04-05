@@ -88,7 +88,7 @@ Word bank: *Safar* (journey) · *Noor* (light) · *Umeed* (hope) · *Fikr* (thou
 3. C Runtime Library ✅
 4. C Code Generation ✅
 5. CLI ✅ (monk build, monk run, monk check, -o for C output)
-6. Type System (static analysis) ✅
+6. Type System + scalar unboxing codegen ✅
 7. Module System
 8. C FFI (syntax TBD)
 9. Linter & Formatter
@@ -100,13 +100,13 @@ Word bank: *Safar* (journey) · *Noor* (light) · *Umeed* (hope) · *Fikr* (thou
 ```
 src/                     — Go compiler (module root)
   main.go                    CLI: monk build/run/check/version/help
-  main_test.go               28 CLI integration tests
+  main_test.go               39 CLI integration tests
   embed.go                   go:embed for runtime (self-contained binary)
   go.mod                     github.com/monkfromearth/monk-lang
-  syntax/                    Lexer + Parser + AST
-  types/                     Static type checker (Phase 6)
-  codegen/                   AST → C source emitter + integration tests
-  runtime/                   C runtime library (embedded into the binary)
+  syntax/                    Lexer + Parser + AST (195 tests)
+  types/                     Static type checker (112 tests)
+  codegen/                   AST → C emitter + scalar unboxing (59 tests)
+  runtime/                   C runtime library (151 tests, embedded into the binary)
     runtime.h                    MonkValue tagged union, function declarations
     runtime.c                    Builtins, deep copy, error handling
 spec/                    — Language specification
@@ -145,6 +145,8 @@ If working on `knowledge/`:
 - Don't make creative decisions (naming, branding) without presenting options.
 - Compute new values BEFORE freeing old ones in codegen (use-after-free).
 - Don't skip position tracking on AST nodes — codegen needs `#line` directives.
+- Don't double-evaluate expressions in generated C — use GCC/clang statement-expressions `({ int64_t _t=expr; ... _t ...; })` or emit a named temp before the expression. A side-effecting RHS like `a / f()` must call `f()` exactly once.
+- When writing benchmark `.monk` code, use `break` and `continue` explicitly. Setting a loop variable to sentinel values (`d = n` to exit) works but runs extra iterations and changes perf by 3-5×.
 
 ## Related Repos
 

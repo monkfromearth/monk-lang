@@ -43,7 +43,7 @@ The foundation. Monk compiles, runs, and produces native binaries.
 
 **Self-contained binary:** Runtime is embedded via go:embed. The `monk` binary works from any directory without needing the source tree.
 
-**Test suite:** 460 tests (100 lexer, 119 parser, 41 codegen, 42 CLI, structural/type validation).
+**Test suite:** 540 tests (195 syntax, 110 types, 45 codegen, 39 CLI, 151 C runtime).
 
 ### Hardening (2026-04-05)
 
@@ -90,8 +90,16 @@ Two paper-cut fixes along the way:
 - `to_int` / `to_float` now accept int/float/string (was string-only). Matches
   the spec's "explicit coercion" philosophy.
 
-64 checker tests. Codegen unchanged — still emits MonkValue everywhere.
-Unboxed codegen deferred to Phase 6.5 (needs this checker's type info).
+110 checker tests. Codegen mostly unchanged — still emits MonkValue everywhere
+for values, but `+=` now dispatches through monk_string_concat for the
+string-concat overload (symmetry with binary `+`). Unboxed codegen deferred
+to Phase 6.5 (needs this checker's type info).
+
+4 new runnable examples demonstrating each check in action:
+- `examples/types.monk` — inference, annotations, arrays, records, optionals
+- `examples/records.monk` — nested records with structural typing
+- `examples/optionals.monk` — T? and the none case
+- `examples/guards.monk` — guard/against/throw scoping
 
 ### What's not here yet
 

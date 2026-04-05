@@ -1,0 +1,45 @@
+// Records with nested types — shows structural typing + nested field access.
+// The type checker enforces shape (exact fields) and field types at assignment.
+
+type Address = {
+    street: string,
+    city: string,
+    zip: string,
+}
+
+type User = {
+    name: string,
+    age: int,
+    addr: Address,
+}
+
+// Build a nested record value.
+let home Address = {
+    street: "221B Baker St",
+    city: "London",
+    zip: "NW1",
+}
+
+let holmes User = {
+    name: "Sherlock Holmes",
+    age: 32,
+    addr: home,
+}
+
+// Access — dot notation chains through nested records.
+show("name:   " + holmes.name)
+show("city:   " + holmes.addr.city)
+show("street: " + holmes.addr.street)
+
+// Mutation — let records can have their fields reassigned.
+// Note: holmes got its OWN COPY of home (value semantics), so mutating
+// holmes.addr doesn't affect `home`.
+holmes.age = 33
+show("age now:     " + to_string(holmes.age))
+show("home.city:   " + home.city)
+
+// Typed records reject unknown fields (caught at compile time):
+//   holmes.email = "sherlock@221b.uk"  // ERROR: User has no field 'email'
+//
+// And reject wrong-type values:
+//   holmes.age = "thirty-three"         // ERROR: cannot assign string to int

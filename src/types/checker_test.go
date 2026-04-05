@@ -436,6 +436,273 @@ let b = {x: 1}
 let eq = a == b`, "cannot compare")
 }
 
+// ─── Compound assignment arithmetic (PR-SE-1) ─────────────────────────────
+// Compound ops must validate the implied binary operation, not just
+// AssignableTo on the RHS.
+
+func TestCheckCompoundMinusEqualString(t *testing.T) {
+	expectErr(t, `let s = "hello"
+s -= "world"`, "requires numeric operands")
+}
+
+func TestCheckCompoundStarEqualBool(t *testing.T) {
+	expectErr(t, `let b = true
+b *= false`, "requires numeric operands")
+}
+
+func TestCheckCompoundPlusEqualStringOk(t *testing.T) {
+	// += has a string-concat overload just like binary +.
+	expectOk(t, `let s = "hi"
+s += " world"`)
+}
+
+func TestCheckCompoundPlusEqualMixedError(t *testing.T) {
+	expectErr(t, `let s = "hello"
+s += 42`, "cannot mix string and int")
+}
+
+func TestCheckCompoundNumericOk(t *testing.T) {
+	expectOk(t, `let n = 5
+n += 3
+n -= 1
+n *= 2
+n /= 2
+n %= 3`)
+}
+
+func TestCheckCompoundOnArrayElement(t *testing.T) {
+	expectErr(t, `let words string[] = ["a", "b"]
+words[0] -= "x"`, "requires numeric operands")
+}
+
+func TestCheckCompoundOnRecordField(t *testing.T) {
+	expectErr(t, `type Point = { x: int, y: int }
+let p Point = {x: 1, y: 2}
+p.x -= "oops"`, "requires numeric operands")
+}
+
+// ─── Function-type return annotations (PR-SE-2) ───────────────────────────
+
+func TestCheckFuncTypeReturn(t *testing.T) {
+	// Return type starting with LeftParen — parseFuncExpr used to miss this.
+	expectOk(t, `let make_add = (k int) (int) -> int {
+  return (x int) int { return x + k }
+}`)
+}
+
+// ─── For-loop body scope (PR-SE-3) ────────────────────────────────────────
+
+func TestCheckForBodyCanShadowLoopVar(t *testing.T) {
+	// Body gets its own child scope, so `let i = ...` creates a NEW binding
+	// rather than overwriting the const loop variable. Go-style shadowing.
+	expectOk(t, `for i in range(3) {
+  let i = "inner"
+  show(i)
+}`)
+}
+
+func TestCheckForLoopVarStillConst(t *testing.T) {
+	// Direct mutation (no shadow) is still rejected.
+	expectErr(t, `for i in range(3) {
+  i = 99
+}`, "cannot assign to const 'i'")
+}
+
+// ─── Equality error message symmetry (PR-SE-5) ────────────────────────────
+
+func TestCheckEqualityArraysErrorLeft(t *testing.T) {
+	expectErr(t, `let eq = [1,2] == 42`, "collections and functions have no equality")
+}
+
+func TestCheckEqualityArraysErrorRight(t *testing.T) {
+	expectErr(t, `let eq = 42 == [1,2]`, "collections and functions have no equality")
+}
+
+// ─── Nested records ────────────────────────────────────────────────────────
+
+func TestCheckNestedRecord(t *testing.T) {
+	expectOk(t, `type Addr = { street: string, city: string }
+type User = { name: string, addr: Addr }
+let a Addr = { street: "1st", city: "SF" }
+let u User = { name: "Alice", addr: a }
+show(u.addr.city)`)
+}
+
+func TestCheckNestedRecordFieldMismatch(t *testing.T) {
+	expectErr(t, `type Addr = { street: string, city: string }
+type User = { name: string, addr: Addr }
+let u User = { name: "Alice", addr: { street: "1st", city: 42 } }`,
+		"cannot assign")
+}
+
+func TestCheckNestedRecordPropertyAccess(t *testing.T) {
+	expectOk(t, `type Addr = { street: string, city: string }
+type User = { name: string, addr: Addr }
+let a Addr = { street: "1st", city: "SF" }
+let u User = { name: "Alice", addr: a }
+let c string = u.addr.city`)
+}
+
+// ─── Type aliases ─────────────────────────────────────────────────────────
+
+func TestCheckTypeAliasPrimitive(t *testing.T) {
+	expectOk(t, `type UserId = int
+let id UserId = 42`)
+}
+
+func TestCheckTypeAliasRejectsWrongType(t *testing.T) {
+	expectErr(t, `type UserId = int
+let id UserId = "abc"`, "cannot assign")
+}
+
+func TestCheckTypeAliasArray(t *testing.T) {
+	expectOk(t, `type Name = string
+let names Name[] = ["Alice", "Bob"]`)
+}
+
+// ─── Division semantics ────────────────────────────────────────────────────
+
+func TestCheckIntDivisionIsInt(t *testing.T) {
+	// int / int = int, so it flows into an int slot.
+	expectOk(t, `let x int = 10 / 3`)
+}
+
+func TestCheckFloatDivisionRejectsIntSlot(t *testing.T) {
+	// float / anything = float, no narrowing back to int.
+	expectErr(t, `let x int = 10.0 / 3`, "cannot assign float to int")
+}
+
+// ─── Assignment to undefined collection slot ───────────────────────────────
+
+func TestCheckAssignIndexOnNonArray(t *testing.T) {
+	expectErr(t, `let s = "hello"
+s[0] = "H"`, "index assignment requires an array")
+}
+
+func TestCheckAssignPropertyOnNonRecord(t *testing.T) {
+	expectErr(t, `let n = 5
+n.x = 1`, "property assignment requires a record")
+}
+
+// ─── Empty collections ─────────────────────────────────────────────────────
+
+func TestCheckEmptyArrayAnnotated(t *testing.T) {
+	expectOk(t, `let nums int[] = []`)
+}
+
+func TestCheckEmptyRecord(t *testing.T) {
+	expectOk(t, `let r = {}`)
+}
+
+// ─── Nested blocks + scoping ───────────────────────────────────────────────
+
+func TestCheckIfScopeIsolation(t *testing.T) {
+	expectErr(t, `if true { let x = 1 } else { let x = "y" }
+show(to_string(x))`, "undefined variable 'x'")
+}
+
+func TestCheckWhileScopeIsolation(t *testing.T) {
+	expectErr(t, `while false { let x = 1 }
+show(to_string(x))`, "undefined variable 'x'")
+}
+
+// ─── Reassignment in branches ──────────────────────────────────────────────
+
+func TestCheckReassignInsideIf(t *testing.T) {
+	// A let declared outside can be reassigned inside.
+	expectOk(t, `let n = 0
+if true { n = 5 }
+show(to_string(n))`)
+}
+
+func TestCheckReassignFromBranchTypeMismatch(t *testing.T) {
+	expectErr(t, `let n = 0
+if true { n = "oops" }`, "cannot assign string to variable 'n' of type int")
+}
+
+// ─── Guard / against ───────────────────────────────────────────────────────
+
+func TestCheckGuardHappyPath(t *testing.T) {
+	expectOk(t, `let div = (a int, b int) int {
+  if b == 0 { throw "div by zero" }
+  return a / b
+}
+guard r = div(10, 2) against err {
+  r = 0
+}
+show(to_string(r))`)
+}
+
+func TestCheckGuardErrBindingIsAny(t *testing.T) {
+	// Inside against, err is Any (user throws arbitrary values).
+	expectOk(t, `let fail = () int { throw "boom" }
+guard r = fail() against err {
+  show(to_string(err))
+  r = 0
+}`)
+}
+
+// ─── Return statement edge cases ───────────────────────────────────────────
+
+func TestCheckBareReturnInNoneFn(t *testing.T) {
+	expectOk(t, `let go = () none {
+  if true { return }
+  show("unreachable")
+}`)
+}
+
+func TestCheckBareReturnInTypedFn(t *testing.T) {
+	expectErr(t, `let go = () int {
+  return
+}`, "bare return in function returning int")
+}
+
+func TestCheckReturnThrowIsTerminal(t *testing.T) {
+	expectOk(t, `let bad = (n int) int {
+  if n < 0 { throw "nope" }
+  return n
+}`)
+}
+
+// ─── For-in over different iterables ───────────────────────────────────────
+
+func TestCheckForInStrIterLoopVarIsStr(t *testing.T) {
+	expectOk(t, `for c in "abc" { show(c) }`)
+}
+
+func TestCheckForInArrTypedLoopVar(t *testing.T) {
+	expectOk(t, `let nums int[] = [1, 2, 3]
+let sum int = 0
+for n in nums { sum += n }
+show(to_string(sum))`)
+}
+
+func TestCheckForInStrRejectsIntArith(t *testing.T) {
+	// Loop var `c` is string, can't add an int to it via arithmetic.
+	expectErr(t, `for c in "abc" {
+  let x = c + 1
+}`, "cannot mix string and int")
+}
+
+// ─── Logical / bitwise ─────────────────────────────────────────────────────
+
+func TestCheckLogicalReturnsBool(t *testing.T) {
+	expectOk(t, `let x boolean = true and false`)
+}
+
+func TestCheckShiftRequiresInt(t *testing.T) {
+	expectErr(t, `let x = 1.0 << 2`, "bitwise operator requires int operands")
+}
+
+// ─── Declared but never used — checker does NOT enforce this ───────────────
+// Monk (like Go) leaves unused-var detection to the linter, not the type
+// checker. Documenting the behavior.
+
+func TestCheckUnusedVarNotAnError(t *testing.T) {
+	expectOk(t, `let x = 42
+show("done")`)
+}
+
 // ─── Real-world examples — the test suite's examples/ programs ────────────
 
 func TestCheckFibonacciExample(t *testing.T) {

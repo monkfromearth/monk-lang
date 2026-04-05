@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-6 complete. 560 tests (409 Go + 151 C runtime). Working end-to-end.**
+**Status: Phases 1-6 complete. 565 tests (414 Go + 151 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -195,6 +195,120 @@ Matmul didn't move much — arrays are still tagged. Trial_primes initially wrot
 - `bench/benchmarks/trial_primes/` — prime counting by trial division, nested int loops
 
 **Codegen tests:** 11 new unboxing tests assert BOTH the generated C shape AND the runtime result for each optimization path.
+
+### File-structure refactor (2026-04-05)
+
+Big files were masking what each module does. Split each monolithic file into
+focused, single-purpose files. No semantic changes — tests remained green
+across the refactor.
+
+**Before → After (line counts):**
+
+- `syntax/ast.go` (348) → `ast.go` (91) + `ast_expr.go` (132) + `ast_stmt.go` (141)
+- `syntax/parser.go` (1174) → `parser.go` (99) + `parse_stmt.go` (398) + `parse_expr.go` (516) + `parse_type.go` (185)
+- `codegen/codegen.go` (883) → `gen.go` (136) + `gen_stmt.go` (337) + `gen_expr.go` (215) + `gen_func.go` (126) + `gen_helpers.go` (108)
+- `runtime/runtime.c` (858) → `value.c` (337) + `arith.c` (112) + `string.c` (156) + `container.c` (130) + `math.c` (61) + `builtins.c` (76) + `error.c` (50) + new `internal.h` (37)
+
+Each directory now has an `INDEX.md` pointing to the right file.
+
+**C runtime split details.** Previously `cc` took a single `runtime.c`; now
+it takes the 7 split `.c` files. Internal helpers (`monk_malloc`,
+`monk_strdup`, `monk_realloc`, `utf8_strlen`, `utf8_offset`, `monk_to_go_float`
+renamed to `monk_as_c_double`, and `value_to_str` renamed to
+`monk_value_to_cstr`) became non-static and moved behind `internal.h`. The Go
+side tracks the list in `runtimeSources` + `embeddedRuntimeFiles` — those
+two slices are the single point of change when adding a runtime file.
+
+**Parser edge cases fixed en route:**
+
+- `(x none) ...` — param with `none` type. `none` is its own token kind
+  (not `Identifier`), so the heuristic that decides param-vs-grouped-expr
+  wasn't recognizing it. Now uses `isTypeName` for the check.
+- `() (T) -> T { ... }` — zero-param function with function-type return.
+  Dispatch after seeing `()` now accepts `(` as a valid next token (for
+  the function-return annotation), not just type-name and `{`.
+
+Both had regression tests added (`TestParseFuncParamWithNoneType`,
+`TestParseFuncNoParamsFuncReturnType`). The earlier-reported
+`(to_float(y) / 2.0)` false-positive was already fixed in Phase 6; removed
+the stale note from `bench/PLAN.md`.
+
+**Codegen bug surfaced by splitting + running all examples:** the hoisted-
+function storage map was being mutated BEFORE `saveStorage()`. When a
+fully-unboxed function (e.g. `validate_age (age int) int`) was hoisted,
+its param's storage (`mk_age → storeInt`) persisted into the next
+hoisted function's body. A later boxed function with a same-named param
+(`process (age int) string`) inherited that stale binding, and its
+`validate_age(age)` call compiled as `_monk_func_2(mk_age)` — passing a
+`MonkValue` where an `int64_t` was expected. Fixed by snapshotting
+storage BEFORE writing the param bindings, and by always recording the
+param's storage (even `storeBoxed`) so inner lookups can't fall through
+to a sibling's binding. Regression test: `TestUnboxFuncParamsDoNotLeakBetweenSiblings`.
+
+**CodeRabbit review findings applied:** Ran `coderabbit review --plain
+-t uncommitted` on the refactor branch. Two passes surfaced ~17 findings
+total (LLM non-determinism — different issues flagged each run). All
+pre-existing pre-refactor code, exposed by the smaller file sizes.
+Judged per `.claude/rules/code-review-workflow.md`:
+
+- **ACT (fixed):** `realloc(old, 0)` is implementation-defined — added
+  the same `size > 0 ? size : 1` guard that `monk_malloc_internal` has.
+- **ACT (fixed):** emitted `malloc(_clen+1)` in the string for-loop
+  didn't check for NULL — now panics on OOM, matching the runtime's
+  convention.
+- **ACT (fixed):** `monk_array_set(&obj, …)` and `monk_record_set(&obj, …)`
+  emitted invalid C when target.Object was a non-identifier rvalue
+  (e.g. `matrix[i][j] = x`). Detect the IdentExpr common case for the
+  fast in-place path; route complex targets through a temp so the C
+  compiles. The no-op-on-nested-mutation behavior is correct per Monk's
+  value semantics (matrix[i] returns a deep copy). Regression tests:
+  `TestCodegenNestedIndexAssignCompiles`, `TestCodegenNestedPropertyAssignCompiles`.
+- **ACT (doc):** added a comment to `monk_to_upper_case`/`monk_to_lower_case`
+  explaining these are ASCII-only — Monk's tiny-runtime goal excludes
+  pulling in ICU tables.
+- **ACT (fixed):** `monk_neg(INT64_MIN)` and `monk_abs(INT64_MIN)` —
+  negating INT64_MIN overflows int64_t (C undefined behavior). Both
+  now panic with a clear overflow message.
+- **ACT (fixed):** `monk_file_write` ignored the fputs return value —
+  silent write failures on disk-full / permission errors. Now captures
+  the return, closes the file, and panics on EOF or fclose failure.
+- **ACT (defensive):** `parseTypeExpr` read `p.current().Text`
+  unconditionally. Callers already guard with `isTypeName` checks, but
+  added a defensive fallback that records a "expected type name"
+  error — malformed input now surfaces a readable message instead
+  of swallowing a junk token into an AST.
+- **SKIP:** bitwise ops accessing `.int_val` directly — type checker
+  rejects non-int operands at all bitwise sites; runtime guards would
+  duplicate checker work and none of the existing bitwise ops
+  (Amp/Pipe/Caret/Shift*/Tilde) guard. Consistent.
+- **SKIP:** anonymous-function values returned as `monk_none()` —
+  documented deferred feature; first-class function values need Phase 8
+  (FFI / closure captures).
+- **SKIP:** potential use-after-free on string for-loop's `_ch` — value
+  semantics guarantees every downstream consumer deep-copies the loop
+  variable, so captured references always own their strings by the time
+  `free(_ch)` runs. Added a comment explaining why the raw `char*` /
+  `free` pattern is safe here.
+- **SKIP:** `monk_floor`/`ceil`/`round` cast double to int64_t (UB for
+  values outside ±9.2e18) — matches spec's graceful-on-reads policy;
+  bolting range checks onto every math builtin adds runtime cost for
+  an edge case users don't hit in numeric computation.
+- **SKIP:** `monk_add` Plus path — reviewer flagged `right` as
+  potentially double-evaluated, but it's in the two branches of a
+  ternary operator which evaluates exactly one branch.
+- **SKIP:** `emitUnboxedCall` accessing `fs.Params[i]` without arity
+  guard — type checker verifies arity match at every call site before
+  codegen runs.
+
+### Pre-completion check process
+
+Added `.claude/rules/pre-completion-checks.md` codifying the mandatory
+check battery before declaring work done: gofmt, build, `go vet`,
+`staticcheck`, `golangci-lint`, `govulncheck`, full Go test suite with
+cleared cache, C runtime tests, all 13 examples, all 5 benchmarks with
+expected-checksum verification, CodeRabbit uncommitted review, and
+`INDEX.md` updates for every touched directory. Referenced from CLAUDE.md
+alongside the existing code-review-workflow rule.
 
 ### Pivots and mistakes
 

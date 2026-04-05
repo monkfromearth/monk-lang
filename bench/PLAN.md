@@ -24,9 +24,9 @@
 
 ## Known issues surfaced by building this suite
 
-**Monk parser bug.** `(to_float(y) / 2.0)` fails with "expected parameter name" — the parser treats any `(` followed by an identifier as the start of a function literal. Workaround: extract intermediate variables. Fix is in Phase 2 parser — should require `{` lookahead before committing to function-literal parse. Low priority but user-visible.
+**(Fixed 2026-04-05) Parser bug:** `(to_float(y) / 2.0)` used to fail with "expected parameter name". Parser now scans to the matching `)` and only commits to a function literal when `->` follows. Fixed in Phase 6 alongside the `(x none)` param-type and `() (T) -> T { ... }` return-type cases.
 
-**Monk has no int→float builtin.** `to_float(x)` only accepts strings. Workaround: `x * 1.0` coerces via the mixed-type arithmetic rules. A real `to_float(int)` or `float(x)` builtin would be cleaner.
+**(Fixed 2026-04-05) `to_float` on int:** now widens int→float directly. `to_int` similarly accepts float/string.
 
 ## v2 ideas
 

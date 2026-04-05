@@ -4,7 +4,9 @@
 
 All guidelines are organized in `.claude/rules/`:
 
-- @.claude/rules/persona.md - Conversation style, behavior, concision
+- @.claude/rules/persona.md — Conversation style, behavior, concision
+- @.claude/rules/code-review-workflow.md — How to process external review feedback
+- @.claude/rules/pre-completion-checks.md — **MANDATORY** check battery before declaring work done
 
 Ground-up rewrite of [Monk Lang](https://github.com/monkfromearth/monk-lang). Same language, new implementation.
 The v1 (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](https://github.com/monkfromearth/monk-lang-v1).
@@ -60,6 +62,15 @@ Do NOT read `spec/MEMORY_MODEL_DISCUSSION.md` unless specifically discussing mem
 - **Integration tests for codegen.** Compile AND run the generated binary, check stdout.
 - **Design decision comments.** Non-obvious choices must have a comment linking to the spec.
 
+### File Organization & INDEX.md
+Every source directory (`src/syntax/`, `src/codegen/`, `src/runtime/`) has an `INDEX.md` listing each file and what lives in it. This is a navigation aid, not a spec.
+
+- **Read before searching.** When looking for a function or type, open the directory's `INDEX.md` first. It's faster than grep for "where does this live".
+- **Update when files move.** If you add a new file, delete a file, or move a function from one file to another, update the dir's `INDEX.md` in the same commit.
+- **Keep it one-line-per-file.** Each row: filename → what it contains. Don't duplicate doc comments.
+- **Keep files small and focused.** If a single file exceeds ~500 lines, consider splitting. One topic per file. Go makes this free — same package, multiple files.
+- **Two sync points for the C runtime.** The list of runtime `.c` files is duplicated in: (1) `src/embed.go` `//go:embed` directives, (2) `runtimeSources`/`embeddedRuntimeFiles` in `src/main.go`, (3) `runtimeTestSources` in `src/codegen/codegen_test.go`. When you add a runtime file, update ALL THREE plus `runtime/INDEX.md`.
+
 ## Key Decisions
 
 - **Compile to C.** No interpreter, no VM, no REPL. Source → C → binary.
@@ -100,15 +111,20 @@ Word bank: *Safar* (journey) · *Noor* (light) · *Umeed* (hope) · *Fikr* (thou
 ```
 src/                     — Go compiler (module root)
   main.go                    CLI: monk build/run/check/version/help
-  main_test.go               39 CLI integration tests
+  main_test.go               CLI integration tests
   embed.go                   go:embed for runtime (self-contained binary)
   go.mod                     github.com/monkfromearth/monk-lang
-  syntax/                    Lexer + Parser + AST (195 tests)
-  types/                     Static type checker (112 tests)
-  codegen/                   AST → C emitter + scalar unboxing (63 tests)
-  runtime/                   C runtime library (151 tests, embedded into the binary)
-    runtime.h                    MonkValue tagged union, function declarations
-    runtime.c                    Builtins, deep copy, error handling
+  syntax/                    Lexer + Parser + AST (see INDEX.md)
+    token.go, scanner.go
+    ast.go, ast_expr.go, ast_stmt.go
+    parser.go, parse_stmt.go, parse_expr.go, parse_type.go
+  types/                     Static type checker
+  codegen/                   AST → C emitter + scalar unboxing (see INDEX.md)
+    gen.go, gen_stmt.go, gen_expr.go, gen_func.go, gen_helpers.go, unbox.go
+  runtime/                   C runtime library, linked into every binary (see INDEX.md)
+    runtime.h                    public API (MonkValue + function declarations)
+    internal.h                   shared helpers (not for generated code)
+    value.c, arith.c, string.c, container.c, math.c, builtins.c, error.c
 spec/                    — Language specification
   REFERENCE.md               THE source of truth for syntax and semantics
   ARCHITECTURE_DECISIONS.md  Why Go, why compile-to-C, what can change later

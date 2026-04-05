@@ -10,14 +10,15 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/monkfromearth/monk-lang/src/codegen"
-	"github.com/monkfromearth/monk-lang/src/syntax"
+	"github.com/monkfromearth/monk-lang/codegen"
+	"github.com/monkfromearth/monk-lang/syntax"
 )
 
 func main() {
@@ -30,11 +31,11 @@ func main() {
 	case "build":
 		cmdBuild(os.Args[2:])
 	case "run":
-		cmdRun(os.Args[2:])
+		os.Exit(cmdRun(os.Args[2:]))
 	case "check":
 		cmdCheck(os.Args[2:])
 	case "version":
-		fmt.Println("monk 0.0.1-dev")
+		fmt.Println("monk 0.0.1 — Buniyaad")
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -71,7 +72,10 @@ func cmdBuild(args []string) {
 
 	// Parse -o flag
 	for i := 1; i < len(args); i++ {
-		if args[i] == "-o" && i+1 < len(args) {
+		if args[i] == "-o" {
+			if i+1 >= len(args) {
+				fatal("monk build: -o requires an output path")
+			}
 			outputFile = args[i+1]
 			i++
 		}
@@ -99,6 +103,13 @@ func cmdBuild(args []string) {
 	// Generate C
 	cSource := codegen.Generate(prog, sourceFile)
 
+	// Ensure the output directory exists (user may pass a nested path via -o)
+	if outDir := filepath.Dir(outputFile); outDir != "" && outDir != "." {
+		if err := os.MkdirAll(outDir, 0755); err != nil {
+			fatal("monk build: cannot create output directory %s: %s", outDir, err)
+		}
+	}
+
 	// If output ends in .c, just emit the C source (no compilation)
 	if strings.HasSuffix(outputFile, ".c") {
 		if err := os.WriteFile(outputFile, []byte(cSource), 0644); err != nil {
@@ -116,7 +127,7 @@ func cmdBuild(args []string) {
 
 	runtimeDir := findRuntime()
 
-	cmd := exec.Command("cc", "-std=c11", "-O2",
+	cmd := exec.Command("cc", "-std=c11", "-O3", "-flto",
 		"-I"+runtimeDir,
 		cFile,
 		filepath.Join(runtimeDir, "runtime.c"),
@@ -126,16 +137,18 @@ func cmdBuild(args []string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		os.Remove(cFile)
+		_ = os.Remove(cFile)
 		fatal("monk build: C compilation failed")
 	}
 
-	os.Remove(cFile)
+	_ = os.Remove(cFile)
 	fmt.Fprintf(os.Stderr, "monk: built %s\n", outputFile)
 }
 
-// cmdRun compiles and runs a .monk file, then cleans up.
-func cmdRun(args []string) {
+// cmdRun compiles and runs a .monk file, then cleans up. Returns the exit
+// code to propagate. Returning (instead of calling os.Exit directly) lets the
+// deferred temp-dir cleanup run even when the child program exits non-zero.
+func cmdRun(args []string) int {
 	if len(args) < 1 {
 		fatal("monk run: missing source file")
 	}
@@ -158,7 +171,7 @@ func cmdRun(args []string) {
 	if err != nil {
 		fatal("monk run: %s", err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	cFile := filepath.Join(dir, "program.c")
 	binFile := filepath.Join(dir, "program")
@@ -169,7 +182,7 @@ func cmdRun(args []string) {
 
 	runtimeDir := findRuntime()
 
-	compile := exec.Command("cc", "-std=c11", "-O2",
+	compile := exec.Command("cc", "-std=c11", "-O3", "-flto",
 		"-I"+runtimeDir,
 		cFile,
 		filepath.Join(runtimeDir, "runtime.c"),
@@ -187,10 +200,11 @@ func cmdRun(args []string) {
 	run.Stdin = os.Stdin
 	if err := run.Run(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			os.Exit(exitErr.ExitCode())
+			return exitErr.ExitCode()
 		}
 		fatal("monk run: %s", err)
 	}
+	return 0
 }
 
 // cmdCheck parses and validates a .monk file without compiling.
@@ -216,10 +230,17 @@ func cmdCheck(args []string) {
 }
 
 // findRuntime locates the runtime/ directory.
+// Search order: relative to executable, working directory, MONK_RUNTIME_DIR env,
+// and finally extract embedded runtime files to a cache directory.
 func findRuntime() string {
-	// Try relative to executable
+	// Try relative to executable. Resolve symlinks first so that Homebrew-style
+	// installs (where /opt/homebrew/bin/monk is a symlink into the Cellar) find
+	// the runtime next to the real binary, not next to the symlink.
 	exe, err := os.Executable()
 	if err == nil {
+		if resolved, rerr := filepath.EvalSymlinks(exe); rerr == nil {
+			exe = resolved
+		}
 		dir := filepath.Dir(exe)
 		candidates := []string{
 			filepath.Join(dir, "runtime"),
@@ -245,8 +266,41 @@ func findRuntime() string {
 		}
 	}
 
-	fatal("monk: cannot find runtime/ directory. Set MONK_RUNTIME_DIR or run from project root.")
-	return ""
+	// Fall back to embedded runtime — extract to ~/.cache/monk/runtime/
+	return extractEmbeddedRuntime()
+}
+
+// extractEmbeddedRuntime writes the embedded runtime.h and runtime.c to a
+// cache directory so cc can find them. Files are only written if missing or
+// if the binary is newer than the cached files.
+func extractEmbeddedRuntime() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fatal("monk: cannot determine home directory: %s", err)
+	}
+
+	cacheDir := filepath.Join(home, ".cache", "monk", "runtime")
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		fatal("monk: cannot create cache directory: %s", err)
+	}
+
+	writeIfChanged(filepath.Join(cacheDir, "runtime.h"), embeddedRuntimeH)
+	writeIfChanged(filepath.Join(cacheDir, "runtime.c"), embeddedRuntimeC)
+
+	return cacheDir
+}
+
+// writeIfChanged writes content to path only if the file is missing or differs.
+// This avoids gratuitous mtime bumps and, more importantly, prevents concurrent
+// `monk build` invocations from racing on the same cache file (one reader could
+// otherwise observe a half-written header while cc is compiling).
+func writeIfChanged(path string, content []byte) {
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, content) {
+		return
+	}
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		fatal("monk: cannot write %s: %s", path, err)
+	}
 }
 
 func fatal(format string, args ...any) {

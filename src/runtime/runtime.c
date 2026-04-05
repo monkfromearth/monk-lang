@@ -116,7 +116,7 @@ MonkValue monk_record(MonkRecordField *fields, int64_t length) {
 
 /* --- Deep copy (value semantics) --- */
 
-MonkValue monk_deep_copy(MonkValue v) {
+MonkValue monk_deep_copy_heap(MonkValue v) {
     switch (v.kind) {
     case MONK_STRING:
         return monk_string(v.str_val);
@@ -145,7 +145,7 @@ MonkValue monk_deep_copy(MonkValue v) {
     }
 }
 
-void monk_free(MonkValue v) {
+void monk_free_heap(MonkValue v) {
     switch (v.kind) {
     case MONK_STRING:
         free(v.str_val);

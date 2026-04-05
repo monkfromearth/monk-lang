@@ -87,7 +87,8 @@ func (g *generator) generate(prog *syntax.Program) string {
 	fmt.Fprintf(&out, "#line 1 %s\n", cString(g.filename))
 	out.WriteString("#include \"runtime.h\"\n")
 	out.WriteString("#include <stdlib.h>\n")
-	out.WriteString("#include <string.h>\n\n")
+	out.WriteString("#include <string.h>\n")
+	out.WriteString("#include <math.h>\n\n")
 
 	// Emit all statements (functions get hoisted, rest goes to main body)
 	for _, stmt := range prog.Stmts {
@@ -184,6 +185,9 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 		if store := g.varStorage(name); store != storeBoxed {
 			rhsCode, rhsStore := g.emitExprTyped(s.Value)
 			rhs := coerce(rhsCode, rhsStore, store)
+			// Stash RHS in a temp for ops that need to evaluate it twice
+			// (div/mod guards), so a side-effecting RHS like `a /= f()`
+			// doesn't call f() both for the zero-check and the divide.
 			switch s.Op {
 			case syntax.Equal:
 				g.emitLine("    %s = %s;\n", name, rhs)
@@ -194,18 +198,25 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 			case syntax.StarEqual:
 				g.emitLine("    %s *= %s;\n", name, rhs)
 			case syntax.SlashEqual:
-				// Guard against div-by-zero for ints (per spec).
 				if store == storeInt {
-					g.emitLine("    if ((%s)==0) monk_panic(\"division by zero\");\n", rhs)
+					tmp := g.newTemp()
+					g.emitLine("    { int64_t %s = %s; if (%s==0) monk_panic(\"division by zero\"); %s /= %s; }\n",
+						tmp, rhs, tmp, name, tmp)
+				} else {
+					g.emitLine("    %s /= %s;\n", name, rhs)
 				}
-				g.emitLine("    %s /= %s;\n", name, rhs)
 			case syntax.PercentEqual:
 				if store == storeInt {
-					g.emitLine("    if ((%s)==0) monk_panic(\"modulo by zero\");\n", rhs)
-					g.emitLine("    %s %%= %s;\n", name, rhs)
+					tmp := g.newTemp()
+					g.emitLine("    { int64_t %s = %s; if (%s==0) monk_panic(\"modulo by zero\"); %s %%= %s; }\n",
+						tmp, rhs, tmp, name, tmp)
 				} else {
-					// float %= isn't valid C; fall back to boxed path below.
-					break
+					// float %=: C's `%` doesn't work on doubles, but spec
+					// says `%` applies to numeric. Use fmod() from math.h
+					// (already linked via -lm). Zero-check for consistency.
+					tmp := g.newTemp()
+					g.emitLine("    { double %s = %s; if (%s==0.0) monk_panic(\"modulo by zero\"); %s = fmod(%s, %s); }\n",
+						tmp, rhs, tmp, name, name, tmp)
 				}
 			}
 			return

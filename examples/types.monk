@@ -1,0 +1,81 @@
+// Types in action — Phase 6 demo.
+//
+// Monk's type checker runs between parse and codegen. It catches
+// mismatches at compile time that would otherwise crash at runtime.
+// Every line below either type-checks cleanly or is annotated with
+// what the checker would say if you tried it.
+
+// ─── First-assignment inference ───────────────────────────────────────
+// No annotation needed — the first value's type becomes the variable's type.
+
+let counter = 0          // inferred: int
+let greeting = "Hello"   // inferred: string
+let active = true        // inferred: boolean
+
+counter = 42             // OK: int -> int
+// counter = "done"      // ERROR: cannot assign string to variable 'counter' of type int
+
+// ─── Explicit annotations ─────────────────────────────────────────────
+// The annotation is enforced at every assignment.
+
+let age int = 30
+let temperature float = 98.6
+let name string = "Monk"
+
+// Numeric widening: int flows into float slots.
+let price float = 100    // OK — int widens to float
+
+// ─── Typed arrays ─────────────────────────────────────────────────────
+// Every element and every index-write is checked.
+
+let scores int[] = [85, 92, 78, 95]
+scores[0] = 100          // OK
+// scores[0] = "A"       // ERROR: cannot assign string to int[] element
+
+// ─── Typed records ────────────────────────────────────────────────────
+// Fixed shape — no adding fields after the declaration.
+
+type Point = {
+    x: int,
+    y: int,
+}
+
+let origin Point = {x: 0, y: 0}
+origin.x = 5             // OK
+// origin.x = "five"     // ERROR: cannot assign string to field 'x' of type int
+// origin.z = 7          // ERROR: Point has no field 'z'
+
+// ─── Optional types ───────────────────────────────────────────────────
+// T? accepts T or none. Non-optional slots reject none.
+
+let maybe_age int? = 25
+let no_age int? = none
+// let strict int = none // ERROR: cannot assign none to int
+
+// Array index returns T? — out-of-bounds reads give none per spec.
+let first int? = scores[0]    // OK: scores[0] is int?
+// let too int = scores[0]    // ERROR: cannot assign int? to int
+
+// ─── Function signatures ──────────────────────────────────────────────
+// Return type must be reached on every path.
+
+let classify = (n int) string {
+    if n < 0 { return "neg" }
+    else if n == 0 { return "zero" }
+    else { return "pos" }
+}
+
+let double = (n int) int { return n * 2 }
+
+// Function-type parameter annotations also work (type-checked):
+//     let apply = (f (int) -> int, x int) int { return f(x) }
+// Higher-order CALLS will work once Phase 4's first-class function values
+// land in codegen.
+
+// ─── Demo output ──────────────────────────────────────────────────────
+
+show("counter  = " + to_string(counter))
+show("origin   = " + to_string(origin))
+show("classify = " + classify(0))
+show("scores   = " + to_string(scores))
+show("double   = " + to_string(double(21)))

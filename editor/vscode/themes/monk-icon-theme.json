@@ -1,0 +1,22 @@
+{
+  "iconDefinitions": {
+    "monk-file": {
+      "iconPath": "../icons/monk-file-dark.svg"
+    }
+  },
+  "fileExtensions": {
+    "monk": "monk-file",
+    "mnk": "monk-file"
+  },
+  "light": {
+    "iconDefinitions": {
+      "monk-file": {
+        "iconPath": "../icons/monk-file-light.svg"
+      }
+    },
+    "fileExtensions": {
+      "monk": "monk-file",
+      "mnk": "monk-file"
+    }
+  }
+}

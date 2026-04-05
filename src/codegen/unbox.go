@@ -284,8 +284,10 @@ func (g *generator) emitBinaryTyped(e *syntax.BinaryExpr) (string, storageKind) 
 			return fmt.Sprintf("({ int64_t _m=%s; _m==0 ? (monk_panic(\"modulo by zero\"),(int64_t)0) : ((int64_t)(%s) %% _m); })",
 				rcode, lcode), result
 		}
-		// float modulo — use fmod(); but if you want raw floats here, fall back.
-		return g.emitExpr(e), storeBoxed
+		// float modulo — inline via fmod() to match the compound-assign
+		// path (`x %= 2.0`). Zero-check for parity with int modulo.
+		return fmt.Sprintf("({ double _m=%s; _m==0.0 ? (monk_panic(\"modulo by zero\"),0.0) : fmod((double)(%s), _m); })",
+			rcode, lcode), result
 	// Comparison operators return bool.
 	case syntax.Less:
 		return fmt.Sprintf("(%s < %s)", lcode, rcode), storeBool
@@ -295,7 +297,8 @@ func (g *generator) emitBinaryTyped(e *syntax.BinaryExpr) (string, storageKind) 
 		return fmt.Sprintf("(%s > %s)", lcode, rcode), storeBool
 	case syntax.GreaterEqual:
 		return fmt.Sprintf("(%s >= %s)", lcode, rcode), storeBool
-	case syntax.EqualEqual:
+	case syntax.EqualEqual, syntax.Is:
+		// `is` is semantically `==` per emitBinary's boxed path.
 		return fmt.Sprintf("(%s == %s)", lcode, rcode), storeBool
 	case syntax.BangEqual:
 		return fmt.Sprintf("(%s != %s)", lcode, rcode), storeBool

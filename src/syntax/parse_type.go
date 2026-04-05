@@ -83,10 +83,16 @@ func (p *Parser) parseTypeExpr() TypeExpr {
 	// calling, but we guard anyway so malformed input like a missing type
 	// after a param name produces a proper "expected type name" error
 	// instead of silently swallowing an arbitrary token's text.
+	//
+	// CRITICAL: we MUST advance past the offending token before returning,
+	// otherwise loops in parseFuncType / parseRecordTypeDef that only
+	// terminate on ')' / '}' / EOF would spin forever on malformed input
+	// like `(42) -> int`.
 	if !isTypeName(p.current().Kind) {
 		if p.typeErr == nil {
 			p.typeErr = p.error("expected type name")
 		}
+		p.advance()
 		return TypeExpr{}
 	}
 
@@ -122,6 +128,12 @@ func (p *Parser) parseFuncType() TypeExpr {
 	p.advance() // skip (
 	var params []TypeExpr
 	for p.current().Kind != RightParen && !p.atEnd() {
+		// Bail out immediately if parseTypeExpr signaled an error — its
+		// advance is good for loop progress but we don't want to emit
+		// additional spurious errors on the trailing garbage.
+		if p.typeErr != nil {
+			return TypeExpr{}
+		}
 		params = append(params, p.parseTypeExpr())
 		if p.current().Kind == Comma {
 			p.advance()

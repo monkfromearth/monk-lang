@@ -1,6 +1,9 @@
 package syntax
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // --- Helpers ---
 
@@ -535,6 +538,37 @@ func TestParseFuncNoParamsFuncReturnType(t *testing.T) {
 	// so it errored on the `(` that starts the return type.
 	fn := parseExpr(t, `() (int) -> int { return (x int) int { return x } }`).(*FuncExpr)
 	if !fn.ReturnType.IsFunc { t.Errorf("expected function return type") }
+}
+
+// Regression: the defensive "expected type name" guard in parseTypeExpr used
+// to return WITHOUT advancing the parser. parseFuncType's loop only exits on
+// ')' / EOF, so a non-type token inside a function type annotation — like the
+// `42` in `type F = (42) -> int` — spun forever. Fixed by advancing on the
+// error path AND short-circuiting parseFuncType's loop when typeErr is set.
+// Each of these inputs must terminate and produce an error, not hang.
+func TestParseFuncTypeBadParamDoesNotHang(t *testing.T) {
+	cases := []string{
+		`type F = (42) -> int`,
+		`type F = (true) -> int`,
+		`type G = (42, 43) -> int`,
+		`let f = (cb (42) -> int) int { return 1 }`,
+	}
+	for _, src := range cases {
+		done := make(chan struct{})
+		var err error
+		go func() {
+			_, err = Parse(src)
+			close(done)
+		}()
+		select {
+		case <-done:
+			if err == nil {
+				t.Errorf("%q: expected parse error, got nil", src)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%q: parser hung (infinite loop regression)", src)
+		}
+	}
 }
 
 // === USE / EXPORT ===

@@ -482,6 +482,44 @@ func TestParseFuncNoneReturn(t *testing.T) {
 	if fn.ReturnType.Name != "none" { t.Errorf("expected 'none', got '%s'", fn.ReturnType.Name) }
 }
 
+// === GROUPED EXPRESSIONS WITH CALLS ===
+// Regression: parser used to commit to "function literal" on any `(ident(`,
+// misreading grouped expressions like `(to_float(y) / 2.0)` as the start of
+// a function with a function-typed parameter. Now disambiguates by looking
+// for `->` after the closing `)` of the nested paren.
+
+func TestParseGroupedCall(t *testing.T) {
+	// Simple grouped call — must parse as BinaryExpr(Call, ...).
+	e := parseExpr(t, `(f(x) + 1)`)
+	if _, ok := e.(*BinaryExpr); !ok {
+		t.Fatalf("expected BinaryExpr, got %T", e)
+	}
+}
+
+func TestParseGroupedCallDivided(t *testing.T) {
+	// The exact shape that broke during benchmark authoring.
+	e := parseExpr(t, `(to_float(y) / 2.0)`)
+	if _, ok := e.(*BinaryExpr); !ok {
+		t.Fatalf("expected BinaryExpr, got %T", e)
+	}
+}
+
+func TestParseNestedGroupedCalls(t *testing.T) {
+	// Nested parens with calls should still parse as expressions, not fn literal.
+	e := parseExpr(t, `((f(a) + g(b)) * h(c))`)
+	if _, ok := e.(*BinaryExpr); !ok {
+		t.Fatalf("expected BinaryExpr, got %T", e)
+	}
+}
+
+func TestParseMatchRightParenNesting(t *testing.T) {
+	// matchRightParen must handle nesting. Inner `(x+1)` has its own pair.
+	e := parseExpr(t, `(f((x+1)) - 3)`)
+	if _, ok := e.(*BinaryExpr); !ok {
+		t.Fatalf("expected BinaryExpr, got %T", e)
+	}
+}
+
 // === USE / EXPORT ===
 
 func TestParseUseFrom(t *testing.T) {

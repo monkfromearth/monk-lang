@@ -1185,8 +1185,8 @@ is_string(greeting)   // true
 |-------------|-----------------------------|------------------------------------------------------------|
 | `show`      | `(value: any) -> none`     | Print to stdout (see output format below)                  |
 | `to_string` | `(value: any) -> string`   | Convert any value to string representation                 |
-| `to_int`    | `(value: string) -> int`   | Parse string to int. Only accepts integer strings. Throws on non-integer (including "3.14"). |
-| `to_float`  | `(value: string) -> float` | Parse string to float. Throws on non-numeric.              |
+| `to_int`    | `(value) -> int`           | Convert a number or parse a string to int. Accepts `int` (pass-through), `float` (truncates toward zero), or `string` (strict — throws on "3.14" or non-numeric). |
+| `to_float`  | `(value) -> float`         | Convert a number or parse a string to float. Accepts `int` (widens), `float` (pass-through), or `string` (throws on non-numeric). |
 
 #### Output Format
 

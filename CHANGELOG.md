@@ -68,9 +68,33 @@ Results: mandelbrot now at parity with C. Fibonacci 1.6× C. Matmul 14× C (the 
 
 See `spec/PERFORMANCE.md` and `bench/` for methodology.
 
+### Phase 6 — Type System (2026-04-05)
+
+Static type checker. Runs after parse, before codegen — wired into `monk build`, `monk run`, `monk check`.
+
+Catches at compile time:
+- First-assignment inference: `let x = 42` → x locked to int
+- Reassignment drift: `x = "hi"` on an int errors
+- Array element violations (literals AND index assignment)
+- Typed-record shape (missing/extra/wrong-type fields)
+- Cross-type equality: `5 == "5"` is a type error
+- Collection equality: `arr == arr` rejected (no deep-compare in the language)
+- Loop-variable const violations
+- Missing returns on non-none functions
+- Function call arity and per-argument types
+- Function-type parameters: `(f (int) -> int, x int)`
+
+Two paper-cut fixes along the way:
+- Parser bug on `(fn_call(x) / y)` — misread as function literal with
+  function-type parameter. Now checks for `->` before committing.
+- `to_int` / `to_float` now accept int/float/string (was string-only). Matches
+  the spec's "explicit coercion" philosophy.
+
+64 checker tests. Codegen unchanged — still emits MonkValue everywhere.
+Unboxed codegen deferred to Phase 6.5 (needs this checker's type info).
+
 ### What's not here yet
 
-- Type system (static analysis) — Phase 6
 - Module system (use/export) — Phase 7
 - C FFI — Phase 8
 - Linter and formatter — Phase 9

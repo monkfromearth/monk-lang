@@ -88,7 +88,7 @@ Word bank: *Safar* (journey) · *Noor* (light) · *Umeed* (hope) · *Fikr* (thou
 3. C Runtime Library ✅
 4. C Code Generation ✅
 5. CLI ✅ (monk build, monk run, monk check, -o for C output)
-6. Type System (static analysis)
+6. Type System (static analysis) ✅
 7. Module System
 8. C FFI (syntax TBD)
 9. Linter & Formatter
@@ -104,7 +104,8 @@ src/                     — Go compiler (module root)
   embed.go                   go:embed for runtime (self-contained binary)
   go.mod                     github.com/monkfromearth/monk-lang
   syntax/                    Lexer + Parser + AST
-  codegen/                   AST → C source emitter + 39 integration tests
+  types/                     Static type checker (Phase 6)
+  codegen/                   AST → C source emitter + integration tests
   runtime/                   C runtime library (embedded into the binary)
     runtime.h                    MonkValue tagged union, function declarations
     runtime.c                    Builtins, deep copy, error handling

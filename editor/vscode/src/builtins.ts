@@ -20,14 +20,15 @@ export const BUILTINS: Record<string, BuiltinInfo> = {
     returns: "string",
   },
   to_int: {
-    signature: "to_int(value string) -> int",
+    signature: "to_int(value) -> int",
     description:
-      "Strict conversion: string must be a valid integer. Throws on invalid input. Does NOT truncate floats — use floor() for that.",
+      "Convert to int. Accepts int (identity), float (truncates toward zero), or string (strict parse — throws on '3.14' or non-numeric).",
     returns: "int",
   },
   to_float: {
-    signature: "to_float(value string) -> float",
-    description: "Convert a string to a float. Throws on invalid input.",
+    signature: "to_float(value) -> float",
+    description:
+      "Convert to float. Accepts int (widens), float (identity), or string (throws on non-numeric).",
     returns: "float",
   },
 

@@ -140,11 +140,20 @@ type Param struct {
 	Default Expr // nil if no default
 }
 
-// TypeExpr represents a type annotation: int, string, int[], int?.
+// TypeExpr represents a type annotation: int, string, int[], int?,
+// or a function type: (int, int) -> int.
+//
+// For plain types, Name is populated. For function types, IsFunc is true and
+// FuncParams/FuncReturn hold the signature (Name is "" in that case). The
+// IsArray and Optional modifiers apply after the base type, so `(int) -> int?`
+// means a function returning an optional int, not an optional function.
 type TypeExpr struct {
-	Name     string // "int", "string", custom type name
-	IsArray  bool   // true for "int[]"
-	Optional bool   // true for "int?"
+	Name        string     // "int", "string", custom type name
+	IsArray     bool       // true for "int[]"
+	Optional    bool       // true for "int?"
+	IsFunc      bool       // true for "(T, T) -> T"
+	FuncParams  []TypeExpr // populated when IsFunc is true
+	FuncReturn  *TypeExpr  // populated when IsFunc is true
 }
 
 // ThrowExpr represents a throw expression: throw "error".

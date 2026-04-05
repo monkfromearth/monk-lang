@@ -1,6 +1,7 @@
 /*
  * Runtime test harness. Compile and run:
- *   cc -std=c11 runtime.c runtime_test.c -lm -o runtime_test && ./runtime_test
+ *   cc -std=c11 value.c arith.c string.c container.c math.c builtins.c error.c \
+ *       runtime_test.c -lm -o runtime_test && ./runtime_test
  */
 
 #include "runtime.h"

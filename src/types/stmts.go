@@ -144,6 +144,7 @@ func (c *checker) checkVarDecl(s *syntax.VarDeclStmt) error {
 	// Arrays that start as [] inherit element type from context if possible.
 	// Here the context is an explicit annotation, already handled above.
 	c.scope.declare(s.Name, declared, s.IsConst)
+	c.info.Decls[s] = declared
 	return nil
 }
 

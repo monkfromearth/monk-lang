@@ -1,0 +1,21 @@
+// Benchmark: Leibniz series approximation of π.
+// Tight float loop, no arrays. Shows scalar-float unboxing.
+// Output: rounded × 10^7 (integer checksum).
+
+let N = 50000000
+let sum = 0.0
+let k = 0
+while k < N {
+    // Alternating sign via (k % 2 == 0 ? 1 : -1)
+    let term = 1.0 / to_float(2 * k + 1)
+    if k % 2 == 0 {
+        sum += term
+    } else {
+        sum -= term
+    }
+    k += 1
+}
+let pi = 4.0 * sum
+// Checksum: round to 7 decimals, scale to int.
+let scaled = pi * 10000000.0
+show(to_string(to_int(scaled)))

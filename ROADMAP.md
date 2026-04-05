@@ -141,13 +141,19 @@ Static analysis pass over the AST, before code generation.
 - [x] Loop variable is const
 - [x] All-paths-return analysis
 
-**Status:** 64 checker tests. `src/types/`. Wired into `monk build/run/check`.
+**Status:** 110 checker tests + 11 unboxing codegen tests. `src/types/` + `src/codegen/unbox.go`. Wired into `monk build/run/check`.
 
-Deferred to **Phase 6.5 (type-informed codegen):**
-- Unbox known-int variables to raw `int64_t` in the generated C
-- Unbox `int[]` / `float[]` arrays to `int64_t*` / `double*`
-- Emit raw C arithmetic for known-type ops (no `monk_add` dispatch)
-- Expected: matmul 14× C → 2-3× C (see `spec/PERFORMANCE.md`)
+**Unboxing already delivered in Phase 6:**
+- [x] Scalar variables (`int`/`float`/`bool`) stored as raw C types
+- [x] Scalar arithmetic emits raw C (no `monk_add` dispatch)
+- [x] Scalar function signatures (`static int64_t fib(int64_t n)`)
+- [x] Raw conditions in if/while (no `monk_is_truthy`)
+- [x] `to_int`/`to_float` inline as C casts when arg is already scalar
+
+**Deferred (follow-up work, not a separate phase):**
+- [ ] Typed array unboxing — back `int[]` with `int64_t*`, `float[]` with `double*`. Matmul is the motivating case (12× C today). Requires new runtime variant and ~4-6 hours.
+- [ ] Unboxed for-loop variables over typed iterables
+- [ ] Runtime typeof/is_* inlined for known-type values
 
 ---
 

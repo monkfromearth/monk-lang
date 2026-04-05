@@ -15,7 +15,7 @@ cd "$(dirname "$0")/.."  # project root
 BENCH_DIR="bench"
 BUILD_DIR="$BENCH_DIR/build"
 RESULTS_DIR="$BENCH_DIR/results"
-BENCHMARKS=("fibonacci" "mandelbrot" "matmul")
+BENCHMARKS=("fibonacci" "mandelbrot" "matmul" "leibniz" "trial_primes")
 FILTER="${1:-}"
 
 # ─── Preflight ─────────────────────────────────────────────────────────────────

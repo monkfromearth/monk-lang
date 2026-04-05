@@ -14,7 +14,8 @@ func checkSrc(t *testing.T, src string) error {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	return Check(prog)
+	_, err = Check(prog)
+	return err
 }
 
 // expectOk asserts the program type-checks cleanly.
@@ -701,6 +702,60 @@ func TestCheckShiftRequiresInt(t *testing.T) {
 func TestCheckUnusedVarNotAnError(t *testing.T) {
 	expectOk(t, `let x = 42
 show("done")`)
+}
+
+// ─── Info export (for codegen unboxing) ────────────────────────────────────
+
+func TestCheckInfoRecordsDeclTypes(t *testing.T) {
+	prog, err := syntax.Parse(`let x = 42
+let y float = 3.14
+let name = "Alice"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := Check(prog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(info.Decls) != 3 {
+		t.Fatalf("expected 3 decls, got %d", len(info.Decls))
+	}
+	// Walk decls and assert types (order is preserved; we don't rely on map order).
+	kinds := make(map[string]Kind)
+	for decl, typ := range info.Decls {
+		kinds[decl.Name] = typ.Kind
+	}
+	if kinds["x"] != KindInt {
+		t.Errorf("x: expected Int, got %v", kinds["x"])
+	}
+	if kinds["y"] != KindFloat {
+		t.Errorf("y: expected Float, got %v", kinds["y"])
+	}
+	if kinds["name"] != KindStr {
+		t.Errorf("name: expected Str, got %v", kinds["name"])
+	}
+}
+
+func TestCheckInfoRecordsExprTypes(t *testing.T) {
+	// 2 + 3 — the BinaryExpr should be recorded as int.
+	prog, _ := syntax.Parse(`let x = 2 + 3`)
+	info, err := Check(prog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// There should be at least one BinaryExpr in the info.
+	found := false
+	for expr, typ := range info.Types {
+		if _, ok := expr.(*syntax.BinaryExpr); ok {
+			if typ.Kind != KindInt {
+				t.Errorf("BinaryExpr type: expected Int, got %v", typ.Kind)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Error("no BinaryExpr found in info.Types")
+	}
 }
 
 // ─── Real-world examples — the test suite's examples/ programs ────────────

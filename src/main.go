@@ -101,12 +101,13 @@ func cmdBuild(args []string) {
 		fatal("%s: %s", sourceFile, err)
 	}
 
-	if err := types.Check(prog); err != nil {
+	info, err := types.Check(prog)
+	if err != nil {
 		fatal("%s: %s", sourceFile, err)
 	}
 
-	// Generate C
-	cSource := codegen.Generate(prog, sourceFile)
+	// Generate C (with type info for scalar unboxing)
+	cSource := codegen.GenerateWithTypes(prog, sourceFile, info)
 
 	// Ensure the output directory exists (user may pass a nested path via -o)
 	if outDir := filepath.Dir(outputFile); outDir != "" && outDir != "." {
@@ -170,11 +171,12 @@ func cmdRun(args []string) int {
 		fatal("%s: %s", sourceFile, err)
 	}
 
-	if err := types.Check(prog); err != nil {
+	info, err := types.Check(prog)
+	if err != nil {
 		fatal("%s: %s", sourceFile, err)
 	}
 
-	cSource := codegen.Generate(prog, sourceFile)
+	cSource := codegen.GenerateWithTypes(prog, sourceFile, info)
 
 	dir, err := os.MkdirTemp("", "monk-run-*")
 	if err != nil {
@@ -235,7 +237,7 @@ func cmdCheck(args []string) {
 		os.Exit(1)
 	}
 
-	if err := types.Check(prog); err != nil {
+	if _, err := types.Check(prog); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", sourceFile, err)
 		os.Exit(1)
 	}

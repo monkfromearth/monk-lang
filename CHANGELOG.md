@@ -90,10 +90,18 @@ Two paper-cut fixes along the way:
 - `to_int` / `to_float` now accept int/float/string (was string-only). Matches
   the spec's "explicit coercion" philosophy.
 
-110 checker tests. Codegen mostly unchanged — still emits MonkValue everywhere
-for values, but `+=` now dispatches through monk_string_concat for the
-string-concat overload (symmetry with binary `+`). Unboxed codegen deferred
-to Phase 6.5 (needs this checker's type info).
+110 checker tests. Codegen consumes the checker's type Info to emit raw C
+scalars (int64_t, double, bool) for statically-typed scalar variables, raw
+arithmetic between scalar operands, unboxed function signatures when all
+params and return are scalar, and raw conditions in if/while. The string-
+concat overload on `+=` dispatches through monk_string_concat to match
+binary `+`.
+
+**Benchmark impact (vs C, lower is better):**
+- fibonacci: 1.6× → **1.0× C** (parity)
+- mandelbrot: 1.2× → **1.0× C** (parity)
+- leibniz (new): **1.0× C**
+- matmul: 14× → 12× C (arrays still tagged, typed-array unboxing is future work)
 
 4 new runnable examples demonstrating each check in action:
 - `examples/types.monk` — inference, annotations, arrays, records, optionals

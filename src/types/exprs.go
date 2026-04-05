@@ -5,8 +5,20 @@ import (
 	"github.com/monkfromearth/monk-lang/syntax"
 )
 
-// inferExpr returns the type of an expression, or an error.
+// inferExpr returns the type of an expression, or an error. The result is
+// also recorded in c.info.Types so codegen can consult it later to decide
+// between raw C types and tagged-union MonkValue.
 func (c *checker) inferExpr(e syntax.Expr) (*Type, error) {
+	t, err := c.inferExprInner(e)
+	if err == nil && e != nil && t != nil {
+		c.info.Types[e] = t
+	}
+	return t, err
+}
+
+// inferExprInner is the actual inference switch. Named separately so the
+// wrapper can record results without every branch having to remember to do so.
+func (c *checker) inferExprInner(e syntax.Expr) (*Type, error) {
 	switch expr := e.(type) {
 	case *syntax.NumberExpr:
 		if expr.IsInt {
@@ -360,6 +372,7 @@ func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.info.Funcs[fn] = sig
 	// Check the body in a fresh scope with params bound.
 	savedScope := c.scope
 	savedReturn := c.returnType

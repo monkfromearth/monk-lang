@@ -6,7 +6,8 @@ import "fmt"
 type Parser struct {
 	tokens    []Token
 	pos       int
-	loopDepth int // tracks nesting depth inside loops (for break/continue validation)
+	loopDepth int   // tracks nesting depth inside loops (for break/continue validation)
+	typeErr   error // sticky error from parseTypeExpr (which doesn't return error)
 }
 
 // Parse tokenizes source and returns the AST, or an error.
@@ -29,7 +30,15 @@ func (p *Parser) parseProgram() (*Program, error) {
 		if err != nil {
 			return nil, err
 		}
+		if p.typeErr != nil {
+			return nil, p.typeErr
+		}
 		prog.Stmts = append(prog.Stmts, stmt)
+	}
+	// One last check — parseStmt may have finished successfully but left a
+	// type-annotation error behind.
+	if p.typeErr != nil {
+		return nil, p.typeErr
 	}
 	return prog, nil
 }
@@ -393,7 +402,32 @@ func isTypeName(k TokenKind) bool {
 	return k == Identifier || k == None
 }
 
+// matchRightParen returns the index of the ')' that matches the '(' at
+// tokens[openIdx], respecting nesting. Returns -1 if unbalanced.
+func matchRightParen(tokens []Token, openIdx int) int {
+	depth := 0
+	for i := openIdx; i < len(tokens); i++ {
+		switch tokens[i].Kind {
+		case LeftParen:
+			depth++
+		case RightParen:
+			depth--
+			if depth == 0 {
+				return i
+			}
+		case Eof:
+			return -1
+		}
+	}
+	return -1
+}
+
 func (p *Parser) parseTypeExpr() TypeExpr {
+	// Function type: (T, T) -> T
+	if p.current().Kind == LeftParen {
+		return p.parseFuncType()
+	}
+
 	name := p.current().Text
 	p.advance()
 
@@ -411,6 +445,45 @@ func (p *Parser) parseTypeExpr() TypeExpr {
 	}
 
 	return te
+}
+
+// parseFuncType parses a function type annotation: `(T1, T2) -> T3` or `() -> T`.
+// The caller has confirmed current token is `(`. Trailing `?` makes the
+// function type itself optional: `(int) -> int?` is ambiguous between
+// "function returning int?" and "optional function returning int" — per
+// existing Monk convention (types read left-to-right, modifiers trail),
+// we bind `?` to the RETURN type, so `(int) -> int?` is the former. To get
+// an optional function, parenthesize the return type first — but Monk has
+// no syntax for that today, so we simply don't support optional-function
+// types.
+func (p *Parser) parseFuncType() TypeExpr {
+	p.advance() // skip (
+	var params []TypeExpr
+	for p.current().Kind != RightParen && !p.atEnd() {
+		params = append(params, p.parseTypeExpr())
+		if p.current().Kind == Comma {
+			p.advance()
+		}
+	}
+	p.advance() // skip )
+	// Require ` -> ReturnType`.
+	if p.current().Kind != Arrow {
+		// parseTypeExpr doesn't return error (legacy signature, many callers).
+		// Record the failure on the parser's sticky-error field so parseProgram
+		// reports it instead of returning a nonsense AST. Advance to avoid an
+		// infinite loop if the caller retries.
+		if p.typeErr == nil {
+			p.typeErr = p.error("expected '->' after function-type parameters")
+		}
+		return TypeExpr{}
+	}
+	p.advance() // skip ->
+	ret := p.parseTypeExpr()
+	return TypeExpr{
+		IsFunc:     true,
+		FuncParams: params,
+		FuncReturn: &ret,
+	}
 }
 
 // Fix 5: Parse use { X, Y } from "..." and use * from "..."
@@ -885,10 +958,22 @@ func (p *Parser) parseParenOrFunc() (Expr, error) {
 		if afterIdent < len(p.tokens) {
 			next := p.tokens[afterIdent].Kind
 			// ident followed by ident = param type pair → function
-			// ident followed by ( = could be function type param, treat as function
-			if next == Identifier || next == LeftParen {
+			if next == Identifier {
 				p.pos = saved
 				return p.parseFuncExpr()
+			}
+			// ident followed by ( is ambiguous:
+			//   function literal with fn-type param: `(cb (int) -> int) ...`
+			//   grouped expression with a call:      `(to_float(y) / 2.0)`
+			// Disambiguate by scanning to the matching ')' of the inner paren
+			// and checking what follows. Only `->` indicates a function-type param.
+			if next == LeftParen {
+				closeIdx := matchRightParen(p.tokens, afterIdent)
+				if closeIdx >= 0 && closeIdx+1 < len(p.tokens) && p.tokens[closeIdx+1].Kind == Arrow {
+					p.pos = saved
+					return p.parseFuncExpr()
+				}
+				// Otherwise it's a grouped expression; fall through.
 			}
 		}
 	}

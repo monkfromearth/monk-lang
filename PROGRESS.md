@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-5 complete. 460 tests. Working end-to-end.**
+**Status: Phases 1-6 complete. 497 tests (346 Go + 151 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -23,6 +23,8 @@ What's been built, what pivots happened, what's next.
 **Phase 4 — Code Generation.** AST-to-C emitter. Two-pass: first collects and hoists functions as static C functions above main(), second emits program body. Temp variables for intermediate expression results. `#line` directives for source mapping. All operations go through runtime functions (`monk_add`, not C `+`). Caught and fixed a use-after-free bug (must compute new value before freeing old). 39 integration tests (compile + run + check stdout).
 
 **Phase 5 — CLI.** `monk build`, `monk run`, `monk check`, `monk version`. ~280 lines, no framework. `-o` flag controls output: `.c` extension = emit C source, anything else = compile to binary. Runtime embedded in Go binary via `go:embed` — the `monk` binary is self-contained and works from any directory. Extracts runtime to `~/.cache/monk/runtime/` on first use if needed. Uses system `cc`. 28 CLI tests.
+
+**Phase 6 — Type System.** Static checker in `src/types/`. Runs after parse, before codegen — wired into all three commands. 64 tests. Catches: first-assignment inference mismatches, reassignment type drift, array element violations (both literals and index assignment), typed-record shape (missing/extra/wrong-type fields), cross-type equality (5 == "5" errors), loop variable const violations, missing returns on non-none functions, function call arity/type mismatches, function-type parameters like `(f (int) -> int, x int)`. Strict on equality (no deep-compare on arrays/records/functions), permissive on truthiness. Codegen unchanged — still emits tagged MonkValue everywhere. Unboxing is Phase 6.5.
 
 ### Restructure (2026-04-04)
 
@@ -122,6 +124,41 @@ Mandelbrot hits parity with C. Fibonacci beats Bun/Node/Python. Matmul still slo
 
 All 460 tests pass. All example programs still work. See `spec/PERFORMANCE.md` for the full analysis.
 
+### Phase 6 — Type System (2026-04-05)
+
+New `src/types/` package, ~650 lines. Runs between parse and codegen.
+
+**Type model:**
+- Sum type via `Kind`: Any, Int, Float, Str, Bool, None, Array, Record, Func
+- `Optional` flag orthogonal to kind (T? for any T)
+- `AssignableTo(src, dst)` encodes compatibility: identity, Any wildcards, numeric widening (int→float), optional acceptance (none→T?, T→T?), structural records, element-wise arrays, exact function signatures
+
+**Checks enforced:**
+- First-assignment inference + reassignment consistency
+- Typed array element enforcement (both at literal and on `arr[i] = x`)
+- Typed record shape — missing/extra/wrong fields caught
+- Cross-type equality is a type error (`5 == "5"` fails)
+- Arrays/records/functions can't be compared with `==` (no deep-compare)
+- Loop variable is const (spec requirement)
+- All-paths-return: non-none fn must return on every path (if/else + throw recognized, loops conservatively rejected)
+- Function call arity + per-argument type checks
+- Function-type annotations: `(f (int) -> int, x int)`
+- Forward-reference hoisting: recursion + functions calling each other work
+
+**Scope boundaries (intentional):**
+- Any flows through unknowns — builtins are typed as Any in slots where we can't express union types today (e.g. `length` of array-or-string)
+- Codegen is NOT touched. AST still flows through to codegen unchanged, still emits tagged-union MonkValue. Unboxing = Phase 6.5.
+
+Two paper cuts fixed en route:
+- Parser bug: `(to_float(y) / 2.0)` misread as function literal. Fixed by scanning to matching `)` and checking for `->`.
+- `to_int`/`to_float` widened to accept int/float/string (were string-only). Spec philosophy: these are THE explicit coercion functions.
+
+**Verification:**
+- 64 checker tests + 2 CLI integration tests (check and build must reject type errors)
+- All 9 example programs typecheck and still compile+run
+- All 3 benchmark programs typecheck
+- All linters clean (go vet, staticcheck, golangci-lint, govulncheck)
+
 ### Pivots and mistakes
 
 - **Started with Zig, switched to Go.** The compiler is a text-in/text-out translator. Go's tree manipulation and string handling fit better. Zig/Rust deferred to future native backend.
@@ -150,7 +187,8 @@ Packaged as `monk-lang-0.1.0.vsix`. Works in VS Code and Cursor.
 
 | Phase | Topic | Status |
 |-------|-------|--------|
-| 6 | Type System (static analysis) | Not started |
+| 6 | Type System (static analysis) | **Complete** ✅ |
+| 6.5 | Type-informed codegen (unboxed ints/floats/arrays) | Not started |
 | 7 | Module System | Not started |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |

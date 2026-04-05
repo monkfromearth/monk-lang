@@ -120,25 +120,34 @@ The compiler core. Walk the AST, emit C source code.
 
 ---
 
-## Phase 6: Type System
+## Phase 6: Type System ✅
 
 Static analysis pass over the AST, before code generation.
 
-- [ ] Type annotations on variables (space-separated syntax)
-- [ ] Array type annotations (`int[]`, `string[]`)
-- [ ] Function type signatures: `(int, int) -> int`
-- [ ] First-assignment type inference
-- [ ] Type consistency on reassignment
-- [ ] Optional types (`int?`) — accepts base type or `none`
-- [ ] Custom type definitions: record types + type aliases (structural)
+- [x] Type annotations on variables (space-separated syntax)
+- [x] Array type annotations (`int[]`, `string[]`)
+- [x] Function type signatures: `(int, int) -> int`
+- [x] First-assignment type inference
+- [x] Type consistency on reassignment
+- [x] Optional types (`int?`) — accepts base type or `none`
+- [x] Custom type definitions: record types + type aliases (structural)
 - [x] Structural typing validation for records
 - [x] Element type enforcement in typed arrays
 - [x] Function return type validation (every code path)
-- [x] Definite assignment analysis
 - [x] Numeric widening: int → float implicit
 - [x] Typed record field enforcement (missing field = compile error)
+- [x] Equality strictness: `5 == "5"` is a type error
+- [x] Collections/functions cannot be compared with `==`
+- [x] Loop variable is const
+- [x] All-paths-return analysis
 
-**Done when:** Type errors are caught at compile time, not at runtime.
+**Status:** 64 checker tests. `src/types/`. Wired into `monk build/run/check`.
+
+Deferred to **Phase 6.5 (type-informed codegen):**
+- Unbox known-int variables to raw `int64_t` in the generated C
+- Unbox `int[]` / `float[]` arrays to `int64_t*` / `double*`
+- Emit raw C arithmetic for known-type ops (no `monk_add` dispatch)
+- Expected: matmul 14× C → 2-3× C (see `spec/PERFORMANCE.md`)
 
 ---
 

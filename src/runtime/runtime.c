@@ -291,28 +291,52 @@ MonkValue monk_to_string(MonkValue v) {
 }
 
 MonkValue monk_to_int(MonkValue v) {
-    /* Design decision: strict. Only integer strings accepted. "3.14" rejected. */
-    if (v.kind != MONK_STRING) monk_panic("to_int: expected string");
-    char *end;
-    long long n = strtoll(v.str_val, &end, 0);
-    if (*end != '\0') {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "to_int: cannot parse \"%s\" as integer", v.str_val);
-        monk_panic(msg);
+    /* Accept int (identity), float (truncate), string (strict parse).
+     * String parsing stays strict: "3.14" is rejected — use to_int(to_float(s))
+     * or floor(to_float(s)) if that's what you want. */
+    switch (v.kind) {
+    case MONK_INT:
+        return v;
+    case MONK_FLOAT:
+        /* Truncate toward zero, matching C's (int64_t) cast. */
+        return monk_int((int64_t)v.float_val);
+    case MONK_STRING: {
+        char *end;
+        long long n = strtoll(v.str_val, &end, 0);
+        if (*end != '\0') {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "to_int: cannot parse \"%s\" as integer", v.str_val);
+            monk_panic(msg);
+        }
+        return monk_int((int64_t)n);
     }
-    return monk_int((int64_t)n);
+    default:
+        monk_panic("to_int: expected int, float, or string");
+        return monk_none(); /* unreachable — monk_panic longjmps */
+    }
 }
 
 MonkValue monk_to_float(MonkValue v) {
-    if (v.kind != MONK_STRING) monk_panic("to_float: expected string");
-    char *end;
-    double f = strtod(v.str_val, &end);
-    if (*end != '\0') {
-        char msg[128];
-        snprintf(msg, sizeof(msg), "to_float: cannot parse \"%s\" as float", v.str_val);
-        monk_panic(msg);
+    /* Accept int (widen), float (identity), string (parse). */
+    switch (v.kind) {
+    case MONK_INT:
+        return monk_float((double)v.int_val);
+    case MONK_FLOAT:
+        return v;
+    case MONK_STRING: {
+        char *end;
+        double f = strtod(v.str_val, &end);
+        if (*end != '\0') {
+            char msg[128];
+            snprintf(msg, sizeof(msg), "to_float: cannot parse \"%s\" as float", v.str_val);
+            monk_panic(msg);
+        }
+        return monk_float(f);
     }
-    return monk_float(f);
+    default:
+        monk_panic("to_float: expected int, float, or string");
+        return monk_none(); /* unreachable */
+    }
 }
 
 /* --- Comparison --- */

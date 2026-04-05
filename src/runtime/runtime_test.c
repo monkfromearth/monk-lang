@@ -256,9 +256,19 @@ void test_type_checking(void) {
 }
 
 void test_conversion(void) {
+    /* String parsing (strict) */
     ASSERT_INT(monk_to_int(monk_string("42")), 42);
     ASSERT_INT(monk_to_int(monk_string("-5")), -5);
     ASSERT_FLOAT(monk_to_float(monk_string("3.14")), 3.14);
+
+    /* Numeric coercion — added 2026-04-05, see spec/REFERENCE.md */
+    ASSERT_INT(monk_to_int(monk_int(7)), 7);            /* int -> int (identity) */
+    ASSERT_INT(monk_to_int(monk_float(3.9)), 3);        /* float -> int (truncate toward zero) */
+    ASSERT_INT(monk_to_int(monk_float(-3.9)), -3);      /* negative truncates toward zero */
+    ASSERT_FLOAT(monk_to_float(monk_int(5)), 5.0);      /* int -> float (widen) */
+    ASSERT_FLOAT(monk_to_float(monk_float(2.5)), 2.5);  /* float -> float (identity) */
+
+    /* to_string */
     ASSERT_STR(monk_to_string(monk_int(42)), "42");
     ASSERT_STR(monk_to_string(monk_bool(true)), "true");
     ASSERT_STR(monk_to_string(monk_none()), "none");

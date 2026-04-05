@@ -393,6 +393,26 @@ func isTypeName(k TokenKind) bool {
 	return k == Identifier || k == None
 }
 
+// matchRightParen returns the index of the ')' that matches the '(' at
+// tokens[openIdx], respecting nesting. Returns -1 if unbalanced.
+func matchRightParen(tokens []Token, openIdx int) int {
+	depth := 0
+	for i := openIdx; i < len(tokens); i++ {
+		switch tokens[i].Kind {
+		case LeftParen:
+			depth++
+		case RightParen:
+			depth--
+			if depth == 0 {
+				return i
+			}
+		case Eof:
+			return -1
+		}
+	}
+	return -1
+}
+
 func (p *Parser) parseTypeExpr() TypeExpr {
 	name := p.current().Text
 	p.advance()
@@ -885,10 +905,22 @@ func (p *Parser) parseParenOrFunc() (Expr, error) {
 		if afterIdent < len(p.tokens) {
 			next := p.tokens[afterIdent].Kind
 			// ident followed by ident = param type pair → function
-			// ident followed by ( = could be function type param, treat as function
-			if next == Identifier || next == LeftParen {
+			if next == Identifier {
 				p.pos = saved
 				return p.parseFuncExpr()
+			}
+			// ident followed by ( is ambiguous:
+			//   function literal with fn-type param: `(cb (int) -> int) ...`
+			//   grouped expression with a call:      `(to_float(y) / 2.0)`
+			// Disambiguate by scanning to the matching ')' of the inner paren
+			// and checking what follows. Only `->` indicates a function-type param.
+			if next == LeftParen {
+				closeIdx := matchRightParen(p.tokens, afterIdent)
+				if closeIdx >= 0 && closeIdx+1 < len(p.tokens) && p.tokens[closeIdx+1].Kind == Arrow {
+					p.pos = saved
+					return p.parseFuncExpr()
+				}
+				// Otherwise it's a grouped expression; fall through.
 			}
 		}
 	}

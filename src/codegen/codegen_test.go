@@ -570,6 +570,64 @@ show(to_string(a / b))`)
 	}
 }
 
+// Regression: the unboxing storage map used to be flat, so a shadowed
+// variable in an inner scope would leak its (different) storage decision
+// back out when the scope ended. Typical symptom: `show(to_string(n))`
+// on the outer `n` emitted monk_to_string(mk_n) but mk_n was int64_t.
+func TestUnboxShadowRestoresStorage(t *testing.T) {
+	// Outer int n, inner string n in an if body, then use outer n again.
+	out, _ := runMonkTyped(t, `let n = 5
+if true {
+  let n = "inner"
+  show(n)
+}
+show(to_string(n))`)
+	if out != "inner\n5" {
+		t.Errorf("expected 'inner\\n5', got %q", out)
+	}
+}
+
+func TestUnboxShadowInFunctionParam(t *testing.T) {
+	// Function param is int; body shadows it with a string.
+	out, _ := runMonkTyped(t, `let f = (x int) int {
+  let x = "shadow"
+  show(x)
+  return 42
+}
+show(to_string(f(99)))`)
+	if out != "shadow\n42" {
+		t.Errorf("expected 'shadow\\n42', got %q", out)
+	}
+}
+
+func TestUnboxShadowInForLoopBody(t *testing.T) {
+	// For loop variable is int (element of range(...)); body shadows with string.
+	out, _ := runMonkTyped(t, `for i in range(2) {
+  let i = "x"
+  show(i)
+}`)
+	if out != "x\nx" {
+		t.Errorf("expected 'x\\nx', got %q", out)
+	}
+}
+
+func TestUnboxShadowRejectsToIntOnBool(t *testing.T) {
+	// Regression: the to_int/to_float inlining used to accept storeBool and
+	// emit the bool code tagged as int (true -> 1). That silently diverges
+	// from the runtime, which panics "to_int: expected int, float, or string".
+	// The fast path now only inlines for storeInt/storeFloat args.
+	prog, _ := syntax.Parse(`let b = true
+let n = to_int(b)
+show(to_string(n))`)
+	info, _ := types.Check(prog)
+	cSource := GenerateWithTypes(prog, "t.monk", info)
+	// Expected: monk_to_int(monk_bool(mk_b)) — routes to the runtime which
+	// will panic. The inlined path would emit `mk_b` directly.
+	if !strings.Contains(cSource, "monk_to_int") {
+		t.Errorf("expected runtime monk_to_int call for bool argument, generated:\n%s", cSource)
+	}
+}
+
 func TestUnboxBoxedMixedPath(t *testing.T) {
 	// A value flowing between unboxed and boxed worlds — should box/unbox
 	// cleanly with no crashes.

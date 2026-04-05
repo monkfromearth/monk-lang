@@ -197,24 +197,30 @@ func (g *generator) emitCallTyped(e *syntax.CallExpr) (string, storageKind) {
 		return g.emitExpr(e), storeBoxed
 	}
 
-	// Scalar coercion builtins: to_int(int|float|bool|any) and to_float(...)
-	// If the argument is already a raw scalar, inline the coercion with no
-	// runtime call. This keeps chains like `y / to_float(H) * 2.0` fully raw.
+	// Scalar coercion builtins: to_int / to_float.
+	// If the argument is already a raw scalar int or float, inline the
+	// coercion with no runtime call. This keeps chains like
+	// `y / to_float(H) * 2.0` fully raw.
+	//
+	// We deliberately do NOT inline for storeBool — the runtime's
+	// monk_to_int/monk_to_float reject bool with "expected int, float, or
+	// string". Inlining would silently return true->1 / false->0, changing
+	// observable program behavior.
 	if (ident.Name == "to_int" || ident.Name == "to_float") && len(e.Args) == 1 {
 		argCode, argKind := g.emitExprTyped(e.Args[0])
-		if argKind != storeBoxed {
+		if argKind == storeInt || argKind == storeFloat {
 			if ident.Name == "to_int" {
-				// Truncate floats toward zero to match runtime behavior.
 				if argKind == storeFloat {
+					// Truncate toward zero to match runtime behavior.
 					return "((int64_t)(" + argCode + "))", storeInt
 				}
-				return argCode, storeInt
+				return argCode, storeInt // int -> int (identity)
 			}
 			// to_float
 			if argKind == storeInt {
 				return "((double)(" + argCode + "))", storeFloat
 			}
-			return argCode, storeFloat
+			return argCode, storeFloat // float -> float (identity)
 		}
 	}
 

@@ -11,7 +11,7 @@ How Monk performs, why, and what can make it faster.
 | fibonacci (n=35) | 17.3 ms | **1.0×** | **1.3× faster** | **2.4× faster** | **4.9× faster** | **39× faster** |
 | mandelbrot (800² × 50) | 14.5 ms | **1.0×** | **1.1× faster** | **1.9× faster** | **3.8× faster** | **180× faster** |
 | leibniz (π, 50M iter) | 29.2 ms | **1.0×** | **1.2× faster** | **1.4× faster** | **2.5× faster** | **174× faster** |
-| trial_primes (<200k) | 25.7 ms | 4.5× | 4.5× | 2.1× | 1.8× faster | 21× faster |
+| trial_primes (<200k) | 5.9 ms | **1.0×** | **1.0×** | **2.2× faster** | **7.8× faster** | **92× faster** |
 | matmul (400² int) | 122 ms | 11.8× | 4.6× | 2.3× | 1.2× | 64× faster |
 
 **Pure scalar benchmarks are at C parity.** Matmul lags because arrays are still tagged-union (`MonkValue*` backing storage) — typed-array unboxing is the next performance frontier.

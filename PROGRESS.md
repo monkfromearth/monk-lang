@@ -185,10 +185,10 @@ The type checker was sitting on rich information that codegen was ignoring — w
 | fibonacci (n=35) | 17.3 ms | **1.0× C** | 1.6× C (28 ms) |
 | mandelbrot (800²×50) | 14.5 ms | **1.0× C** | 1.2× C (17 ms) |
 | leibniz (π, 50M iter, NEW) | 29.2 ms | **1.0× C** | — |
-| trial_primes (<200k, NEW) | 25.7 ms | 4.5× C | — |
+| trial_primes (<200k, NEW) | 5.9 ms | **1.0× C** | — |
 | matmul (400²) | 122 ms | 11.8× C | 13.9× C |
 
-Matmul didn't move much — arrays are still tagged. Trial_primes is 4.5× C while Go is 1.01× C; the gap is likely codegen inefficiency in the break-via-assignment pattern that we don't model natively. Both are tracked as future work.
+Matmul didn't move much — arrays are still tagged. Trial_primes initially wrote the inner loop's "early exit" as `d = n` (assignment to break the loop condition) rather than Monk's real `break` keyword; once switched to `break`, Monk hit C parity. Lesson documented for future benchmarks.
 
 **New benchmark programs:**
 - `bench/benchmarks/leibniz/` — π via Leibniz series, pure float compute

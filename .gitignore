@@ -4,3 +4,8 @@ build/
 .env
 .DS_Store
 *.log
+monk
+editor/vscode/out
+editor/vscode/*.vsix
+bench/build/
+bench/results/*-raw/

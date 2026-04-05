@@ -1,0 +1,47 @@
+// Optional types (T?) in action.
+// An `int?` can hold an int OR none. Non-optional slots reject both none
+// and int? values, so you're forced to handle the possibly-missing case.
+
+// ─── Simple optional ───────────────────────────────────────────────────────
+
+let maybe_score int? = 85
+let no_score int? = none
+
+show("maybe_score: " + to_string(maybe_score))
+show("no_score:    " + to_string(no_score))
+
+// ─── Array indexing returns T? (graceful on reads) ─────────────────────────
+// Per spec: arr[out-of-bounds] → none. So arr[i] must type as int?, forcing
+// callers to handle the possibly-missing case.
+
+let nums int[] = [10, 20, 30]
+let first int? = nums[0]    // OK: int? accepts int
+let tenth int? = nums[10]   // OK: int? accepts none (out of bounds)
+
+show("first:  " + to_string(first))
+show("tenth:  " + to_string(tenth))
+
+// This would be a compile error — int? cannot flow into plain int:
+//   let strict int = nums[0]   // ERROR: cannot assign int? to int
+// The fix: either change `strict` to `int?`, or handle the none case first.
+
+// ─── Unwrapping via is_none ────────────────────────────────────────────────
+// Use is_none to handle the possibly-missing case before using the value.
+
+let describe = (x int?) string {
+    if is_none(x) { return "missing" }
+    return "got a value"
+}
+
+show("describe(5):    " + describe(5))
+show("describe(none): " + describe(none))
+
+// ─── Arithmetic on optionals ───────────────────────────────────────────────
+// The checker currently allows arithmetic on T? (treats kind==Int as numeric
+// regardless of Optional). At runtime, `none + 1` panics. This is a
+// deliberate tradeoff — strict unwrapping would require guards everywhere.
+// Phase 6.5 will tighten this as part of unboxed codegen.
+
+let value int? = 42
+let doubled = value + 10   // runtime-safe IF value is an int, panics if none
+show("doubled: " + to_string(doubled))

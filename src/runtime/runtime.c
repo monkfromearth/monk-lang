@@ -18,7 +18,10 @@ static bool has_error = false;
 
 /* --- Internal helpers --- */
 
-static void monk_panic(const char *msg) {
+/* Exported so codegen-emitted unboxed paths can raise runtime errors
+ * (e.g. int division by zero) with the same message format as the
+ * classic runtime path. */
+void monk_panic(const char *msg) {
     fprintf(stderr, "monk: runtime error: %s\n", msg);
     exit(1);
 }

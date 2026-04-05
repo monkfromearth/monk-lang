@@ -520,6 +520,23 @@ func TestParseMatchRightParenNesting(t *testing.T) {
 	}
 }
 
+func TestParseFuncParamWithNoneType(t *testing.T) {
+	// `none` is its own token kind (not Identifier). The param-detection
+	// heuristic must accept `ident none` as a param-name/type pair, same as
+	// `ident int`. Regression: previously fell through to grouped-expr parse.
+	fn := parseExpr(t, `(x none) none { return }`).(*FuncExpr)
+	if len(fn.Params) != 1 { t.Fatalf("expected 1 param, got %d", len(fn.Params)) }
+	if fn.Params[0].Type.Name != "none" { t.Errorf("expected none type, got %q", fn.Params[0].Type.Name) }
+}
+
+func TestParseFuncNoParamsFuncReturnType(t *testing.T) {
+	// `() (int) -> int { ... }` — zero params, function-type return.
+	// Regression: parseParenOrFunc only accepted ident/`none`/`{` after `()`,
+	// so it errored on the `(` that starts the return type.
+	fn := parseExpr(t, `() (int) -> int { return (x int) int { return x } }`).(*FuncExpr)
+	if !fn.ReturnType.IsFunc { t.Errorf("expected function return type") }
+}
+
 // === USE / EXPORT ===
 
 func TestParseUseFrom(t *testing.T) {

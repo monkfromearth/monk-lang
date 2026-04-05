@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-6 complete. 497 tests (346 Go + 151 C runtime). Working end-to-end.**
+**Status: Phases 1-6 complete. 540 tests (389 Go + 151 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -153,9 +153,15 @@ Two paper cuts fixed en route:
 - Parser bug: `(to_float(y) / 2.0)` misread as function literal. Fixed by scanning to matching `)` and checking for `->`.
 - `to_int`/`to_float` widened to accept int/float/string (were string-only). Spec philosophy: these are THE explicit coercion functions.
 
+Post-merge PR review caught 4 more issues:
+- **Compound assignment bypassed arithmetic check.** `let s = "hi"; s -= "world"` passed the checker and crashed at runtime. Added `checkCompoundOp` that validates the implied binary operation on all three assignment targets (identifier, index, property). Codegen updated to dispatch `+=` through `monk_string_concat` for the string-concat overload (mirrors binary `+`).
+- **parseFuncExpr didn't accept LeftParen as return-type start.** `(k int) (int) -> int { ... }` failed to parse.
+- **For-loop body shared scope with loop variable.** A `let i = ...` inside the body would overwrite the const loop binding. Now body gets its own child scope (Go-style shadowing allowed, direct mutation still rejected).
+- **inferEquality asymmetric error messages.** `42 == [1,2]` and `[1,2] == 42` now produce the same message.
+
 **Verification:**
-- 64 checker tests + 2 CLI integration tests (check and build must reject type errors)
-- All 9 example programs typecheck and still compile+run
+- 110 checker tests + 2 CLI integration tests
+- All 13 example programs typecheck AND run (added types.monk, records.monk, optionals.monk, guards.monk)
 - All 3 benchmark programs typecheck
 - All linters clean (go vet, staticcheck, golangci-lint, govulncheck)
 

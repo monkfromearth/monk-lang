@@ -185,10 +185,15 @@ func (c *checker) inferEquality(e *syntax.BinaryExpr, lt, rt *Type) (*Type, erro
 			return Bool, nil
 		}
 	}
-	// Collections and functions cannot be compared.
-	if lt.Kind == KindArray || lt.Kind == KindRecord || lt.Kind == KindFunc {
+	// Collections and functions cannot be compared — check BOTH sides so
+	// the error message is consistent regardless of operand order.
+	if isNonComparable(lt) {
 		return nil, newTypeError(e.Pos,
 			"cannot compare %s with == (collections and functions have no equality)", lt)
+	}
+	if isNonComparable(rt) {
+		return nil, newTypeError(e.Pos,
+			"cannot compare %s with == (collections and functions have no equality)", rt)
 	}
 	// Numeric mixing (int/float) is allowed.
 	if isNumericOrAny(lt) && isNumericOrAny(rt) {
@@ -388,6 +393,10 @@ func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 
 func isNumericOrAny(t *Type) bool {
 	return t.Kind == KindInt || t.Kind == KindFloat || t.Kind == KindAny
+}
+
+func isNonComparable(t *Type) bool {
+	return t.Kind == KindArray || t.Kind == KindRecord || t.Kind == KindFunc
 }
 
 func isIntOrAny(t *Type) bool {

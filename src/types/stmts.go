@@ -161,6 +161,9 @@ func (c *checker) checkAssign(s *syntax.AssignStmt) error {
 		if err != nil {
 			return err
 		}
+		if err := c.checkCompoundOp(s, b.Type, rhsType); err != nil {
+			return err
+		}
 		if !AssignableTo(rhsType, b.Type) {
 			return newTypeError(s.Pos,
 				"cannot assign %s to variable '%s' of type %s",
@@ -185,9 +188,14 @@ func (c *checker) checkAssign(s *syntax.AssignStmt) error {
 		if err != nil {
 			return err
 		}
-		if collType.Kind == KindArray && !AssignableTo(rhsType, collType.Elem) {
-			return newTypeError(s.Pos,
-				"cannot assign %s to %s element", rhsType, collType)
+		if collType.Kind == KindArray {
+			if err := c.checkCompoundOp(s, collType.Elem, rhsType); err != nil {
+				return err
+			}
+			if !AssignableTo(rhsType, collType.Elem) {
+				return newTypeError(s.Pos,
+					"cannot assign %s to %s element", rhsType, collType)
+			}
 		}
 	case *syntax.PropertyExpr:
 		recType, err := c.inferExpr(target.Object)
@@ -214,6 +222,9 @@ func (c *checker) checkAssign(s *syntax.AssignStmt) error {
 				return newTypeError(s.Pos,
 					"%s has no field '%s'", recType, target.Property)
 			}
+			if err := c.checkCompoundOp(s, fieldType, rhsType); err != nil {
+				return err
+			}
 			if !AssignableTo(rhsType, fieldType) {
 				return newTypeError(s.Pos,
 					"cannot assign %s to field '%s' of type %s",
@@ -224,6 +235,70 @@ func (c *checker) checkAssign(s *syntax.AssignStmt) error {
 		return newTypeError(s.Pos, "invalid assignment target")
 	}
 	return nil
+}
+
+// checkCompoundOp verifies that `target op= value` is a well-typed binary
+// operation. For plain `=` (Op == Equal), this is a no-op — only AssignableTo
+// matters. For compound ops, the implied operation must itself be legal:
+//
+//	x -= y  →  x = x - y       (target and value must both be numeric)
+//	x += y  →  x = x + y       (numeric-numeric OR string-string)
+//	x *= y  →  numeric only
+//	x /= y  →  numeric only
+//	x %= y  →  numeric only
+//
+// Without this, `let s = "hi"; s -= "world"` passes the checker and crashes
+// at runtime with "cannot subtract these types", violating the spec's
+// "explicit over implicit, no hidden errors" rule.
+func (c *checker) checkCompoundOp(s *syntax.AssignStmt, targetType, valueType *Type) error {
+	if s.Op == syntax.Equal {
+		return nil
+	}
+	// Any on either side silences the check — runtime will handle it.
+	if targetType.Kind == KindAny || valueType.Kind == KindAny {
+		return nil
+	}
+	// += has a string-concat overload.
+	if s.Op == syntax.PlusEqual {
+		if targetType.Kind == KindStr && valueType.Kind == KindStr {
+			return nil
+		}
+		if targetType.Kind == KindStr || valueType.Kind == KindStr {
+			return newTypeError(s.Pos,
+				"operator += cannot mix string and %s",
+				otherNonStr(targetType, valueType))
+		}
+	}
+	// All other compound ops and += on non-strings require numeric both sides.
+	if !isNumericOrAny(targetType) || !isNumericOrAny(valueType) {
+		return newTypeError(s.Pos,
+			"operator %s requires numeric operands, got %s and %s",
+			compoundOpString(s.Op), targetType, valueType)
+	}
+	return nil
+}
+
+func compoundOpString(k syntax.TokenKind) string {
+	switch k {
+	case syntax.PlusEqual:
+		return "+="
+	case syntax.MinusEqual:
+		return "-="
+	case syntax.StarEqual:
+		return "*="
+	case syntax.SlashEqual:
+		return "/="
+	case syntax.PercentEqual:
+		return "%="
+	}
+	return "<op>="
+}
+
+func otherNonStr(a, b *Type) string {
+	if a.Kind == KindStr {
+		return b.String()
+	}
+	return a.String()
 }
 
 // ─── Control flow ──────────────────────────────────────────────────────────
@@ -269,13 +344,16 @@ func (c *checker) checkFor(s *syntax.ForStmt) error {
 	default:
 		return newTypeError(s.Pos, "cannot iterate over %s", iterType)
 	}
+	// The loop variable lives in its own scope (parent of the body). The body
+	// then gets its own child scope — otherwise a `let i = ...` inside the
+	// body would replace the const loop-variable binding and let the user
+	// mutate it, defeating the spec's "loop variable is const" guarantee.
 	c.scope = newScopeOf(c.scope)
 	defer func() { c.scope = c.scope.parent }()
-	// Per spec: loop variable is const, scoped to the loop body.
 	c.scope.declare(s.VarName, elemType, true)
 	c.inLoop++
 	defer func() { c.inLoop-- }()
-	return c.checkBlock(s.Body, false)
+	return c.checkBlock(s.Body, true)
 }
 
 func (c *checker) checkReturn(s *syntax.ReturnStmt) error {

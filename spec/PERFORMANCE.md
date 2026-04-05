@@ -4,15 +4,17 @@ How Monk performs, why, and what can make it faster.
 
 ---
 
-## Current numbers (2026-04-05, Apple M4 Pro)
+## Current numbers (2026-04-05, Apple M4 Pro, post-scalar-unboxing)
 
 | Benchmark | Monk | vs C | vs Go | vs Bun | vs Node | vs Python |
 |---|---:|---:|---:|---:|---:|---:|
-| fibonacci (n=35) | 27.5 ms | 1.6× | 1.3× faster | 1.5× faster | 3.0× faster | 24× faster |
-| mandelbrot (800² × 50) | 17.0 ms | **1.0×** | **1.2× faster** | **1.6× faster** | **3.1× faster** | **148× faster** |
-| matmul (400² int) | 142 ms | 13.9× | 5.5× slower | 2.7× slower | 1.5× slower | 54× faster |
+| fibonacci (n=35) | 17.3 ms | **1.0×** | **1.3× faster** | **2.4× faster** | **4.9× faster** | **39× faster** |
+| mandelbrot (800² × 50) | 14.5 ms | **1.0×** | **1.1× faster** | **1.9× faster** | **3.8× faster** | **180× faster** |
+| leibniz (π, 50M iter) | 29.2 ms | **1.0×** | **1.2× faster** | **1.4× faster** | **2.5× faster** | **174× faster** |
+| trial_primes (<200k) | 25.7 ms | 4.5× | 4.5× | 2.1× | 1.8× faster | 21× faster |
+| matmul (400² int) | 122 ms | 11.8× | 4.6× | 2.3× | 1.2× | 64× faster |
 
-Mandelbrot hits C parity. Fibonacci beats every language except C. Matmul is the weak spot.
+**Pure scalar benchmarks are at C parity.** Matmul lags because arrays are still tagged-union (`MonkValue*` backing storage) — typed-array unboxing is the next performance frontier.
 
 See `bench/` for methodology and `bench/results/` for raw data.
 
@@ -22,9 +24,7 @@ See `bench/` for methodology and `bench/results/` for raw data.
 
 **Monk's hot path per operation:** tagged-union dispatch. Every `+`, `*`, `[i]` goes through a `MonkValue` struct (16 bytes: 8-byte union + 4-byte kind tag + padding), with a runtime kind check to decide between int/float/string semantics. That dispatch is the cost.
 
-**Why mandelbrot hits C parity.** Pure float compute in a tight loop, no arrays in the hot path. After LTO, every `monk_add` / `monk_mul` inlines into `cc`-native double arithmetic. The kind check compiles to one `cmp` that branch-predicts perfectly. The loop vectorizes the same way C does.
-
-**Why fibonacci is 1.6× C.** Recursive calls pass two `MonkValue`s (32 bytes) on the stack instead of one `long` (8 bytes). Four extra memory ops per call × 30M calls = 120M extra loads/stores.
+**Why fibonacci / mandelbrot / leibniz hit C parity.** Scalar unboxing (see below) emits raw `int64_t` and `double` everywhere — no MonkValue wrapping, no tag checks, no function calls for arithmetic. The generated C is indistinguishable from a hand-written scalar loop.
 
 **Why matmul is 14× C.** The inner loop does:
 ```
@@ -41,6 +41,12 @@ Each `arr[idx]` access: (1) kind check for `arr`, (2) kind check for `idx`, (3) 
 Upgraded from `-O2` to `-O3 -flto` in `monk build` / `monk run`. LTO lets `cc` inline across translation units, so `monk_add`/`monk_mul`/`monk_array_get` all fold into the caller.
 
 **Impact:** matmul 911ms → 379ms (~2.4×). Mandelbrot 242ms → ~80ms.
+
+### Scalar unboxing (Phase 6)
+
+When the type checker proves a variable's type is `int`, `float`, or `boolean`, codegen stores it as a raw `int64_t`/`double`/`bool` instead of a tagged `MonkValue`. Arithmetic between scalar operands emits raw C (`a + b * c`), function signatures become unboxed (`static int64_t fib(int64_t n)`), and `if`/`while` conditions skip `monk_is_truthy` when they produce a typed boolean.
+
+**Impact:** fib 28ms → 17ms. Mandelbrot 17ms → 14.5ms. Both now at C parity.
 
 ### Inline fast-paths for `monk_deep_copy` and `monk_free`
 
@@ -62,15 +68,19 @@ Fix: split into `monk_deep_copy` / `monk_free` (static inline, in `runtime.h`, p
 
 ## What's next (the honest ceiling)
 
-The remaining 14× gap on matmul is **fundamental to the value-semantics design** as currently specified. Closing it requires changes that need the type system (Phase 6).
+Scalar unboxing is done. Matmul still at 12× C because **arrays are still tagged-union** — each `arr[i]` does bounds-check + tag dispatch + 16-byte memcpy.
 
-### Phase 6-dependent wins
+### Typed array unboxing (next)
 
-**Static type inference in codegen.** When Monk can prove a variable is `int` at compile time, emit raw `int64_t` C ops instead of `MonkValue` through `monk_add`. This removes tagged-union dispatch entirely from hot loops. **Expected: fib, float compute near 1.0× C. Matmul to ~3-5× C.**
+When the checker says `int[]`, back the array with `int64_t*` instead of `MonkValue*`. Reads and writes become direct C array access. Enables `cc` auto-vectorization. **Expected: matmul 12× C → 2-3× C.**
 
-**Unboxed arrays.** `let arr int[] = ...` should compile to `int64_t*`, not `MonkValue*`. Removes the tagged-union cost per element. Enables `cc` auto-vectorization of the inner loop. **Expected: matmul to 1.5-2× C.**
+Scope: new runtime structs (`MonkIntArray`, `MonkFloatArray`), new codegen path for typed-array literals and index ops, interop for passing typed arrays to functions taking untyped `array`.
 
-These two together would put Monk's numerics within the Go/Rust range.
+### Unboxed for-loop variables
+
+`for i in range(N)` currently emits `MonkValue mk_i` — so using `i` in arithmetic requires unboxing on every access. When the iterable is a known-scalar array, unbox the loop var.
+
+**Expected: another 10-20% on loop-heavy code.**
 
 ### Phase 8+ wins
 

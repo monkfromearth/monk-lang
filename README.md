@@ -9,7 +9,7 @@
 A minimalist, readable, and performant programming language for the modern age.
 
 [![Build](https://img.shields.io/badge/build-passing-brightgreen?style=flat)](#status)
-[![Tests](https://img.shields.io/badge/tests-540_passing-brightgreen?style=flat)](#status)
+[![Tests](https://img.shields.io/badge/tests-553_passing-brightgreen?style=flat)](#status)
 [![Phase](https://img.shields.io/badge/phase-6_of_11-blue?style=flat)](#status)
 [![Go](https://img.shields.io/badge/Go-1.26.1+-00ADD8?style=flat&logo=go&logoColor=white)](#install)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat)](#license)
@@ -232,7 +232,7 @@ Three rules resolve every edge case:
 
 ## Status
 
-**0.0.1 — Buniyaad** (2026-04-04). 540 tests passing (389 Go + 151 C runtime).
+**0.0.1 — Buniyaad** (2026-04-04). 553 tests passing (402 Go + 151 C runtime).
 
 | Phase | Status |
 |-------|--------|
@@ -241,9 +241,8 @@ Three rules resolve every edge case:
 | 3. C Runtime Library | :white_check_mark: Done |
 | 4. C Code Generation | :white_check_mark: Done |
 | 5. CLI | :white_check_mark: Done |
-| 6. Type System (static checker) | :white_check_mark: Done |
-| 6.5. Type-informed codegen (unboxing) | :arrow_left: Next |
-| 7. Module System | Planned |
+| 6. Type System + scalar unboxing codegen | :white_check_mark: Done |
+| 7. Module System | :arrow_left: Next |
 | 8. C FFI | Planned |
 | 9. Linter & Formatter | Planned |
 | 10. LSP + Editor | Planned |
@@ -256,8 +255,8 @@ src/                Go compiler (module root)
   main.go             CLI entry point (39 tests)
   embed.go            Embedded runtime (self-contained binary)
   syntax/             Lexer + Parser + AST (195 tests)
-  types/              Static type checker (110 tests)
-  codegen/            AST → C code generator (45 tests)
+  types/              Static type checker (112 tests)
+  codegen/            AST → C code generator + scalar unboxing (56 tests)
   runtime/            C runtime library (runtime.h, runtime.c, 151 C tests)
 spec/               Language specification (REFERENCE.md is the source of truth)
 knowledge/          Learning course — monkfromearth.github.io/monk-lang/

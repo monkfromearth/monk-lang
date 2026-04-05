@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-6 complete. 540 tests (389 Go + 151 C runtime). Working end-to-end.**
+**Status: Phases 1-6 complete. 553 tests (402 Go + 151 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -24,7 +24,7 @@ What's been built, what pivots happened, what's next.
 
 **Phase 5 — CLI.** `monk build`, `monk run`, `monk check`, `monk version`. ~280 lines, no framework. `-o` flag controls output: `.c` extension = emit C source, anything else = compile to binary. Runtime embedded in Go binary via `go:embed` — the `monk` binary is self-contained and works from any directory. Extracts runtime to `~/.cache/monk/runtime/` on first use if needed. Uses system `cc`. 28 CLI tests.
 
-**Phase 6 — Type System.** Static checker in `src/types/`. Runs after parse, before codegen — wired into all three commands. 64 tests. Catches: first-assignment inference mismatches, reassignment type drift, array element violations (both literals and index assignment), typed-record shape (missing/extra/wrong-type fields), cross-type equality (5 == "5" errors), loop variable const violations, missing returns on non-none functions, function call arity/type mismatches, function-type parameters like `(f (int) -> int, x int)`. Strict on equality (no deep-compare on arrays/records/functions), permissive on truthiness. Codegen unchanged — still emits tagged MonkValue everywhere. Unboxing is Phase 6.5.
+**Phase 6 — Type System + scalar unboxing codegen.** Static checker in `src/types/` runs after parse, before codegen — wired into all three commands. 110 checker tests. Catches: first-assignment inference mismatches, reassignment type drift, array element violations (both literals and index assignment), typed-record shape (missing/extra/wrong-type fields), cross-type equality (5 == "5" errors), loop variable const violations, missing returns on non-none functions, function call arity/type mismatches, function-type parameters like `(f (int) -> int, x int)`. Strict on equality (no deep-compare on arrays/records/functions), permissive on truthiness. The checker's type Info is threaded into codegen (`src/codegen/unbox.go`), which emits raw C scalars (`int64_t`, `double`, `bool`) for statically-typed scalar variables and raw C arithmetic between them. Scalar benchmarks now hit C parity: fib 1.0× C, mandelbrot 1.0× C, leibniz 1.0× C. Arrays are still tagged-union (matmul stays at ~12× C) — typed-array unboxing is the next performance frontier.
 
 ### Restructure (2026-04-04)
 
@@ -164,6 +164,37 @@ Post-merge PR review caught 4 more issues:
 - All 13 example programs typecheck AND run (added types.monk, records.monk, optionals.monk, guards.monk)
 - All 3 benchmark programs typecheck
 - All linters clean (go vet, staticcheck, golangci-lint, govulncheck)
+
+### Scalar codegen unboxing (same session, rolled into Phase 6)
+
+The type checker was sitting on rich information that codegen was ignoring — we were still emitting `MonkValue` everywhere. Unboxing closes that gap.
+
+**What changed:**
+- `types.Check` now returns `*types.Info` with per-expression types, per-decl types, per-function signatures
+- New `src/codegen/unbox.go` — the `storageKind` sum type (MonkValue / int64_t / double / bool), the `coerce` helper, typed variants of expr/binary/unary/call emission
+- Variables declared with a scalar type (int/float/bool) are now stored as raw C scalars, not MonkValue
+- Arithmetic between two scalar operands stays raw — `a + b * c` compiles to `(a + (b * c))`, no `monk_add` calls
+- Functions whose params AND return are all scalar get unboxed C signatures: `static int64_t _monk_func_1(int64_t mk_n)` instead of `static MonkValue`
+- `if` / `while` conditions that evaluate to typed booleans become raw C, bypassing `monk_is_truthy`
+- `to_int(float_var)` / `to_float(int_var)` inline as direct C casts, skipping the runtime call
+
+**Benchmark results (Apple M4 Pro, cc -O3 -flto, new runs after unboxing):**
+
+| Benchmark | Monk | vs C | Before unboxing |
+|---|---:|---:|---:|
+| fibonacci (n=35) | 17.3 ms | **1.0× C** | 1.6× C (28 ms) |
+| mandelbrot (800²×50) | 14.5 ms | **1.0× C** | 1.2× C (17 ms) |
+| leibniz (π, 50M iter, NEW) | 29.2 ms | **1.0× C** | — |
+| trial_primes (<200k, NEW) | 25.7 ms | 4.5× C | — |
+| matmul (400²) | 122 ms | 11.8× C | 13.9× C |
+
+Matmul didn't move much — arrays are still tagged. Trial_primes is 4.5× C while Go is 1.01× C; the gap is likely codegen inefficiency in the break-via-assignment pattern that we don't model natively. Both are tracked as future work.
+
+**New benchmark programs:**
+- `bench/benchmarks/leibniz/` — π via Leibniz series, pure float compute
+- `bench/benchmarks/trial_primes/` — prime counting by trial division, nested int loops
+
+**Codegen tests:** 11 new unboxing tests assert BOTH the generated C shape AND the runtime result for each optimization path.
 
 ### Pivots and mistakes
 

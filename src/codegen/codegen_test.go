@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/monkfromearth/monk-lang/syntax"
+	"github.com/monkfromearth/monk-lang/types"
 )
 
 // runMonk compiles a Monk source string to C, compiles the C with cc,
@@ -340,6 +341,188 @@ func TestCString(t *testing.T) {
 		if got := cString(c.in); got != c.want {
 			t.Errorf("cString(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// ─── Scalar unboxing (Phase 6) ────────────────────────────────────────────
+// The unboxing path emits raw int64_t/double/bool for scalar variables and
+// raw C arithmetic for operations between scalars. These tests verify both
+// the GENERATED SHAPE (string checks) and the RUNTIME RESULT (compile+run).
+
+// runMonkTyped is like runMonk but runs the type checker first and feeds
+// the Info to GenerateWithTypes. This is what `monk build` does in production.
+func runMonkTyped(t *testing.T, source string) (string, string) {
+	t.Helper()
+	prog, err := syntax.Parse(source)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	info, err := types.Check(prog)
+	if err != nil {
+		t.Fatalf("type error: %v", err)
+	}
+	cSource := GenerateWithTypes(prog, "test.monk", info)
+
+	dir := t.TempDir()
+	cFile := filepath.Join(dir, "test.c")
+	binFile := filepath.Join(dir, "test")
+	runtimeDir, _ := filepath.Abs("../runtime")
+	if err := os.WriteFile(cFile, []byte(cSource), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("cc", "-std=c11", "-Wall", "-I"+runtimeDir,
+		cFile, filepath.Join(runtimeDir, "runtime.c"), "-lm", "-o", binFile)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cc failed:\n%s\n\nGenerated C:\n%s", string(out), cSource)
+	}
+	cmd = exec.Command(binFile)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("runtime error:\n%s\n\nGenerated C:\n%s", string(out), cSource)
+	}
+	return strings.TrimRight(string(out), "\n"), cSource
+}
+
+func TestUnboxIntVarDecl(t *testing.T) {
+	out, src := runMonkTyped(t, `let x int = 42
+show(to_string(x))`)
+	if out != "42" {
+		t.Errorf("expected '42', got %q", out)
+	}
+	if !strings.Contains(src, "int64_t mk_x = 42") {
+		t.Errorf("expected unboxed int declaration, generated:\n%s", src)
+	}
+}
+
+func TestUnboxFloatVarDecl(t *testing.T) {
+	out, src := runMonkTyped(t, `let pi float = 3.14
+show(to_string(pi))`)
+	if out != "3.14" {
+		t.Errorf("expected '3.14', got %q", out)
+	}
+	if !strings.Contains(src, "double mk_pi = 3.14") {
+		t.Errorf("expected unboxed double declaration, generated:\n%s", src)
+	}
+}
+
+func TestUnboxBoolVarDecl(t *testing.T) {
+	out, src := runMonkTyped(t, `let flag boolean = true
+show(to_string(flag))`)
+	if out != "true" {
+		t.Errorf("expected 'true', got %q", out)
+	}
+	if !strings.Contains(src, "bool mk_flag = true") {
+		t.Errorf("expected unboxed bool declaration, generated:\n%s", src)
+	}
+}
+
+func TestUnboxIntArithmeticStaysRaw(t *testing.T) {
+	out, src := runMonkTyped(t, `let a = 10
+let b = 3
+let c = a * b + 5
+show(to_string(c))`)
+	if out != "35" {
+		t.Errorf("expected '35', got %q", out)
+	}
+	// Should emit `(a * b) + 5` style raw arithmetic, NOT monk_add / monk_mul.
+	if strings.Contains(src, "monk_mul(") || strings.Contains(src, "monk_add(") {
+		t.Errorf("expected raw C arithmetic, got runtime calls:\n%s", src)
+	}
+}
+
+func TestUnboxMixedIntFloatWidens(t *testing.T) {
+	out, src := runMonkTyped(t, `let i = 5
+let f float = 2.5
+let result = i * f
+show(to_string(result))`)
+	if out != "12.5" {
+		t.Errorf("expected '12.5', got %q", out)
+	}
+	if !strings.Contains(src, "(double)") {
+		t.Errorf("expected explicit int->float widening, generated:\n%s", src)
+	}
+}
+
+func TestUnboxConditionIsRaw(t *testing.T) {
+	out, src := runMonkTyped(t, `let x = 10
+if x > 5 { show("big") } else { show("small") }`)
+	if out != "big" {
+		t.Errorf("expected 'big', got %q", out)
+	}
+	// `if (mk_x > 5)` — no monk_less/monk_is_truthy wrapper.
+	if strings.Contains(src, "monk_is_truthy") {
+		t.Errorf("expected raw C condition, got monk_is_truthy wrap:\n%s", src)
+	}
+}
+
+func TestUnboxWhileLoopRaw(t *testing.T) {
+	out, src := runMonkTyped(t, `let n = 0
+let sum = 0
+while n < 10 {
+  sum += n
+  n += 1
+}
+show(to_string(sum))`)
+	if out != "45" {
+		t.Errorf("expected '45', got %q", out)
+	}
+	if strings.Contains(src, "monk_is_truthy") || strings.Contains(src, "monk_add") {
+		t.Errorf("expected raw C loop, generated:\n%s", src)
+	}
+}
+
+func TestUnboxUserFuncFullScalar(t *testing.T) {
+	out, src := runMonkTyped(t, `let add = (a int, b int) int { return a + b }
+show(to_string(add(7, 5)))`)
+	if out != "12" {
+		t.Errorf("expected '12', got %q", out)
+	}
+	if !strings.Contains(src, "static int64_t") {
+		t.Errorf("expected unboxed function signature, generated:\n%s", src)
+	}
+}
+
+func TestUnboxRecursiveInt(t *testing.T) {
+	// Fibonacci — classic unboxable recursion.
+	out, src := runMonkTyped(t, `let fib = (n int) int {
+  if n < 2 { return n }
+  return fib(n - 1) + fib(n - 2)
+}
+show(to_string(fib(10)))`)
+	if out != "55" {
+		t.Errorf("expected '55', got %q", out)
+	}
+	if !strings.Contains(src, "static int64_t") {
+		t.Errorf("expected unboxed fib signature, generated:\n%s", src)
+	}
+	// The recursive call should be raw, not boxing args and unboxing return.
+	if strings.Count(src, "monk_int(") > 2 {
+		// Allow the final show() boxing, but not more.
+		t.Errorf("expected raw recursive calls, too many monk_int(...) in:\n%s", src)
+	}
+}
+
+func TestUnboxToFloatInlined(t *testing.T) {
+	// to_float(int_var) should become a direct (double) cast with no runtime call.
+	out, src := runMonkTyped(t, `let n = 10
+let f = to_float(n)
+show(to_string(f))`)
+	if out != "10" {
+		t.Errorf("expected '10', got %q", out)
+	}
+	if strings.Contains(src, "monk_to_float(") {
+		t.Errorf("expected to_float to inline as (double), got runtime call:\n%s", src)
+	}
+}
+
+func TestUnboxBoxedMixedPath(t *testing.T) {
+	// A value flowing between unboxed and boxed worlds — should box/unbox
+	// cleanly with no crashes.
+	out, _ := runMonkTyped(t, `let n = 42
+let s = "value: " + to_string(n)
+show(s)`)
+	if out != "value: 42" {
+		t.Errorf("expected 'value: 42', got %q", out)
 	}
 }
 

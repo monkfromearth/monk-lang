@@ -9,16 +9,32 @@ import (
 	"strings"
 
 	"github.com/monkfromearth/monk-lang/syntax"
+	"github.com/monkfromearth/monk-lang/types"
 )
 
 // Generate takes a parsed Monk program and returns a complete C source string.
 // The filename is used for #line directives in the generated C.
+//
+// Unboxing: when called via GenerateWithTypes, the generator uses the type
+// Info to emit raw C scalars (int64_t, double, bool) for scalar-typed
+// variables instead of boxing everything as MonkValue. This is a pure
+// performance win with no semantic change — the generated binary computes
+// the same answer.
 func Generate(prog *syntax.Program, filename string) string {
+	return GenerateWithTypes(prog, filename, nil)
+}
+
+// GenerateWithTypes is like Generate but threads the type checker's Info
+// through so scalar variables can be emitted unboxed.
+func GenerateWithTypes(prog *syntax.Program, filename string, info *types.Info) string {
 	g := &generator{
 		filename:  filename,
 		funcCount: 0,
 		tmpCount:  0,
 		funcNames: make(map[string]string),
+		info:      info,
+		storage:   make(map[string]storageKind),
+		fnStorage: make(map[string]funcStorage),
 	}
 	return g.generate(prog)
 }
@@ -30,6 +46,30 @@ type generator struct {
 	funcNames map[string]string // maps Monk variable name → hoisted C function name
 	funcs     strings.Builder   // collected function definitions (hoisted above main)
 	body      strings.Builder   // main body statements
+	// Unboxing support — nil when Generate was called without type info.
+	info       *types.Info            // per-expression types from the checker
+	storage    map[string]storageKind // per-variable storage decision (Monk name → kind)
+	fnStorage  map[string]funcStorage // per-Monk-function storage decision (Monk name → params/ret)
+	retStorage storageKind            // expected return storage of the current function body
+}
+
+// funcStorage captures the unboxed C signature of a Monk function, so call
+// sites can pass raw scalars and consume raw return values instead of
+// boxing/unboxing. A function is fully unboxed only when every param AND
+// the return type qualifies as a scalar storage kind.
+type funcStorage struct {
+	Params []storageKind
+	Return storageKind
+	All    bool // true when every param + return is scalar (fully unboxed)
+}
+
+// varStorage returns the storage kind for a mangled variable name, or
+// storeBoxed if unknown (defensive default — always correct, just slower).
+func (g *generator) varStorage(monkName string) storageKind {
+	if k, ok := g.storage[monkName]; ok {
+		return k
+	}
+	return storeBoxed
 }
 
 // newTemp returns a unique C temp variable name.
@@ -109,11 +149,69 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 		return
 	}
 
-	value := g.emitExpr(s.Value)
-	g.emitLine("    MonkValue %s = monk_deep_copy(%s);\n", mangleName(s.Name), value)
+	name := mangleName(s.Name)
+
+	// Decide this variable's storage based on the type checker's verdict.
+	// Absent type info (legacy Generate path), stay boxed.
+	var store storageKind
+	if g.info != nil {
+		if t, ok := g.info.Decls[s]; ok {
+			store = storageFor(t)
+		}
+	}
+	g.storage[name] = store
+
+	if store == storeBoxed {
+		// Classic path — one MonkValue per variable, deep-copied at init.
+		value := g.emitExpr(s.Value)
+		g.emitLine("    MonkValue %s = monk_deep_copy(%s);\n", name, value)
+		return
+	}
+
+	// Unboxed path — emit a raw C scalar. The initializer is an expression
+	// whose type we know; coerce to match the variable's storage.
+	rhsCode, rhsStore := g.emitExprTyped(s.Value)
+	init := coerce(rhsCode, rhsStore, store)
+	g.emitLine("    %s %s = %s;\n", cTypeName(store), name, init)
 }
 
 func (g *generator) emitAssign(s *syntax.AssignStmt) {
+	// Unboxed-variable fast path: if the target is a plain ident with raw
+	// storage, emit raw C assignment (no deep_copy/free cycle needed — the
+	// value is a plain scalar).
+	if target, ok := s.Target.(*syntax.IdentExpr); ok {
+		name := mangleName(target.Name)
+		if store := g.varStorage(name); store != storeBoxed {
+			rhsCode, rhsStore := g.emitExprTyped(s.Value)
+			rhs := coerce(rhsCode, rhsStore, store)
+			switch s.Op {
+			case syntax.Equal:
+				g.emitLine("    %s = %s;\n", name, rhs)
+			case syntax.PlusEqual:
+				g.emitLine("    %s += %s;\n", name, rhs)
+			case syntax.MinusEqual:
+				g.emitLine("    %s -= %s;\n", name, rhs)
+			case syntax.StarEqual:
+				g.emitLine("    %s *= %s;\n", name, rhs)
+			case syntax.SlashEqual:
+				// Guard against div-by-zero for ints (per spec).
+				if store == storeInt {
+					g.emitLine("    if ((%s)==0) monk_panic(\"division by zero\");\n", rhs)
+				}
+				g.emitLine("    %s /= %s;\n", name, rhs)
+			case syntax.PercentEqual:
+				if store == storeInt {
+					g.emitLine("    if ((%s)==0) monk_panic(\"modulo by zero\");\n", rhs)
+					g.emitLine("    %s %%= %s;\n", name, rhs)
+				} else {
+					// float %= isn't valid C; fall back to boxed path below.
+					break
+				}
+			}
+			return
+		}
+	}
+
 	value := g.emitExpr(s.Value)
 
 	switch target := s.Target.(type) {
@@ -151,10 +249,56 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	}
 }
 
+// emitCondition generates the C expression for an `if`/`while` condition.
+// Uses typed emission when possible so `while (i < N)` stays as raw C
+// comparison instead of going through monk_is_truthy(monk_less(...)).
+func (g *generator) emitCondition(e syntax.Expr) string {
+	if g.info != nil {
+		code, kind := g.emitExprTyped(e)
+		// Strip ONE layer of outer parens when the whole expression is wrapped
+		// in a single balanced pair. This avoids cc's -Wparentheses-equality
+		// warning on code like `if ((a == b))`. Unsafe strips would change
+		// meaning (e.g. `(a)+(b)` → `a)+(b`), so we verify balance.
+		code = stripOuterParens(code)
+		switch kind {
+		case storeBool:
+			return code
+		case storeInt, storeFloat:
+			// Truthiness: 0 is falsy, everything else is truthy.
+			return "(" + code + ") != 0"
+		}
+	}
+	return "monk_is_truthy(" + g.emitExpr(e) + ")"
+}
+
+// stripOuterParens removes ONE layer of enclosing parens if the first `(`
+// matches the last `)` directly (i.e. the entire expression is wrapped).
+// Returns s unchanged for everything else.
+func stripOuterParens(s string) string {
+	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
+		return s
+	}
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && i < len(s)-1 {
+				// The matching `)` for the opening `(` is not at the end —
+				// meaning the expression is NOT wrapped in a single balanced
+				// pair. Example: "(a)+(b)" — depth hits 0 at index 2.
+				return s
+			}
+		}
+	}
+	return s[1 : len(s)-1]
+}
+
 // emitIf handles if/else-if/else chains recursively.
 func (g *generator) emitIf(s *syntax.IfStmt) {
-	cond := g.emitExpr(s.Condition)
-	g.emitLine("    if (monk_is_truthy(%s)) {\n", cond)
+	g.emitLine("    if (%s) {\n", g.emitCondition(s.Condition))
 	for _, stmt := range s.Then.Stmts {
 		g.emitStmt(stmt)
 	}
@@ -179,8 +323,7 @@ func (g *generator) emitIf(s *syntax.IfStmt) {
 
 // emitIfInline emits an if statement without the leading indent (for else-if chains).
 func (g *generator) emitIfInline(s *syntax.IfStmt) {
-	cond := g.emitExpr(s.Condition)
-	fmt.Fprintf(&g.body, "if (monk_is_truthy(%s)) {\n", cond)
+	fmt.Fprintf(&g.body, "if (%s) {\n", g.emitCondition(s.Condition))
 	for _, stmt := range s.Then.Stmts {
 		g.emitStmt(stmt)
 	}
@@ -203,8 +346,7 @@ func (g *generator) emitIfInline(s *syntax.IfStmt) {
 }
 
 func (g *generator) emitWhile(s *syntax.WhileStmt) {
-	cond := g.emitExpr(s.Condition)
-	g.emitLine("    while (monk_is_truthy(%s)) {\n", cond)
+	g.emitLine("    while (%s) {\n", g.emitCondition(s.Condition))
 	for _, stmt := range s.Body.Stmts {
 		g.emitStmt(stmt)
 	}
@@ -246,10 +388,22 @@ func (g *generator) emitFor(s *syntax.ForStmt) {
 
 func (g *generator) emitReturn(s *syntax.ReturnStmt) {
 	if s.Value == nil {
-		g.emitLine("    return monk_none();\n")
-	} else {
-		g.emitLine("    return %s;\n", g.emitExpr(s.Value))
+		if g.retStorage == storeBoxed {
+			g.emitLine("    return monk_none();\n")
+		} else {
+			// Bare return in a void-scalar fn doesn't really happen (type
+			// checker rejects it), but be safe.
+			g.emitLine("    return 0;\n")
+		}
+		return
 	}
+	if g.retStorage == storeBoxed {
+		g.emitLine("    return %s;\n", g.emitExpr(s.Value))
+		return
+	}
+	// Unboxed return: evaluate in typed form and coerce.
+	code, kind := g.emitExprTyped(s.Value)
+	g.emitLine("    return %s;\n", coerce(code, kind, g.retStorage))
 }
 
 func (g *generator) emitGuard(s *syntax.GuardStmt) {
@@ -299,7 +453,13 @@ func (g *generator) emitExpr(expr syntax.Expr) string {
 		return "monk_none()"
 
 	case *syntax.IdentExpr:
-		return mangleName(e.Name)
+		name := mangleName(e.Name)
+		// If this variable is stored as a raw scalar, box it up so the
+		// classic emit-path (which assumes MonkValue) stays correct.
+		if store := g.varStorage(name); store != storeBoxed {
+			return boxExpr(name, store)
+		}
+		return name
 
 	case *syntax.UnaryExpr:
 		operand := g.emitExpr(e.Operand)
@@ -421,6 +581,19 @@ func (g *generator) emitBinary(e *syntax.BinaryExpr) string {
 }
 
 func (g *generator) emitCall(e *syntax.CallExpr) string {
+	// If the callee is an unboxed user function, call it with raw args and
+	// box the return. A typed call site (emitCallTyped) stays unboxed, but
+	// emitExpr always returns MonkValue for compatibility with the classic
+	// emission paths.
+	if ident, ok := e.Callee.(*syntax.IdentExpr); ok {
+		if cName, ok := g.funcNames[ident.Name]; ok {
+			if fs, unboxed := g.fnStorage[cName]; unboxed && fs.All {
+				rawCall := g.emitUnboxedCall(cName, fs, e.Args)
+				return boxExpr(rawCall, fs.Return)
+			}
+		}
+	}
+
 	args := make([]string, len(e.Args))
 	for i, arg := range e.Args {
 		args[i] = g.emitExpr(arg)
@@ -445,11 +618,40 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 	return "monk_none() /* indirect call TODO */"
 }
 
+// emitUnboxedCall emits a call to a fully-unboxed user function, coercing
+// each argument to the parameter's expected storage. Returns the raw call
+// expression; the caller decides whether to box it.
+func (g *generator) emitUnboxedCall(cName string, fs funcStorage, argExprs []syntax.Expr) string {
+	args := make([]string, len(argExprs))
+	for i, a := range argExprs {
+		code, kind := g.emitExprTyped(a)
+		args[i] = coerce(code, kind, fs.Params[i])
+	}
+	return fmt.Sprintf("%s(%s)", cName, strings.Join(args, ", "))
+}
+
 // hoistFunction emits a C function definition into the hoisted funcs buffer.
+//
+// When the checker's Info tells us every parameter AND the return type is a
+// scalar (int/float/bool), we emit an unboxed signature:
+//   static int64_t _monk_func_1(int64_t mk_n) { ... }
+// Otherwise we fall back to the classic boxed signature:
+//   static MonkValue _monk_func_1(MonkValue mk_n) { ... }
+//
+// The cName-to-funcStorage mapping lets call sites know which form to use.
 func (g *generator) hoistFunction(cName string, e *syntax.FuncExpr) {
+	// Decide per-param + return storage. Only unbox when every slot qualifies.
+	sig := g.deriveFuncStorage(e)
+	g.fnStorage[cName] = sig
+
 	params := make([]string, len(e.Params))
 	for i, p := range e.Params {
-		params[i] = fmt.Sprintf("MonkValue %s", mangleName(p.Name))
+		store := storeBoxed
+		if sig.All {
+			store = sig.Params[i]
+			g.storage[mangleName(p.Name)] = store
+		}
+		params[i] = fmt.Sprintf("%s %s", cTypeName(store), mangleName(p.Name))
 	}
 
 	paramStr := strings.Join(params, ", ")
@@ -457,19 +659,79 @@ func (g *generator) hoistFunction(cName string, e *syntax.FuncExpr) {
 		paramStr = "void"
 	}
 
-	fmt.Fprintf(&g.funcs, "static MonkValue %s(%s) {\n", cName, paramStr)
+	retType := "MonkValue"
+	if sig.All {
+		retType = cTypeName(sig.Return)
+	}
+	fmt.Fprintf(&g.funcs, "static %s %s(%s) {\n", retType, cName, paramStr)
 
-	// Emit body into funcs buffer (swap body temporarily)
+	// Emit body into funcs buffer (swap body temporarily). Track the expected
+	// return storage so emitReturn can coerce.
 	savedBody := g.body
+	savedRet := g.retStorage
 	g.body = strings.Builder{}
+	if sig.All {
+		g.retStorage = sig.Return
+	} else {
+		g.retStorage = storeBoxed
+	}
 	for _, stmt := range e.Body.Stmts {
 		g.emitStmt(stmt)
 	}
 	g.funcs.WriteString(g.body.String())
 	g.body = savedBody
+	g.retStorage = savedRet
 
-	g.funcs.WriteString("    return monk_none();\n")
+	// Fallback return at the end of function body.
+	if sig.All {
+		switch sig.Return {
+		case storeInt:
+			g.funcs.WriteString("    return 0;\n")
+		case storeFloat:
+			g.funcs.WriteString("    return 0.0;\n")
+		case storeBool:
+			g.funcs.WriteString("    return false;\n")
+		}
+	} else {
+		g.funcs.WriteString("    return monk_none();\n")
+	}
 	g.funcs.WriteString("}\n\n")
+
+	// Drop the per-param storage bindings — they're scoped to this function's body.
+	if sig.All {
+		for _, p := range e.Params {
+			delete(g.storage, mangleName(p.Name))
+		}
+	}
+}
+
+// deriveFuncStorage consults the checker's Info to figure out each param's
+// and the return's storage kind. If any slot is boxed, the function as a
+// whole stays boxed (All=false); call sites still call it as MonkValue.
+func (g *generator) deriveFuncStorage(e *syntax.FuncExpr) funcStorage {
+	fs := funcStorage{Params: make([]storageKind, len(e.Params))}
+	if g.info == nil {
+		return fs
+	}
+	sig := g.info.Funcs[e]
+	if sig == nil {
+		return fs
+	}
+	// Require a known return type and all known param types to be scalar.
+	fs.Return = storageFor(sig.Return)
+	if fs.Return == storeBoxed {
+		return fs
+	}
+	allScalar := true
+	for i, p := range sig.Params {
+		ps := storageFor(p)
+		fs.Params[i] = ps
+		if ps == storeBoxed {
+			allScalar = false
+		}
+	}
+	fs.All = allScalar
+	return fs
 }
 
 func (g *generator) emitFuncExpr(e *syntax.FuncExpr) string {

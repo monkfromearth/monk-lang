@@ -91,6 +91,10 @@ MonkValue monk_none(void);
 MonkValue monk_array(MonkValue *elements, int64_t length);  /* copies elements */
 MonkValue monk_record(MonkRecordField *fields, int64_t length); /* copies fields */
 
+/* Abort with a runtime error message and exit 1. Available to codegen for
+ * inline runtime errors (e.g. int division by zero on the unboxed path). */
+void monk_panic(const char *msg);
+
 /* --- Value operations --- */
 
 /* Slow-path functions that handle heap types. Do not call directly — use the

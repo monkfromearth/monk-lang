@@ -241,6 +241,35 @@ func TestCheckFuncRecursion(t *testing.T) {
 show(to_string(fib(10)))`)
 }
 
+// ─── Function-type parameters ─────────────────────────────────────────────
+
+func TestCheckFuncTypeParam(t *testing.T) {
+	// Higher-order fn with function-type parameter annotation.
+	expectOk(t, `let apply = (f (int) -> int, x int) int { return f(x) }
+let double = (n int) int { return n * 2 }
+show(to_string(apply(double, 21)))`)
+}
+
+func TestCheckFuncTypeParamMismatchArg(t *testing.T) {
+	expectErr(t, `let apply = (f (int) -> int, x int) int { return f(x) }
+let sq = (n int, m int) int { return n * m }
+show(to_string(apply(sq, 21)))`, "cannot pass")
+}
+
+func TestCheckFuncTypeMultipleArgs(t *testing.T) {
+	expectOk(t, `let combine = (op (int, int) -> int, a int, b int) int {
+  return op(a, b)
+}
+let add = (x int, y int) int { return x + y }
+show(to_string(combine(add, 3, 4)))`)
+}
+
+func TestCheckFuncTypeInTypeDecl(t *testing.T) {
+	expectOk(t, `type BinaryOp = (int, int) -> int
+let add = (a int, b int) int { return a + b }
+let op BinaryOp = add`)
+}
+
 // ─── Control flow ─────────────────────────────────────────────────────────
 
 func TestCheckForOverArray(t *testing.T) {

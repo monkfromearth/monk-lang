@@ -414,6 +414,11 @@ func matchRightParen(tokens []Token, openIdx int) int {
 }
 
 func (p *Parser) parseTypeExpr() TypeExpr {
+	// Function type: (T, T) -> T
+	if p.current().Kind == LeftParen {
+		return p.parseFuncType()
+	}
+
 	name := p.current().Text
 	p.advance()
 
@@ -431,6 +436,40 @@ func (p *Parser) parseTypeExpr() TypeExpr {
 	}
 
 	return te
+}
+
+// parseFuncType parses a function type annotation: `(T1, T2) -> T3` or `() -> T`.
+// The caller has confirmed current token is `(`. Trailing `?` makes the
+// function type itself optional: `(int) -> int?` is ambiguous between
+// "function returning int?" and "optional function returning int" — per
+// existing Monk convention (types read left-to-right, modifiers trail),
+// we bind `?` to the RETURN type, so `(int) -> int?` is the former. To get
+// an optional function, parenthesize the return type first — but Monk has
+// no syntax for that today, so we simply don't support optional-function
+// types.
+func (p *Parser) parseFuncType() TypeExpr {
+	p.advance() // skip (
+	var params []TypeExpr
+	for p.current().Kind != RightParen && !p.atEnd() {
+		params = append(params, p.parseTypeExpr())
+		if p.current().Kind == Comma {
+			p.advance()
+		}
+	}
+	p.advance() // skip )
+	// Require ` -> ReturnType`.
+	if p.current().Kind != Arrow {
+		// The caller's parseParenOrFunc already pre-checked for Arrow when
+		// disambiguating, but be defensive.
+		return TypeExpr{} // empty, signals parse error upstream if this happens
+	}
+	p.advance() // skip ->
+	ret := p.parseTypeExpr()
+	return TypeExpr{
+		IsFunc:     true,
+		FuncParams: params,
+		FuncReturn: &ret,
+	}
 }
 
 // Fix 5: Parse use { X, Y } from "..." and use * from "..."

@@ -30,6 +30,22 @@ func (c *checker) resolveTypeDef(td *syntax.TypeDeclStmt) (*Type, error) {
 // types in the typeDefs map. Position is passed in for error messages because
 // TypeExpr doesn't carry a position of its own.
 func (c *checker) resolveTypeExpr(te *syntax.TypeExpr, pos syntax.Pos) (*Type, error) {
+	// Function type: (T1, T2) -> T3
+	if te.IsFunc {
+		params := make([]*Type, len(te.FuncParams))
+		for i := range te.FuncParams {
+			pt, err := c.resolveTypeExpr(&te.FuncParams[i], pos)
+			if err != nil {
+				return nil, err
+			}
+			params[i] = pt
+		}
+		ret, err := c.resolveTypeExpr(te.FuncReturn, pos)
+		if err != nil {
+			return nil, err
+		}
+		return FuncType(params, ret), nil
+	}
 	var base *Type
 	switch te.Name {
 	case "int":
@@ -76,9 +92,10 @@ func (c *checker) resolveTypeExpr(te *syntax.TypeExpr, pos syntax.Pos) (*Type, e
 func (c *checker) funcSignature(fn *syntax.FuncExpr) (*Type, error) {
 	params := make([]*Type, len(fn.Params))
 	for i, p := range fn.Params {
-		if p.Type.Name == "" {
-			// Untyped param — treat as Any. The spec requires types on fn params,
-			// but allowing Any here makes the checker usable on untyped example code.
+		// Distinguish "missing annotation" (Name == "" AND not a function
+		// type) from a legitimate function-type annotation which has IsFunc
+		// true and Name == "". Untyped params fall back to Any for ergonomics.
+		if p.Type.Name == "" && !p.Type.IsFunc {
 			params[i] = Any
 			continue
 		}
@@ -89,7 +106,7 @@ func (c *checker) funcSignature(fn *syntax.FuncExpr) (*Type, error) {
 		params[i] = pt
 	}
 	var ret *Type
-	if fn.ReturnType.Name == "" {
+	if fn.ReturnType.Name == "" && !fn.ReturnType.IsFunc {
 		ret = Any
 	} else {
 		var err error

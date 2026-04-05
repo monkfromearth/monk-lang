@@ -300,6 +300,27 @@ func TestCodegenToString(t *testing.T) {
 	expectOutput(t, `show("value: " + to_string(42))`, "value: 42")
 }
 
+// to_int / to_float now accept int | float | string (not just string).
+// Previously, converting an int variable to a float required `x * 1.0`.
+func TestCodegenToFloatFromInt(t *testing.T) {
+	expectOutput(t, `let i = 5
+show(to_string(to_float(i)))`, "5")
+}
+
+func TestCodegenToIntFromFloatTruncates(t *testing.T) {
+	expectOutput(t, `show(to_string(to_int(3.9)))
+show(to_string(to_int(0.0 - 3.9)))`, "3\n-3")
+}
+
+func TestCodegenToIntFromIntIdentity(t *testing.T) {
+	expectOutput(t, `show(to_string(to_int(42)))`, "42")
+}
+
+func TestCodegenToFloatFromString(t *testing.T) {
+	// Existing behavior — must still work after the signature widening.
+	expectOutput(t, `show(to_string(to_float("2.5")))`, "2.5")
+}
+
 // cString must produce valid C string literals for any input. Used for
 // user-provided strings AND filenames in #line directives — both can contain
 // backslashes, quotes, or newlines that would otherwise produce broken C.

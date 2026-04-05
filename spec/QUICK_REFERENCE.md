@@ -240,8 +240,8 @@ export my_function
 |----------|-----------|-------------|
 | `show` | `(value) -> none` | Print to stdout with newline |
 | `to_string` | `(value) -> string` | Any value to string |
-| `to_int` | `(s string) -> int` | Parse integer (strict) |
-| `to_float` | `(s string) -> float` | Parse float |
+| `to_int` | `(value) -> int` | int/float (truncates)/string (strict parse) |
+| `to_float` | `(value) -> float` | int/float/string |
 
 ### Math
 

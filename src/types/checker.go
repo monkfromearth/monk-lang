@@ -5,12 +5,30 @@ import (
 	"github.com/monkfromearth/monk-lang/syntax"
 )
 
-// Check runs the type checker on a parsed program. Returns the first error
-// encountered, or nil on success. We fail-fast because subsequent errors are
-// often noise from the first one. A future pass can collect all errors.
-func Check(prog *syntax.Program) error {
+// Info carries the results of a type-check. Codegen consults it to decide
+// which C type to emit for each variable and whether to use raw C arithmetic
+// vs. runtime tagged-union dispatch.
+//
+// Types: maps each expression node to its computed type. Every Expr walked
+//        by inferExpr ends up here.
+// Decls: maps each VarDeclStmt to its declared type (the annotation if
+//        present, otherwise the first-assignment-inferred type).
+// Funcs: maps each FuncExpr to its full signature. Codegen uses this to
+//        generate unboxed function signatures when params/return are scalar.
+type Info struct {
+	Types map[syntax.Expr]*Type
+	Decls map[*syntax.VarDeclStmt]*Type
+	Funcs map[*syntax.FuncExpr]*Type
+}
+
+// Check runs the type checker on a parsed program. Returns the collected
+// type Info and the first error encountered (or nil on success).
+func Check(prog *syntax.Program) (*Info, error) {
 	c := newChecker()
-	return c.checkProgram(prog)
+	if err := c.checkProgram(prog); err != nil {
+		return nil, err
+	}
+	return c.info, nil
 }
 
 // Binding associates a name with its declared type and mutability in a scope.
@@ -50,12 +68,18 @@ type checker struct {
 	typeDefs   map[string]*Type // named types from `type Point = ...`
 	returnType *Type            // expected return type of the current function
 	inLoop     int              // break/continue legality
+	info       *Info            // collected type info, returned to codegen
 }
 
 func newChecker() *checker {
 	c := &checker{
 		scope:    newScope(nil),
 		typeDefs: make(map[string]*Type),
+		info: &Info{
+			Types: make(map[syntax.Expr]*Type),
+			Decls: make(map[*syntax.VarDeclStmt]*Type),
+			Funcs: make(map[*syntax.FuncExpr]*Type),
+		},
 	}
 	c.declareBuiltins()
 	return c

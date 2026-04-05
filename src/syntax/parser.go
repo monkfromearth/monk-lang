@@ -1028,8 +1028,11 @@ func (p *Parser) parseFuncExpr() (Expr, error) {
 	}
 	p.advance()
 
+	// Return type may be absent, a named type (ident/none), or a function type
+	// beginning with LeftParen. Parameter types already accept all three via
+	// parseTypeExpr — return types must too.
 	var returnType TypeExpr
-	if isTypeName(p.current().Kind) {
+	if isTypeName(p.current().Kind) || p.current().Kind == LeftParen {
 		returnType = p.parseTypeExpr()
 	}
 

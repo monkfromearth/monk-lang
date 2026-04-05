@@ -1,0 +1,23 @@
+// Benchmark: count primes up to N by trial division.
+// Pure int arithmetic, nested loops, no arrays. Maxes out scalar unboxing.
+// Output: count of primes up to N (integer checksum).
+
+let N = 200000
+let count = 0
+let n = 2
+while n <= N {
+    let is_prime = true
+    let d = 2
+    while d * d <= n {
+        if n % d == 0 {
+            is_prime = false
+            break
+        }
+        d += 1
+    }
+    if is_prime {
+        count += 1
+    }
+    n += 1
+}
+show(to_string(count))

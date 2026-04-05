@@ -9,9 +9,9 @@
 A minimalist, readable, and performant programming language for the modern age.
 
 [![Build](https://img.shields.io/badge/build-passing-brightgreen?style=flat)](#status)
-[![Tests](https://img.shields.io/badge/tests-446_passing-brightgreen?style=flat)](#status)
-[![Phase](https://img.shields.io/badge/phase-5_of_11-blue?style=flat)](#status)
-[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go&logoColor=white)](#install)
+[![Tests](https://img.shields.io/badge/tests-560_passing-brightgreen?style=flat)](#status)
+[![Phase](https://img.shields.io/badge/phase-6_of_11-blue?style=flat)](#status)
+[![Go](https://img.shields.io/badge/Go-1.26.1+-00ADD8?style=flat&logo=go&logoColor=white)](#install)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat)](#license)
 
 </div>
@@ -141,7 +141,7 @@ let sorted = bubble_sort(original)
 
 ## Examples
 
-The [`examples/`](examples/) directory has 9 working programs:
+The [`examples/`](examples/) directory has 13 working programs:
 
 | File | What it shows |
 |------|---------------|
@@ -154,6 +154,10 @@ The [`examples/`](examples/) directory has 9 working programs:
 | [`todo_list.monk`](examples/todo_list.monk) | Records, value semantics, data modeling |
 | [`collatz.monk`](examples/collatz.monk) | `while` loops, arrays, the Collatz conjecture |
 | [`sort.monk`](examples/sort.monk) | Bubble sort, value semantics proof |
+| [`types.monk`](examples/types.monk) | Type checker in action — inference, typed arrays, optionals |
+| [`records.monk`](examples/records.monk) | Nested records with structural typing |
+| [`optionals.monk`](examples/optionals.monk) | `T?` semantics, `is_none`, graceful reads |
+| [`guards.monk`](examples/guards.monk) | `guard`/`against`/`throw` scoping |
 
 ## CLI
 
@@ -222,6 +226,22 @@ source.monk  -->  [Go compiler]  -->  generated.c  -->  [cc -O2]  -->  native bi
 | **Math** | `sqrt` `pow` `abs` `floor` `ceil` `round` `sin` `cos` `tan` `log` `min` `max` |
 | **File I/O** | `file_read` `file_write` `file_exists` |
 
+## Performance
+
+Benchmarks against C/Go/Python/Node/Bun on Apple M4 Pro (`cc -O3 -flto`, hyperfine, lower is better):
+
+| Benchmark | Monk | vs C | vs Go | vs Python |
+|---|---:|---:|---:|---:|
+| fibonacci (n=35) | 17.3 ms | **1.0×** | 1.3× faster | 39× faster |
+| mandelbrot (800²×50) | 14.5 ms | **1.0×** | 1.1× faster | 180× faster |
+| leibniz (π, 50M iter) | 28.4 ms | **1.0×** | 1.2× faster | 176× faster |
+| trial_primes (<200k) | 5.9 ms | **1.0×** | **1.0×** | 94× faster |
+| matmul (400² int) | 124 ms | 11.8× | 4.3× slower | 64× faster |
+
+**Monk matches C on every benchmark that doesn't use arrays.** The matmul gap is expected — arrays still use tagged `MonkValue` storage. Typed-array unboxing is the next frontier.
+
+See [`bench/`](bench/) for the harness and [`spec/PERFORMANCE.md`](spec/PERFORMANCE.md) for methodology.
+
 ## Design Philosophy
 
 Three rules resolve every edge case:
@@ -232,7 +252,7 @@ Three rules resolve every edge case:
 
 ## Status
 
-**0.0.1 — Buniyaad** (2026-04-04). 446 tests passing.
+**0.0.1 — Buniyaad** (2026-04-04). 560 tests passing (409 Go + 151 C runtime).
 
 | Phase | Status |
 |-------|--------|
@@ -241,8 +261,8 @@ Three rules resolve every edge case:
 | 3. C Runtime Library | :white_check_mark: Done |
 | 4. C Code Generation | :white_check_mark: Done |
 | 5. CLI | :white_check_mark: Done |
-| 6. Type System | :arrow_left: Next |
-| 7. Module System | Planned |
+| 6. Type System + scalar unboxing codegen | :white_check_mark: Done |
+| 7. Module System | :arrow_left: Next |
 | 8. C FFI | Planned |
 | 9. Linter & Formatter | Planned |
 | 10. LSP + Editor | Planned |
@@ -252,14 +272,16 @@ Three rules resolve every edge case:
 
 ```
 src/                Go compiler (module root)
-  main.go             CLI entry point (28 tests)
+  main.go             CLI entry point (39 tests)
   embed.go            Embedded runtime (self-contained binary)
-  syntax/             Lexer + Parser + AST (219 tests)
-  codegen/            AST → C code generator (39 tests)
-  runtime/            C runtime library (runtime.h, runtime.c)
+  syntax/             Lexer + Parser + AST (195 tests)
+  types/              Static type checker (112 tests)
+  codegen/            AST → C code generator + scalar unboxing (63 tests)
+  runtime/            C runtime library (runtime.h, runtime.c, 151 C tests)
 spec/               Language specification (REFERENCE.md is the source of truth)
 knowledge/          Learning course — monkfromearth.github.io/monk-lang/
-examples/           9 working .monk programs
+examples/           13 working .monk programs
+bench/              Benchmark suite (Monk vs C/Go/Py/Node/Bun)
 Makefile            make build/install/test/clean
 ```
 

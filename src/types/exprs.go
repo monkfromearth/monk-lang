@@ -5,8 +5,20 @@ import (
 	"github.com/monkfromearth/monk-lang/syntax"
 )
 
-// inferExpr returns the type of an expression, or an error.
+// inferExpr returns the type of an expression, or an error. The result is
+// also recorded in c.info.Types so codegen can consult it later to decide
+// between raw C types and tagged-union MonkValue.
 func (c *checker) inferExpr(e syntax.Expr) (*Type, error) {
+	t, err := c.inferExprInner(e)
+	if err == nil && e != nil && t != nil {
+		c.info.Types[e] = t
+	}
+	return t, err
+}
+
+// inferExprInner is the actual inference switch. Named separately so the
+// wrapper can record results without every branch having to remember to do so.
+func (c *checker) inferExprInner(e syntax.Expr) (*Type, error) {
 	switch expr := e.(type) {
 	case *syntax.NumberExpr:
 		if expr.IsInt {
@@ -185,10 +197,15 @@ func (c *checker) inferEquality(e *syntax.BinaryExpr, lt, rt *Type) (*Type, erro
 			return Bool, nil
 		}
 	}
-	// Collections and functions cannot be compared.
-	if lt.Kind == KindArray || lt.Kind == KindRecord || lt.Kind == KindFunc {
+	// Collections and functions cannot be compared — check BOTH sides so
+	// the error message is consistent regardless of operand order.
+	if isNonComparable(lt) {
 		return nil, newTypeError(e.Pos,
 			"cannot compare %s with == (collections and functions have no equality)", lt)
+	}
+	if isNonComparable(rt) {
+		return nil, newTypeError(e.Pos,
+			"cannot compare %s with == (collections and functions have no equality)", rt)
 	}
 	// Numeric mixing (int/float) is allowed.
 	if isNumericOrAny(lt) && isNumericOrAny(rt) {
@@ -355,6 +372,7 @@ func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 	if err != nil {
 		return nil, err
 	}
+	c.info.Funcs[fn] = sig
 	// Check the body in a fresh scope with params bound.
 	savedScope := c.scope
 	savedReturn := c.returnType
@@ -388,6 +406,10 @@ func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 
 func isNumericOrAny(t *Type) bool {
 	return t.Kind == KindInt || t.Kind == KindFloat || t.Kind == KindAny
+}
+
+func isNonComparable(t *Type) bool {
+	return t.Kind == KindArray || t.Kind == KindRecord || t.Kind == KindFunc
 }
 
 func isIntOrAny(t *Type) bool {

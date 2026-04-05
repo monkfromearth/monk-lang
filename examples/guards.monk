@@ -1,0 +1,52 @@
+// Error handling with guard/against/throw.
+//
+// Monk has no exceptions. Instead: throw aborts the current stack frame,
+// and guard/against catches it. The guarded expression's result goes into
+// the variable on success; the against block runs on failure.
+
+// ─── Throw + catch ─────────────────────────────────────────────────────────
+
+let divide = (a int, b int) int {
+    if b == 0 { throw "division by zero" }
+    return a / b
+}
+
+guard good = divide(10, 3) against err {
+    // Not reached — 10/3 succeeds.
+    good = 0
+}
+show("10/3 = " + to_string(good))   // 3
+
+guard bad = divide(10, 0) against err2 {
+    // Reached — b is 0.
+    show("caught: " + to_string(err2))
+    bad = -1
+}
+show("10/0 = " + to_string(bad))   // -1
+
+// ─── Guard scope ───────────────────────────────────────────────────────────
+// Per spec: `guard` declares the variable in the ENCLOSING scope,
+// not in the against block. So `r` is visible after the guard.
+
+guard total = divide(100, 4) against err {
+    total = 0
+}
+show("total: " + to_string(total))  // 25
+
+// ─── Throw from deep in the call stack ─────────────────────────────────────
+
+let validate_age = (age int) int {
+    if age < 0 { throw "age must be non-negative" }
+    if age > 150 { throw "age unrealistic" }
+    return age
+}
+
+let process = (age int) string {
+    let v = validate_age(age)
+    return "valid age: " + to_string(v)
+}
+
+guard msg = process(200) against err {
+    msg = "invalid: " + to_string(err)
+}
+show(msg)   // invalid: age unrealistic

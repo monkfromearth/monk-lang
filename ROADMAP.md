@@ -41,7 +41,7 @@ Transform token stream into an Abstract Syntax Tree (AST).
 
 ---
 
-## Phase 3: C Runtime Library
+## Phase 3: C Runtime Library ✅
 
 The small C library linked into every compiled Monk program.
 
@@ -64,58 +64,59 @@ The small C library linked into every compiled Monk program.
 
 ---
 
-## Phase 4: C Code Generation
+## Phase 4: C Code Generation ✅
 
 The compiler core. Walk the AST, emit C source code.
 
 ### Expressions
-- [ ] Numeric, string, boolean, none literals → C values
-- [ ] Arithmetic, comparison, logical, bitwise operators → C operators
-- [ ] String concatenation (string + string only)
-- [ ] Unary operators (-x, !x, ~x, not x)
-- [ ] Array literals → `monk_array_new(...)`
-- [ ] Record literals → `monk_record_new(...)`
-- [ ] Property access → field lookup in record struct
-- [ ] Index access → bounds-checked array/string access
-- [ ] Function calls → C function calls
-- [ ] Throw → `longjmp` to nearest guard
+- [x] Numeric, string, boolean, none literals → C values
+- [x] Arithmetic, comparison, logical, bitwise operators → C operators
+- [x] String concatenation (string + string only)
+- [x] Unary operators (-x, !x, ~x, not x)
+- [x] Array literals → `monk_array_new(...)`
+- [x] Record literals → `monk_record_new(...)`
+- [x] Property access → field lookup in record struct
+- [x] Index access → bounds-checked array/string access
+- [x] Function calls → C function calls
+- [x] Throw → `longjmp` to nearest guard
 
 ### Statements
-- [ ] Variable declarations → C variable declarations with deep copy
-- [ ] Assignment (simple + compound) → C assignment with const checking
-- [ ] Index/property assignment → mutation with const/bounds checking
-- [ ] If/else/else-if → C if/else
-- [ ] While loops → C while
-- [ ] For-in loops → iteration over array/string
-- [ ] Break/continue → C break/continue
-- [ ] Return → C return
-- [ ] Guard/against → setjmp/longjmp pattern
-- [ ] Block scoping → C block scoping
+- [x] Variable declarations → C variable declarations with deep copy
+- [x] Assignment (simple + compound) → C assignment with const checking
+- [x] Index/property assignment → mutation with const/bounds checking
+- [x] If/else/else-if → C if/else
+- [x] While loops → C while
+- [x] For-in loops → iteration over array/string
+- [x] Break/continue → C break/continue
+- [x] Return → C return
+- [x] Guard/against → setjmp/longjmp pattern
+- [x] Block scoping → C block scoping
 
 ### Functions
-- [ ] Function expressions → C function definitions + closure struct
-- [ ] Closure capture by copy → snapshot environment into struct
-- [ ] Self-reference for recursion
-- [ ] Default parameter values
+- [x] Function expressions → C function definitions + closure struct
+- [x] Closure capture by copy → snapshot environment into struct
+- [x] Self-reference for recursion
+- [ ] Default parameter values (deferred)
 
 ### Output
-- [ ] Generate valid, compilable `.c` file
-- [ ] Include `runtime.h` header
-- [ ] Generate `main()` that runs top-level statements
-- [ ] `#line` directives mapping back to `.monk` source
+- [x] Generate valid, compilable `.c` file
+- [x] Include `runtime.h` header
+- [x] Generate `main()` that runs top-level statements
+- [x] `#line` directives mapping back to `.monk` source
 
-**Done when:** `monk build hello.monk` produces `hello.c` that compiles with `cc` to a working binary.
+**Status:** 39 tests passing. `src/codegen/codegen.go`
 
 ---
 
-## Phase 5: CLI
+## Phase 5: CLI ✅
 
 - [x] `monk build <file>` — compile .monk → .c → native binary
+- [x] `monk build <file> -o <out.c>` — emit C source (no compilation)
 - [x] `monk run <file>` — compile and run in one step (compile, execute, delete temp files)
 - [x] `monk check <file>` — parse and validate without compiling
 - [x] Error reporting with source file, line, column
 
-**Done when:** You can write a .monk file and run it with `monk run hello.monk`.
+**Status:** 28 tests passing. `src/main.go`
 
 ---
 
@@ -182,10 +183,13 @@ Static analysis pass over the AST, before code generation.
 
 ## Phase 11: Distribution
 
-- [ ] Single-binary packaging for the compiler
+- [x] Self-contained binary (runtime embedded via go:embed)
+- [x] `make install` to ~/.local/bin
+- [ ] Bundle zig cc (eliminate cc/gcc/clang dependency)
+- [ ] Cross-compile targets: darwin-arm64, darwin-amd64, linux-arm64, linux-amd64
+- [ ] CI/CD pipeline (GitHub Actions)
 - [ ] Homebrew formula
 - [ ] Install script
-- [ ] CI/CD pipeline
 
 ---
 

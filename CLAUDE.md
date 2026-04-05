@@ -1,6 +1,10 @@
 # Monk Lang
 
-## What This Is
+## Rules
+
+All guidelines are organized in `.claude/rules/`:
+
+- @.claude/rules/persona.md - Conversation style, behavior, concision
 
 Ground-up rewrite of [Monk Lang](https://github.com/monkfromearth/monk-lang). Same language, new implementation.
 The v1 (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](https://github.com/monkfromearth/monk-lang-v1).
@@ -10,8 +14,7 @@ The v1 (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](h
 - **Language spec:** `spec/REFERENCE.md` — defines what Monk IS. If the code disagrees with the spec, one of them has a bug.
 - **Roadmap:** `ROADMAP.md` — phased rebuild plan with checkboxes. No timelines.
 - **Architecture decisions:** `spec/ARCHITECTURE_DECISIONS.md` — why Go, why compile-to-C, what can change later.
-- **Memory model discussion:** `spec/MEMORY_MODEL_DISCUSSION.md` — ongoing design for ref/borrowing/memory.
-- **This file:** project rules and decisions.
+- **Progress:** `PROGRESS.md` — what's been built, pivots, mistakes, what's next. **Always update this after meaningful work.**
 
 Never hallucinate syntax or behavior. Always check `spec/REFERENCE.md` before writing code or tests.
 
@@ -23,117 +26,68 @@ Never hallucinate syntax or behavior. Always check `spec/REFERENCE.md` before wr
 
 When in doubt, apply these rules. If a proposed behavior violates them, the spec has a bug.
 
-## Methodology
+## Reading Order for New Sessions
 
-**Red-Green-Refactor TDD. No exceptions.**
+1. **This file** (CLAUDE.md) — rules, philosophy, how to work
+2. **PROGRESS.md** — current status, what exists, what's next
+3. **spec/REFERENCE.md** — the language spec (read before writing ANY code or tests)
+4. **ROADMAP.md** — what to build next (check the checkboxes)
+5. **spec/ARCHITECTURE_DECISIONS.md** — only if working on codegen, runtime, or infrastructure
 
-1. Write a failing test (Red)
-2. Write the minimum code to pass it (Green)
-3. Refactor while keeping tests green (Refactor)
-
-No code without a test. No test without a spec reference.
-
-## Key Decisions
-
-- **Implementation language:** Go. Chosen for fast builds (TDD), easy tree manipulation, first-class strings, single-binary output. Zig/Rust deferred to future backend work (LLVM, custom codegen).
-- **Execution model:** Compile to C. Monk is a compiler, not an interpreter. `monk build` → native binary. `monk run` compiles and runs in one step.
-- **Runtime:** Small C library (~2-5 KB) linked into every compiled program. Provides MonkValue, built-in functions, error handling.
-- **Architecture restart:** Clean break from v1. No code carried over.
-- **v1 archive:** `github.com/monkfromearth/monk-lang-v1` (renamed from monk-lang)
-- **monk-examples:** Will be absorbed into `examples/` when ready. Currently separate at `projects/monk-examples`.
-- **homebrew-monk-lang:** Separate repo (Homebrew requires `homebrew-*` naming). Formula updated in Phase 9.
-- **monklore:** Docs site stays as separate repo. Independent deploy cycle.
-- **Memory model:** Pure value semantics. Eager deep copy on assignment. Zero refcounting. Closures capture by copy. `ref` keyword reserved but deferred.
-- **Value semantics:** Assignment, function args, and closures ALL copy. No exceptions. Zero refcounting.
-- **Mixed arrays dropped:** All arrays must be homogeneous. Use records for mixed data.
-- **Error handling impl:** setjmp/longjmp for guard/against/throw. Simple, correct, no per-call-site analysis needed.
-- **Deep const:** `const` freezes variable AND contents. `let` = fully mutable.
-- **Records are shapes:** Fixed set of fields from creation. Cannot add new fields.
-- **No `is not`:** Dropped. Use `!=`.
-- **No `function` type:** Dropped. Use typed signatures `(int, int) -> int`.
-- **Truthiness:** `false`, `none`, `0` only. `""` and `[]` are truthy.
-
-## Versioning and Releases
-
-**Semantic versioning:** `MAJOR.MINOR.PATCH` (e.g., `0.1.0`, `0.2.0`, `1.0.0`)
-
-- `0.x.y` — pre-1.0, breaking changes expected
-- `1.0.0` — first stable release (language spec is frozen)
-
-**Release names:** Each minor version gets a codename. Convention: **Urdu/Hindi single words** — personal, distinctive, meaningful.
-
-Names are chosen when the release is ready. The word should reflect what the release achieves.
-
-Word bank (pick when shipping, not planned ahead):
-- *Safar* (journey) · *Noor* (light) · *Umeed* (hope)
-- *Fikr* (thought) · *Sukoon* (peace) · *Irada* (will, intent)
-- *Khoj* (search, discovery) · *Raasta* (path) · *Buniyaad* (foundation)
-- *Dastak* (knock, arrival) · *Ehsaas* (feeling, awareness) · *Amal* (action)
-- *Soch* (thought) · *Zariya* (means, medium) · *Wujood* (existence)
-
-## Current Status
-
-**Phases 1-5 complete.** Monk is a working compiler. 446 tests total. `monk build` compiles .monk to native binaries. `monk run` compiles and runs. `monk check` validates. Next step: Phase 6 (type system).
-
-**Interpreter/builtins deleted.** We built a tree-walking interpreter (Phase 3) and Go builtins (Phase 4) before realizing: Monk is a compiler, not an interpreter. There is no REPL. Those packages don't ship. They were deleted. The language semantics they validated will be re-tested as integration tests (compile .monk → run binary → check output).
-
-Remaining parser items (deferred):
-- Default parameter values (parser handles syntax, codegen will use them)
-- Function type signatures `(int, int) -> int` in parameter position
-- Reject assignment in conditions (added to parser)
-- Reject break/continue outside loops (added to parser)
-
-Go 1.22+ required. Standard `go test` for TDD.
-
-## Project Structure
-
-```
-spec/                    — Language specification
-  REFERENCE.md               — THE source of truth for syntax and semantics
-  ARCHITECTURE_DECISIONS.md  — Why Go, why compile-to-C, what can change later
-  MEMORY_MODEL_DISCUSSION.md — Design history (contains rejected options, read only if needed)
-knowledge/               — Learning course (Brilliant.org style, Astro + Solid)
-src/                     — Go compiler
-  syntax/                    — Lexer + Parser + AST (Phases 1-2, complete)
-    token.go                     token types and keyword lookup
-    scanner.go                   lexer: source text → tokens
-    scanner_test.go              100 lexer tests
-    ast.go                       29 AST node types
-    parser.go                    recursive descent parser with 13-level precedence
-    parser_test.go               119 parser tests
-  codegen/                   — C code generator (Phase 4, complete)
-    codegen.go                   AST → C source emitter
-    codegen_test.go              35 integration tests (compile + run)
-  cmd/monk/                  — CLI (Phase 5, complete)
-    main.go                      monk build/run/check/version/help
-    main_test.go                 28 CLI tests
-  monk.go                    — package-level documentation
-runtime/                 — C runtime library (Phase 3, not yet created)
-  runtime.h                  — header for generated C to include
-  runtime.c                  — MonkValue, builtins, error handling
-examples/                — 9 working .monk programs (hello, fibonacci, fizzbuzz,
-                           error_handling, arrays, newton_sqrt, todo_list, collatz, sort)
-go.mod                   — github.com/monkfromearth/monk-lang
-```
+Do NOT read `spec/MEMORY_MODEL_DISCUSSION.md` unless specifically discussing memory design — it contains rejected options.
 
 ## Rules
 
-- Spec-first: update `spec/REFERENCE.md` before implementing new features.
-- Tests-first: write failing tests before writing implementation code.
-- Check the ROADMAP: mark items done as you complete them.
+### Development
+- **Spec-first.** Update `spec/REFERENCE.md` before implementing new features.
+- **Tests-first.** Red-Green-Refactor TDD. No exceptions. No code without a test.
+- **Philosophy-first.** If an edge case isn't in the spec, resolve it using the three design rules.
 - Don't add features not in the spec. If you want a new feature, add it to the spec first.
-- Keep tests fast. If a test needs I/O or network, it's an integration test and should be marked as such.
-- Philosophy-first: if an edge case isn't in the spec, resolve it using the three rules before deciding.
+
+### Documentation
+- **Always update `PROGRESS.md`** after completing work. This is the project's memory. If it's not in PROGRESS.md, it didn't happen.
+- Update ROADMAP checkboxes when phases complete.
+- If a spec or architecture change contradicts a knowledge/ page, fix the page in the same commit.
+- Don't update THIS file (CLAUDE.md) unless rules, philosophy, or workflow guidance changes. Status and history go in PROGRESS.md.
+
+### Git Workflow
+- **Every phase gets its own branch.** `phase-N-name` branched from main.
+- **CodeRabbit review before merging.** Run `coderabbit review --plain -t committed --base main` on each branch.
+- **Fix ALL CodeRabbit findings** before merging.
+- **Merge with `--no-ff`** so the merge commit is visible in history.
+
+### Code Quality
+- **Integration tests for codegen.** Compile AND run the generated binary, check stdout.
+- **Design decision comments.** Non-obvious choices must have a comment linking to the spec.
+
+## Key Decisions
+
+- **Compile to C.** No interpreter, no VM, no REPL. Source → C → binary.
+- **Go for the compiler.** Fast TDD builds, good tree manipulation, single-binary output.
+- **Small C runtime** (~2-5 KB) linked into every binary. MonkValue tagged union, builtins, setjmp/longjmp error handling.
+- **Pure value semantics.** Deep copy on assignment. No refcounting, no GC. `ref` keyword reserved but deferred.
+- **Functions are hoisted** as static C functions above main(). Direct calls, not function pointers.
+- **`-o` flag controls output.** `-o hello` = binary. `-o hello.c` = C source. Extension decides.
+- **Homogeneous arrays only.** Use records for mixed data.
+- **Deep const.** `const` freezes variable AND contents. `let` = fully mutable.
+- **Assignment is a statement**, not an expression. Prevents `if x = 5` bugs.
+- **Truthiness:** `false`, `none`, `0` only. `""` and `[]` are truthy.
+
+## Versioning
+
+**Semantic versioning:** `MAJOR.MINOR.PATCH`. `0.x.y` = pre-1.0, breaking changes expected.
+
+**Release names:** Urdu/Hindi single words. Chosen when shipping, not planned ahead.
+
+Word bank: *Safar* (journey) · *Noor* (light) · *Umeed* (hope) · *Fikr* (thought) · *Sukoon* (peace) · *Irada* (will) · *Khoj* (discovery) · *Raasta* (path) · *Buniyaad* (foundation) · *Dastak* (arrival) · *Ehsaas* (awareness) · *Amal* (action)
 
 ## Build Phase Order
-
-Phases must be completed in order (each depends on the one before):
 
 1. Lexer ✅
 2. Parser ✅
 3. C Runtime Library ✅
 4. C Code Generation ✅
-5. CLI ✅ (monk build, monk run, monk check, --emit-c)
+5. CLI ✅ (monk build, monk run, monk check, -o for C output)
 6. Type System (static analysis)
 7. Module System
 8. C FFI (syntax TBD)
@@ -141,72 +95,62 @@ Phases must be completed in order (each depends on the one before):
 10. LSP + Editor
 11. Distribution
 
-Memory model / `ref` / borrowing will be inserted when the design is finalized.
+## Project Structure
 
-## Reading Order for New Sessions
+```
+src/                     — Go compiler (module root)
+  main.go                    CLI: monk build/run/check/version/help
+  main_test.go               28 CLI integration tests
+  embed.go                   go:embed for runtime (self-contained binary)
+  go.mod                     github.com/monkfromearth/monk-lang
+  syntax/                    Lexer + Parser + AST
+  codegen/                   AST → C source emitter + 39 integration tests
+  runtime/                   C runtime library (embedded into the binary)
+    runtime.h                    MonkValue tagged union, function declarations
+    runtime.c                    Builtins, deep copy, error handling
+spec/                    — Language specification
+  REFERENCE.md               THE source of truth for syntax and semantics
+  ARCHITECTURE_DECISIONS.md  Why Go, why compile-to-C, what can change later
+  MEMORY_MODEL_DISCUSSION.md Design history (rejected options, read only if needed)
+knowledge/               — Learning course (Brilliant.org style, Astro + Solid)
+examples/                — 9 working .monk programs
+Makefile                 — make build/install/test/clean
+CHANGELOG.md             — Release history
+```
 
-When starting a new session on this project, read files in this order:
-1. **This file** (CLAUDE.md) — decisions, rules, current status
-2. **spec/REFERENCE.md** — the language spec (read before writing ANY code or tests)
-3. **ROADMAP.md** — what to build next (check the checkboxes)
-4. **spec/ARCHITECTURE_DECISIONS.md** — only if working on codegen, runtime, or infrastructure
+## Building
 
-Do NOT read MEMORY_MODEL_DISCUSSION.md unless specifically discussing memory design — it contains historical options that were rejected.
+```bash
+make              # build → ./monk
+make install      # build + copy to ~/.local/bin/monk
+make test         # run all tests
+make clean        # remove binary
+```
 
-## Design Constraints (knowledge/ pages)
+Go 1.26.1+ required (matches `src/go.mod`). Tests need a C compiler (cc/gcc/clang).
 
-If working on the learning course (`knowledge/`):
-- NO emojis anywhere. Use SVG icons (Heroicons outline).
-- NO purple, violet, or indigo colors.
-- Dark code blocks (Shiki, `#1C1917` background, monk-dark theme in `astro.config.mjs`).
-- See `knowledge/ASTRO_MIGRATION_PROMPT.md` for full design system.
+## Knowledge Site Constraints
 
-## Keeping knowledge/ in sync
+If working on `knowledge/`:
+- NO emojis. NO purple/violet/indigo.
+- Dark code blocks (Shiki, `#1C1917`, monk-dark theme).
+- Inline `<code>` with `{`/`}` must use `&#123;`/`&#125;` (JSX escaping). `<Code code={...}>` handles this automatically.
+- All links use `import.meta.env.BASE_URL` for GitHub Pages base path (`/monk-lang/`).
+- Deployed at https://monkfromearth.github.io/monk-lang/ (auto-deploys via `.github/workflows/deploy-knowledge.yml`).
 
-The learning course (`knowledge/`) teaches how the compiler is built. When any of the following change, update the affected knowledge pages:
-- **spec/REFERENCE.md** — token set, syntax, semantics changes affect lessons 1.2 (Monk's Token Set) and any lesson referencing Monk syntax.
-- **spec/ARCHITECTURE_DECISIONS.md** — changes to implementation language, execution model, or project structure affect lessons 0.1 (How Compilers Work), 0.2 (Setting Up), and the course map (index).
-- **Build phase order** — adding/removing/reordering phases affects the course map and lesson navigation links.
-- **Key decisions** — any decision change (e.g. error handling strategy, type system rules) that contradicts content in a lesson must be fixed in the lesson.
+## Mistakes to Avoid
 
-Rule: if you change the spec or architecture and a knowledge/ page now says something wrong, fix the page in the same commit.
-
-## Workflow Rules (learned from building Phases 1-5)
-
-### Git Workflow
-- **Every phase gets its own branch.** `phase-N-name` branched from main.
-- **CodeRabbit review before merging.** Run `coderabbit review --plain -t committed --base main` on each branch.
-- **Fix ALL CodeRabbit findings** before merging. Don't skip any.
-- **Merge with `--no-ff`** so the merge commit is visible in history.
-- **Future: use PRs** instead of direct merges. Current direct-merge workflow is for first iteration speed only.
-
-### Code Quality
-- **Test before code.** Write the failing test first (Red), then the code (Green), then clean up (Refactor).
-- **Integration tests for codegen.** Codegen tests should compile AND run the generated binary, checking stdout. Not just "does the C look right."
-- **Design decision comments.** Every non-obvious choice in the code must have a comment linking back to the spec section.
-- **Update docs EVERY phase.** ROADMAP checkboxes, CLAUDE.md status, file tree. Not after — during the same commit.
-
-### Mistakes Made (don't repeat)
-- **Built a tree-walking interpreter** (Phases 3-4 originally) before realizing Monk is a compiler with no REPL. 2,792 lines deleted. Lesson: read the architecture doc before writing code.
-- **Chose Zig, then switched to Go.** The compiler is a text-in/text-out translator — Go's tree manipulation and strings are right for this. Zig/Rust are for the future native backend.
-- **AssignExpr instead of AssignStmt.** Assignment was an expression (interpreter thinking). Fixed: assignment is a statement in both the spec and the code.
-- **AST nodes had no position info.** Could not emit #line directives for source mapping. Fixed: every node embeds Pos{Line, Column}.
-- **Use-after-free in codegen.** `monk_free(old); old = monk_deep_copy(expr_using_old)` — freed before computing the new value. Fixed: compute first, then free.
-- **Made creative decisions without asking.** Sanskrit release names, FFI syntax, etc. Lesson: always present options for naming/branding/creative decisions.
-
-### Architecture Lessons
-- **Monk is a compiler.** Source → C → binary. No interpreter, no VM, no REPL.
-- **The C runtime is the foundation.** Generated code calls runtime functions. The runtime must be complete before codegen starts.
-- **Builtins are C functions,** not Go functions. The Go compiler generates calls to them; it doesn't implement them.
-- **Functions are hoisted** as static C functions above main(). Called directly by name, not through function pointers (closures deferred).
-- **`-o` flag controls output format.** `-o hello` = binary. `-o hello.c` = C source. Extension decides.
+- Don't build an interpreter. Monk is a compiler. No REPL.
+- Don't make creative decisions (naming, branding) without presenting options.
+- Compute new values BEFORE freeing old ones in codegen (use-after-free).
+- Don't skip position tracking on AST nodes — codegen needs `#line` directives.
 
 ## Related Repos
 
-| Repo | Purpose | Status |
-|------|---------|--------|
-| `monkfromearth/monk-lang` | This repo — the compiler | Active |
-| `monkfromearth/monk-lang-v1` | Archived v1 (TS/Bun interpreter) | Archived |
-| `monkfromearth/homebrew-monk-lang` | Homebrew tap formula | Update in Phase 9 |
-| `monkfromearth/monklore` | Docs site (Next.js) | Separate |
-| `projects/monk-examples` | Starter examples (not a git repo) | Absorb later |
+| Repo / URL                           | Purpose                          |
+| ------------------------------------ | -------------------------------- |
+| `monkfromearth/monk-lang`            | This repo — the compiler         |
+| `monkfromearth.github.io/monk-lang/` | Knowledge site (GitHub Pages)    |
+| `monkfromearth/monk-lang-v1`         | Archived v1 (TS/Bun interpreter) |
+| `monkfromearth/homebrew-monk-lang`   | Homebrew tap (update in Phase 9) |
+| `monkfromearth/monklore`             | Docs site (Next.js, separate)    |

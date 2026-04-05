@@ -19,6 +19,7 @@ import (
 
 	"github.com/monkfromearth/monk-lang/codegen"
 	"github.com/monkfromearth/monk-lang/syntax"
+	"github.com/monkfromearth/monk-lang/types"
 )
 
 func main() {
@@ -100,6 +101,10 @@ func cmdBuild(args []string) {
 		fatal("%s: %s", sourceFile, err)
 	}
 
+	if err := types.Check(prog); err != nil {
+		fatal("%s: %s", sourceFile, err)
+	}
+
 	// Generate C
 	cSource := codegen.Generate(prog, sourceFile)
 
@@ -165,6 +170,10 @@ func cmdRun(args []string) int {
 		fatal("%s: %s", sourceFile, err)
 	}
 
+	if err := types.Check(prog); err != nil {
+		fatal("%s: %s", sourceFile, err)
+	}
+
 	cSource := codegen.Generate(prog, sourceFile)
 
 	dir, err := os.MkdirTemp("", "monk-run-*")
@@ -220,8 +229,13 @@ func cmdCheck(args []string) {
 		fatal("monk check: %s", err)
 	}
 
-	_, err = syntax.Parse(string(source))
+	prog, err := syntax.Parse(string(source))
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", sourceFile, err)
+		os.Exit(1)
+	}
+
+	if err := types.Check(prog); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", sourceFile, err)
 		os.Exit(1)
 	}

@@ -1,0 +1,295 @@
+package types
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/monkfromearth/monk-lang/syntax"
+)
+
+// checkSrc parses source and runs the type checker. Returns nil on success.
+func checkSrc(t *testing.T, src string) error {
+	t.Helper()
+	prog, err := syntax.Parse(src)
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	return Check(prog)
+}
+
+// expectOk asserts the program type-checks cleanly.
+func expectOk(t *testing.T, src string) {
+	t.Helper()
+	if err := checkSrc(t, src); err != nil {
+		t.Fatalf("expected ok, got type error:\n  %v\n  source:\n%s", err, src)
+	}
+}
+
+// expectErr asserts the program fails type-check with a message containing
+// `want` (substring match, so tests stay stable if we tweak wording).
+func expectErr(t *testing.T, src, want string) {
+	t.Helper()
+	err := checkSrc(t, src)
+	if err == nil {
+		t.Fatalf("expected type error containing %q, got nil", want)
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("error message mismatch:\n  got:  %s\n  want: contains %q", err, want)
+	}
+}
+
+// ─── Primitives & literals ────────────────────────────────────────────────
+
+func TestCheckIntLiteral(t *testing.T) {
+	expectOk(t, `let x = 42`)
+}
+
+func TestCheckFloatLiteral(t *testing.T) {
+	expectOk(t, `let x = 3.14`)
+}
+
+func TestCheckStringLiteral(t *testing.T) {
+	expectOk(t, `let x = "hello"`)
+}
+
+// ─── First-assignment inference ───────────────────────────────────────────
+
+func TestCheckInferIntThenReassign(t *testing.T) {
+	expectOk(t, `let x = 42
+x = 7`)
+}
+
+func TestCheckInferIntRejectsString(t *testing.T) {
+	expectErr(t, `let x = 42
+x = "hi"`, "cannot assign string to variable 'x' of type int")
+}
+
+func TestCheckInferArrayElementType(t *testing.T) {
+	expectErr(t, `let nums = [1, 2, 3]
+nums[0] = "oops"`, "cannot assign string to int[] element")
+}
+
+// ─── Explicit annotations ─────────────────────────────────────────────────
+
+func TestCheckAnnotatedInt(t *testing.T) {
+	expectOk(t, `let x int = 5`)
+}
+
+func TestCheckAnnotatedMismatch(t *testing.T) {
+	expectErr(t, `let x int = "hi"`,
+		"cannot assign string to int in declaration of 'x'")
+}
+
+func TestCheckAnnotatedFloatAcceptsInt(t *testing.T) {
+	// Numeric widening: int flows into float slot.
+	expectOk(t, `let x float = 5`)
+}
+
+func TestCheckAnnotatedIntRejectsFloat(t *testing.T) {
+	// No narrowing.
+	expectErr(t, `let x int = 5.0`, "cannot assign float to int")
+}
+
+// ─── Optional types ───────────────────────────────────────────────────────
+
+func TestCheckOptionalAcceptsNone(t *testing.T) {
+	expectOk(t, `let x int? = none`)
+}
+
+func TestCheckOptionalAcceptsBase(t *testing.T) {
+	expectOk(t, `let x int? = 42`)
+}
+
+func TestCheckNonOptionalRejectsNone(t *testing.T) {
+	expectErr(t, `let x int = none`, "cannot assign none to int")
+}
+
+// ─── Const ─────────────────────────────────────────────────────────────────
+
+func TestCheckConstReassignError(t *testing.T) {
+	expectErr(t, `const x = 5
+x = 6`, "cannot assign to const 'x'")
+}
+
+// ─── Arithmetic ────────────────────────────────────────────────────────────
+
+func TestCheckArithIntInt(t *testing.T) {
+	expectOk(t, `let s = 1 + 2`)
+}
+
+func TestCheckArithIntFloat(t *testing.T) {
+	expectOk(t, `let s float = 1 + 2.0`)
+}
+
+func TestCheckStringConcat(t *testing.T) {
+	// Plus has a string-concat overload: string + string is OK.
+	expectOk(t, `let greeting = "Hello, " + "World"`)
+}
+
+func TestCheckStringConcatMixed(t *testing.T) {
+	expectErr(t, `let s = "a" + 1`,
+		"cannot mix string and int")
+}
+
+func TestCheckStringConcatWithToString(t *testing.T) {
+	// The canonical pattern from the spec.
+	expectOk(t, `let s = "Number: " + to_string(42)`)
+}
+
+func TestCheckArithRejectsBool(t *testing.T) {
+	expectErr(t, `let s = true + false`,
+		"requires numeric operands")
+}
+
+func TestCheckUntypedArrayParam(t *testing.T) {
+	// Per examples/sort.monk — unparameterized 'array' annotation.
+	expectOk(t, `let sort = (arr array) array { return arr }
+show(to_string(sort([1, 2, 3])))`)
+}
+
+func TestCheckBitwiseRequiresInt(t *testing.T) {
+	expectErr(t, `let s = 1.0 & 2`, "bitwise operator requires int operands")
+}
+
+// ─── Arrays ────────────────────────────────────────────────────────────────
+
+func TestCheckArrayHomogeneous(t *testing.T) {
+	expectOk(t, `let a = [1, 2, 3]`)
+}
+
+func TestCheckArrayMixedTypeError(t *testing.T) {
+	expectErr(t, `let a = [1, "hi"]`, "array elements must be same type")
+}
+
+func TestCheckArrayIntFloatWidens(t *testing.T) {
+	// [1, 2.0] becomes float[] via numeric widening.
+	expectOk(t, `let a = [1, 2.0, 3]`)
+}
+
+func TestCheckTypedArrayRejectsWrongElement(t *testing.T) {
+	expectErr(t, `let nums int[] = [1, "x", 3]`, "array elements must be same type")
+}
+
+func TestCheckIndexAssignmentTypeEnforcement(t *testing.T) {
+	expectErr(t, `let nums int[] = [1, 2, 3]
+nums[0] = "x"`, "cannot assign string to int[] element")
+}
+
+// ─── Records ───────────────────────────────────────────────────────────────
+
+func TestCheckRecordLiteral(t *testing.T) {
+	expectOk(t, `let p = {x: 1, y: 2}`)
+}
+
+func TestCheckRecordDuplicateField(t *testing.T) {
+	expectErr(t, `let p = {x: 1, x: 2}`, "duplicate field 'x'")
+}
+
+func TestCheckTypedRecord(t *testing.T) {
+	expectOk(t, `type Point = { x: int, y: int }
+let p Point = {x: 1, y: 2}`)
+}
+
+func TestCheckTypedRecordMissingField(t *testing.T) {
+	expectErr(t, `type Point = { x: int, y: int }
+let p Point = {x: 1}`, "cannot assign")
+}
+
+func TestCheckTypedRecordExtraField(t *testing.T) {
+	expectErr(t, `type Point = { x: int, y: int }
+let p Point = {x: 1, y: 2, z: 3}`, "cannot assign")
+}
+
+func TestCheckTypedRecordWrongFieldType(t *testing.T) {
+	expectErr(t, `type Point = { x: int, y: int }
+let p Point = {x: 1, y: "oops"}`, "cannot assign")
+}
+
+func TestCheckTypedRecordNoDynamicFieldWrite(t *testing.T) {
+	expectErr(t, `type Point = { x: int, y: int }
+let p Point = {x: 1, y: 2}
+p.z = 3`, "has no field 'z'")
+}
+
+// ─── Functions ────────────────────────────────────────────────────────────
+
+func TestCheckFuncReturnsDeclared(t *testing.T) {
+	expectOk(t, `let add = (a int, b int) int { return a + b }
+show(to_string(add(1, 2)))`)
+}
+
+func TestCheckFuncReturnMismatch(t *testing.T) {
+	expectErr(t, `let bad = (a int) int { return "x" }`,
+		"cannot return string from function returning int")
+}
+
+func TestCheckFuncCallWrongArgCount(t *testing.T) {
+	expectErr(t, `let add = (a int, b int) int { return a + b }
+show(to_string(add(1)))`, "wrong number of arguments")
+}
+
+func TestCheckFuncCallWrongArgType(t *testing.T) {
+	expectErr(t, `let add = (a int, b int) int { return a + b }
+show(to_string(add(1, "x")))`, "cannot pass string to parameter of type int")
+}
+
+func TestCheckFuncRecursion(t *testing.T) {
+	expectOk(t, `let fib = (n int) int {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+show(to_string(fib(10)))`)
+}
+
+// ─── Control flow ─────────────────────────────────────────────────────────
+
+func TestCheckForOverArray(t *testing.T) {
+	expectOk(t, `let nums = [1, 2, 3]
+for n in nums { show(to_string(n)) }`)
+}
+
+func TestCheckForOverString(t *testing.T) {
+	expectOk(t, `for c in "hello" { show(c) }`)
+}
+
+func TestCheckForOverInt(t *testing.T) {
+	expectErr(t, `for x in 42 { show(to_string(x)) }`, "cannot iterate over int")
+}
+
+// Break/continue outside loops are caught by the parser, not the type checker.
+
+func TestCheckReturnOutsideFunc(t *testing.T) {
+	expectErr(t, `return 42`, "return outside of function")
+}
+
+// ─── Undefined / scoping ──────────────────────────────────────────────────
+
+func TestCheckUndefinedVariable(t *testing.T) {
+	expectErr(t, `show(to_string(x))`, "undefined variable 'x'")
+}
+
+func TestCheckScopeIsolation(t *testing.T) {
+	expectErr(t, `if true { let y = 5 }
+show(to_string(y))`, "undefined variable 'y'")
+}
+
+// ─── Real-world examples — the test suite's examples/ programs ────────────
+
+func TestCheckFibonacciExample(t *testing.T) {
+	expectOk(t, `let fibonacci = (n int) int {
+    if n <= 1 { return n }
+    return fibonacci(n - 1) + fibonacci(n - 2)
+}
+
+for i in range(10) {
+    show(to_string(fibonacci(i)))
+}`)
+}
+
+func TestCheckArraysExample(t *testing.T) {
+	expectOk(t, `let nums = [1, 2, 3, 4, 5]
+show(to_string(nums))
+show(to_string(length(nums)))
+let doubled = append(nums, 6)
+show(to_string(doubled))`)
+}

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/monkfromearth/monk-lang/src/syntax"
+	"github.com/monkfromearth/monk-lang/syntax"
 )
 
 // runMonk compiles a Monk source string to C, compiles the C with cc,
@@ -30,7 +30,7 @@ func runMonk(t *testing.T, source string) string {
 	binFile := filepath.Join(dir, "test")
 
 	// Find runtime path (relative to this test file)
-	runtimeDir, err := filepath.Abs("../../runtime")
+	runtimeDir, err := filepath.Abs("../runtime")
 	if err != nil {
 		t.Fatalf("failed to resolve runtime path: %v", err)
 	}
@@ -298,4 +298,54 @@ show(to_string(arr))`, "[1, 2, 3]")
 
 func TestCodegenToString(t *testing.T) {
 	expectOutput(t, `show("value: " + to_string(42))`, "value: 42")
+}
+
+// cString must produce valid C string literals for any input. Used for
+// user-provided strings AND filenames in #line directives — both can contain
+// backslashes, quotes, or newlines that would otherwise produce broken C.
+func TestCString(t *testing.T) {
+	cases := []struct {
+		in, want string
+	}{
+		{`plain.monk`, `"plain.monk"`},
+		{`C:\path\file.monk`, `"C:\\path\\file.monk"`},
+		{`with"quote.monk`, `"with\"quote.monk"`},
+		{"with\nnewline.monk", `"with\nnewline.monk"`},
+		{"tab\there.monk", `"tab\there.monk"`},
+		{"carriage\rreturn", `"carriage\rreturn"`},
+		{"", `""`},
+	}
+	for _, c := range cases {
+		if got := cString(c.in); got != c.want {
+			t.Errorf("cString(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// A filename containing backslashes/quotes must produce C that still compiles.
+// Before #line was run through cString(), the directive emitted raw
+// backslashes, producing invalid C.
+func TestCodegenFilenameWithBackslashes(t *testing.T) {
+	prog, err := syntax.Parse(`show("ok")`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cSource := Generate(prog, `C:\users\test\hello.monk`)
+	if !strings.Contains(cSource, `#line 1 "C:\\users\\test\\hello.monk"`) {
+		t.Errorf("#line directive not escaped correctly:\n%s", cSource)
+	}
+
+	// And the generated C must actually compile.
+	dir := t.TempDir()
+	cFile := filepath.Join(dir, "test.c")
+	runtimeDir, _ := filepath.Abs("../runtime")
+	if err := os.WriteFile(cFile, []byte(cSource), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("cc", "-std=c11", "-Wall", "-I"+runtimeDir,
+		cFile, filepath.Join(runtimeDir, "runtime.c"), "-lm",
+		"-o", filepath.Join(dir, "test"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cc failed on escaped path:\n%s\n\n%s", out, cSource)
+	}
 }

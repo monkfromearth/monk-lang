@@ -104,6 +104,20 @@ func TestCheckNonOptionalRejectsNone(t *testing.T) {
 	expectErr(t, `let x int = none`, "cannot assign none to int")
 }
 
+// Regression (CodeRabbit): T? cannot flow into T. At runtime int? may be none,
+// which would silently appear as an int — defeats the whole point of optional.
+func TestCheckOptionalCannotFlowToRequired(t *testing.T) {
+	expectErr(t, `let x int? = none
+let y int = x`, "cannot assign int? to int")
+}
+
+func TestCheckIndexReadIsOptional(t *testing.T) {
+	// Array index always returns T? (graceful read — may be none).
+	// Assigning it to a non-optional slot must be rejected.
+	expectErr(t, `let xs = [1, 2, 3]
+let first int = xs[0]`, "cannot assign")
+}
+
 // ─── Const ─────────────────────────────────────────────────────────────────
 
 func TestCheckConstReassignError(t *testing.T) {

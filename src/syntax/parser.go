@@ -6,7 +6,8 @@ import "fmt"
 type Parser struct {
 	tokens    []Token
 	pos       int
-	loopDepth int // tracks nesting depth inside loops (for break/continue validation)
+	loopDepth int   // tracks nesting depth inside loops (for break/continue validation)
+	typeErr   error // sticky error from parseTypeExpr (which doesn't return error)
 }
 
 // Parse tokenizes source and returns the AST, or an error.
@@ -29,7 +30,15 @@ func (p *Parser) parseProgram() (*Program, error) {
 		if err != nil {
 			return nil, err
 		}
+		if p.typeErr != nil {
+			return nil, p.typeErr
+		}
 		prog.Stmts = append(prog.Stmts, stmt)
+	}
+	// One last check — parseStmt may have finished successfully but left a
+	// type-annotation error behind.
+	if p.typeErr != nil {
+		return nil, p.typeErr
 	}
 	return prog, nil
 }
@@ -459,9 +468,14 @@ func (p *Parser) parseFuncType() TypeExpr {
 	p.advance() // skip )
 	// Require ` -> ReturnType`.
 	if p.current().Kind != Arrow {
-		// The caller's parseParenOrFunc already pre-checked for Arrow when
-		// disambiguating, but be defensive.
-		return TypeExpr{} // empty, signals parse error upstream if this happens
+		// parseTypeExpr doesn't return error (legacy signature, many callers).
+		// Record the failure on the parser's sticky-error field so parseProgram
+		// reports it instead of returning a nonsense AST. Advance to avoid an
+		// infinite loop if the caller retries.
+		if p.typeErr == nil {
+			p.typeErr = p.error("expected '->' after function-type parameters")
+		}
+		return TypeExpr{}
 	}
 	p.advance() // skip ->
 	ret := p.parseTypeExpr()

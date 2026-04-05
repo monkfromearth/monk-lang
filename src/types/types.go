@@ -97,7 +97,13 @@ func (t *Type) String() string {
 	}
 	base := t.kindString()
 	if t.Kind == KindArray {
-		base = t.Elem.String() + "[]"
+		// t.Elem should always be non-nil via ArrayOf(), but the Type struct
+		// is public and could be constructed directly; guard against the panic.
+		if t.Elem == nil {
+			base = "[]"
+		} else {
+			base = t.Elem.String() + "[]"
+		}
 	}
 	if t.Kind == KindFunc {
 		ps := ""
@@ -105,9 +111,15 @@ func (t *Type) String() string {
 			if i > 0 {
 				ps += ", "
 			}
-			ps += p.String()
+			if p != nil {
+				ps += p.String()
+			}
 		}
-		base = "(" + ps + ") -> " + t.Return.String()
+		retStr := ""
+		if t.Return != nil {
+			retStr = t.Return.String()
+		}
+		base = "(" + ps + ") -> " + retStr
 	}
 	if t.Kind == KindRecord {
 		if t.RecordName != "" {
@@ -180,6 +192,12 @@ func AssignableTo(src, dst *Type) bool {
 	}
 	// Non-optional dst cannot accept none.
 	if src.Kind == KindNone {
+		return false
+	}
+	// Non-optional dst cannot accept optional src — an int? holds possibly-none
+	// values that cannot silently flow into an int slot. User must unwrap (via
+	// guard, a none check, or explicit re-declaration) first.
+	if src.Optional {
 		return false
 	}
 

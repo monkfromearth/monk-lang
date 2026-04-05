@@ -111,6 +111,14 @@ func TestCheckOptionalCannotFlowToRequired(t *testing.T) {
 let y int = x`, "cannot assign int? to int")
 }
 
+// Regression: AssignableTo recursion was only stripping Optional from dst, not
+// src, so int? -> int? fell through to the "src.Optional rejected" branch.
+func TestCheckOptionalFlowsToOptional(t *testing.T) {
+	expectOk(t, `let arr int[] = [10, 20, 30]
+let first int? = arr[0]
+let second int? = first`)
+}
+
 func TestCheckIndexReadIsOptional(t *testing.T) {
 	// Array index always returns T? (graceful read — may be none).
 	// Assigning it to a non-optional slot must be rejected.

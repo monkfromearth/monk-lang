@@ -180,15 +180,23 @@ func AssignableTo(src, dst *Type) bool {
 		return true
 	}
 
-	// Optional acceptance: none fits into any T?; T fits into T? if T fits T.
+	// Optional acceptance: none fits into any T?; T fits into T? if T fits T;
+	// T? fits into T? when the base types match. Strip optional from BOTH
+	// sides and compare the underlying types — otherwise `int? -> int?` would
+	// fall through to the `src.Optional` guard below and get rejected.
 	if dst.Optional {
 		if src.Kind == KindNone {
 			return true
 		}
-		// strip optional from dst for further comparison
 		dstStripped := *dst
 		dstStripped.Optional = false
-		return AssignableTo(src, &dstStripped)
+		srcForCompare := src
+		if src.Optional {
+			stripped := *src
+			stripped.Optional = false
+			srcForCompare = &stripped
+		}
+		return AssignableTo(srcForCompare, &dstStripped)
 	}
 	// Non-optional dst cannot accept none.
 	if src.Kind == KindNone {

@@ -515,6 +515,61 @@ show(to_string(f))`)
 	}
 }
 
+// Regression (CodeRabbit): the unboxed SlashEqual/PercentEqual used to double-
+// evaluate the RHS, so `a /= f()` called f() twice. With a stateful f(), that
+// changes semantics.
+func TestUnboxDivEvaluatesRHSOnce(t *testing.T) {
+	_, src := runMonkTyped(t, `let get_divisor = (n int) int { return n * 2 }
+let a = 100
+let b = a / get_divisor(5)
+show(to_string(b))`)
+	// The call must appear exactly once in the generated expression.
+	// Two occurrences expected: definition `static int64_t _monk_func_1(...)`
+	// and the single call `_monk_func_1(5)` — total 2. Three would mean the
+	// expression was evaluated twice.
+	callCount := strings.Count(src, "_monk_func_1(")
+	if callCount != 2 {
+		t.Errorf("expected 2 occurrences (1 def + 1 call), got %d\n%s", callCount, src)
+	}
+}
+
+func TestUnboxFloatModuloUsesFmod(t *testing.T) {
+	// Float %= used to silently do nothing. Now it uses fmod().
+	out, src := runMonkTyped(t, `let f float = 7.5
+f %= 2.0
+show(to_string(f))`)
+	if out != "1.5" {
+		t.Errorf("expected '1.5', got %q", out)
+	}
+	if !strings.Contains(src, "fmod(") {
+		t.Errorf("expected fmod() for float %%=, generated:\n%s", src)
+	}
+}
+
+func TestUnboxIntDivByZeroPanics(t *testing.T) {
+	// Unboxed int div-by-zero should panic at runtime with the same message
+	// the boxed path produces.
+	prog, _ := syntax.Parse(`let a = 10
+let b = 0
+show(to_string(a / b))`)
+	info, _ := types.Check(prog)
+	cSource := GenerateWithTypes(prog, "t.monk", info)
+	dir := t.TempDir()
+	cFile := filepath.Join(dir, "t.c")
+	bin := filepath.Join(dir, "t")
+	runtimeDir, _ := filepath.Abs("../runtime")
+	_ = os.WriteFile(cFile, []byte(cSource), 0644)
+	cmd := exec.Command("cc", "-std=c11", "-I"+runtimeDir, cFile,
+		filepath.Join(runtimeDir, "runtime.c"), "-lm", "-o", bin)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("cc failed: %s", out)
+	}
+	out, _ := exec.Command(bin).CombinedOutput()
+	if !strings.Contains(string(out), "division by zero") {
+		t.Errorf("expected 'division by zero' in output, got: %s", out)
+	}
+}
+
 func TestUnboxBoxedMixedPath(t *testing.T) {
 	// A value flowing between unboxed and boxed worlds — should box/unbox
 	// cleanly with no crashes.

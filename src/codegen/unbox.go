@@ -266,17 +266,17 @@ func (g *generator) emitBinaryTyped(e *syntax.BinaryExpr) (string, storageKind) 
 		return fmt.Sprintf("(%s * %s)", lcode, rcode), result
 	case syntax.Slash:
 		// Guard against int div-by-zero to match spec ("x/0 is a runtime error").
-		// For unboxed int, C's / traps on zero; we emit an explicit check so
-		// the error looks like the runtime-path error.
+		// Use a statement-expression to evaluate rcode ONCE — otherwise a
+		// side-effecting divisor like f() would execute twice.
 		if result == storeInt {
-			return fmt.Sprintf("((%s)==0 ? (monk_panic(\"division by zero\"),0) : (%s / %s))",
-				rcode, lcode, rcode), result
+			return fmt.Sprintf("({ int64_t _d=%s; _d==0 ? (monk_panic(\"division by zero\"),(int64_t)0) : ((int64_t)(%s) / _d); })",
+				rcode, lcode), result
 		}
 		return fmt.Sprintf("(%s / %s)", lcode, rcode), result
 	case syntax.Percent:
 		if result == storeInt {
-			return fmt.Sprintf("((%s)==0 ? (monk_panic(\"modulo by zero\"),0) : (%s %% %s))",
-				rcode, lcode, rcode), result
+			return fmt.Sprintf("({ int64_t _m=%s; _m==0 ? (monk_panic(\"modulo by zero\"),(int64_t)0) : ((int64_t)(%s) %% _m); })",
+				rcode, lcode), result
 		}
 		// float modulo — use fmod(); but if you want raw floats here, fall back.
 		return g.emitExpr(e), storeBoxed

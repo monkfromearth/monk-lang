@@ -11,6 +11,22 @@ import (
 	"github.com/monkfromearth/monk-lang/types"
 )
 
+// runtimeTestSources lists the runtime .c files for test compilation. Keep
+// in sync with runtimeSources in src/main.go and the runtime/ directory.
+var runtimeTestSources = []string{
+	"value.c", "arith.c", "string.c", "container.c",
+	"math.c", "builtins.c", "error.c",
+}
+
+// runtimeArgs builds the cc argument list for linking the runtime into a test.
+func runtimeArgs(runtimeDir string) []string {
+	args := make([]string, 0, len(runtimeTestSources))
+	for _, f := range runtimeTestSources {
+		args = append(args, filepath.Join(runtimeDir, f))
+	}
+	return args
+}
+
 // runMonk compiles a Monk source string to C, compiles the C with cc,
 // runs the binary, and returns stdout. This is a full integration test.
 func runMonk(t *testing.T, source string) string {
@@ -35,17 +51,15 @@ func runMonk(t *testing.T, source string) string {
 	if err != nil {
 		t.Fatalf("failed to resolve runtime path: %v", err)
 	}
-	runtimeC := filepath.Join(runtimeDir, "runtime.c")
-
 	if err := os.WriteFile(cFile, []byte(cSource), 0644); err != nil {
 		t.Fatalf("write .c: %v", err)
 	}
 
-	// Compile: cc -std=c11 -I<runtime_dir> test.c runtime.c -lm -o test
-	cmd := exec.Command("cc", "-std=c11", "-Wall",
-		"-I"+runtimeDir,
-		cFile, runtimeC,
-		"-lm", "-o", binFile)
+	// Compile: cc -std=c11 -I<runtime_dir> test.c <runtime sources> -lm -o test
+	ccArgs := append([]string{"-std=c11", "-Wall", "-I" + runtimeDir, cFile},
+		runtimeArgs(runtimeDir)...)
+	ccArgs = append(ccArgs, "-lm", "-o", binFile)
+	cmd := exec.Command("cc", ccArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("cc failed:\n%s\n\nGenerated C:\n%s", string(out), cSource)
 	}
@@ -370,8 +384,10 @@ func runMonkTyped(t *testing.T, source string) (string, string) {
 	if err := os.WriteFile(cFile, []byte(cSource), 0644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("cc", "-std=c11", "-Wall", "-I"+runtimeDir,
-		cFile, filepath.Join(runtimeDir, "runtime.c"), "-lm", "-o", binFile)
+	ccArgs := append([]string{"-std=c11", "-Wall", "-I" + runtimeDir, cFile},
+		runtimeArgs(runtimeDir)...)
+	ccArgs = append(ccArgs, "-lm", "-o", binFile)
+	cmd := exec.Command("cc", ccArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("cc failed:\n%s\n\nGenerated C:\n%s", string(out), cSource)
 	}
@@ -559,8 +575,10 @@ show(to_string(a / b))`)
 	bin := filepath.Join(dir, "t")
 	runtimeDir, _ := filepath.Abs("../runtime")
 	_ = os.WriteFile(cFile, []byte(cSource), 0644)
-	cmd := exec.Command("cc", "-std=c11", "-I"+runtimeDir, cFile,
-		filepath.Join(runtimeDir, "runtime.c"), "-lm", "-o", bin)
+	ccArgs := append([]string{"-std=c11", "-I" + runtimeDir, cFile},
+		runtimeArgs(runtimeDir)...)
+	ccArgs = append(ccArgs, "-lm", "-o", bin)
+	cmd := exec.Command("cc", ccArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("cc failed: %s", out)
 	}
@@ -598,6 +616,57 @@ show(to_string(f(99)))`)
 	if out != "shadow\n42" {
 		t.Errorf("expected 'shadow\\n42', got %q", out)
 	}
+}
+
+// Regression: when one function has an unboxed param (e.g. mk_x → int64_t)
+// and a LATER hoisted function also has a param named mk_x that's boxed,
+// the storage map used to keep the stale int64_t binding alive, so the
+// second function's body compiled calls that passed a MonkValue where an
+// int64_t was expected. Fixed by saving g.storage BEFORE writing the
+// params into it, and always recording the param's storage (even boxed).
+func TestUnboxFuncParamsDoNotLeakBetweenSiblings(t *testing.T) {
+	// validate_age is fully unboxed (int → int). process is boxed (returns
+	// string). process's body calls validate_age — if the storage map had
+	// leaked, process's `age` ident would have been read back as int64_t
+	// and emitUnboxedCall would have accepted it without coercion, leaving
+	// a MonkValue flowing into an int64_t parameter.
+	out, _ := runMonkTyped(t, `let validate_age = (age int) int {
+  if age < 0 { throw "neg" }
+  return age
+}
+let process = (age int) string {
+  let v = validate_age(age)
+  return "got " + to_string(v)
+}
+show(process(42))`)
+	if out != "got 42" {
+		t.Errorf("expected 'got 42', got %q", out)
+	}
+}
+
+// Regression: nested index assignment like `m[0][1] = x` used to emit
+// `monk_array_set(&monk_array_get(…), …)` — taking the address of an
+// rvalue. The cc invocation failed with "cannot take address of rvalue".
+// Codegen now routes non-identifier targets through a temp, producing
+// compilable C. Per Monk's value semantics the mutation is a no-op
+// against the outer container (matrix[i] returns a deep copy).
+func TestCodegenNestedIndexAssignCompiles(t *testing.T) {
+	// m[0] is a deep copy; mutating m[0][1] doesn't propagate back.
+	expectOutput(t, `let m = [[1, 2], [3, 4]]
+m[0][1] = 99
+show(to_string(m[0][1]))`, "2")
+}
+
+func TestCodegenNestedPropertyAssignCompiles(t *testing.T) {
+	// Same rationale — p.inner returns a deep copy, so the assignment
+	// through that copy doesn't reach back into p. This test just proves
+	// the generated C compiles and runs.
+	expectOutput(t, `type Inner = { v: int }
+type Outer = { i: Inner }
+let inner Inner = { v: 1 }
+let p Outer = { i: inner }
+p.i.v = 99
+show(to_string(p.i.v))`, "1")
 }
 
 func TestUnboxShadowInForLoopBody(t *testing.T) {
@@ -659,9 +728,10 @@ func TestCodegenFilenameWithBackslashes(t *testing.T) {
 	if err := os.WriteFile(cFile, []byte(cSource), 0644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("cc", "-std=c11", "-Wall", "-I"+runtimeDir,
-		cFile, filepath.Join(runtimeDir, "runtime.c"), "-lm",
-		"-o", filepath.Join(dir, "test"))
+	ccArgs := append([]string{"-std=c11", "-Wall", "-I" + runtimeDir, cFile},
+		runtimeArgs(runtimeDir)...)
+	ccArgs = append(ccArgs, "-lm", "-o", filepath.Join(dir, "test"))
+	cmd := exec.Command("cc", ccArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("cc failed on escaped path:\n%s\n\n%s", out, cSource)
 	}

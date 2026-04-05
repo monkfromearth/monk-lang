@@ -418,6 +418,40 @@ func TestRunExampleErrorHandling(t *testing.T) {
 	}
 }
 
+// === Type checker integration ===
+// monk check should reject programs that parse but fail type checking.
+
+func TestCheckRejectsTypeMismatch(t *testing.T) {
+	bin := buildMonk(t)
+	src := writeMonk(t, "bad.monk", `let x = 42
+x = "hi"`)
+	_, stderr, code := runMonkCmd(t, bin, "check", src)
+	if code == 0 {
+		t.Fatal("expected type error, got exit 0")
+	}
+	if !strings.Contains(stderr, "cannot assign string to variable 'x'") {
+		t.Errorf("expected type-mismatch message, got %q", stderr)
+	}
+}
+
+func TestBuildRejectsTypeMismatch(t *testing.T) {
+	bin := buildMonk(t)
+	src := writeMonk(t, "bad.monk", `let nums int[] = [1, 2, 3]
+nums[0] = "x"`)
+	outBin := filepath.Join(filepath.Dir(src), "bad")
+	_, stderr, code := runMonkCmd(t, bin, "build", src, "-o", outBin)
+	if code == 0 {
+		t.Fatal("expected type error, got exit 0")
+	}
+	if !strings.Contains(stderr, "type error") {
+		t.Errorf("expected 'type error' in stderr, got %q", stderr)
+	}
+	// Binary must not be produced when the type check fails.
+	if _, err := os.Stat(outBin); err == nil {
+		t.Error("binary produced despite type error")
+	}
+}
+
 // `monk run` must clean up its temp compile dir even when the child program
 // exits non-zero. Previously os.Exit skipped the deferred RemoveAll, leaking
 // /tmp/monk-run-* directories over time.

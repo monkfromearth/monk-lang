@@ -104,7 +104,7 @@ The compiler core. Walk the AST, emit C source code.
 - [x] Generate `main()` that runs top-level statements
 - [x] `#line` directives mapping back to `.monk` source
 
-**Status:** 45 tests passing. `src/codegen/codegen.go`
+**Status:** 49 tests passing. `src/codegen/codegen.go`
 
 ---
 
@@ -141,7 +141,7 @@ Static analysis pass over the AST, before code generation.
 - [x] Loop variable is const
 - [x] All-paths-return analysis
 
-**Status:** 112 checker tests + 14 unboxing codegen tests. `src/types/` + `src/codegen/unbox.go`. Wired into `monk build/run/check`.
+**Status:** 112 checker tests + 18 unboxing codegen tests. `src/types/` + `src/codegen/unbox.go`. Wired into `monk build/run/check`.
 
 **Unboxing already delivered in Phase 6:**
 - [x] Scalar variables (`int`/`float`/`bool`) stored as raw C types

@@ -95,8 +95,7 @@ func (c *checker) inferBinary(e *syntax.BinaryExpr) (*Type, error) {
 	case syntax.Plus, syntax.Minus, syntax.Star, syntax.Slash, syntax.Percent:
 		return c.inferArith(e, lt, rt)
 	case syntax.EqualEqual, syntax.BangEqual:
-		// == and != work on any pair — truthy compare.
-		return Bool, nil
+		return c.inferEquality(e, lt, rt)
 	case syntax.Less, syntax.LessEqual, syntax.Greater, syntax.GreaterEqual:
 		if !isNumericOrAny(lt) || !isNumericOrAny(rt) {
 			// Strings are also comparable per spec.
@@ -154,6 +153,53 @@ func (c *checker) inferArith(e *syntax.BinaryExpr, lt, rt *Type) (*Type, error) 
 		return Float, nil
 	}
 	return Int, nil
+}
+
+// inferEquality handles == and !=. Per spec (Cross-Type Operations):
+//   - Comparing different types with == is a type error (except none checks)
+//   - Arrays/records/functions cannot be compared with == — use is_none or
+//     a deep-compare builtin
+//   - int and float may be compared (widening)
+//   - Comparing to 'none' is always allowed (and yields bool)
+func (c *checker) inferEquality(e *syntax.BinaryExpr, lt, rt *Type) (*Type, error) {
+	// Any side Any → allow; runtime will decide.
+	if lt.Kind == KindAny || rt.Kind == KindAny {
+		return Bool, nil
+	}
+	// Either side is none: allowed.
+	if lt.Kind == KindNone || rt.Kind == KindNone {
+		return Bool, nil
+	}
+	// Optional on either side comparing to its base type: allowed.
+	if lt.Optional {
+		stripped := *lt
+		stripped.Optional = false
+		if Equal(&stripped, rt) {
+			return Bool, nil
+		}
+	}
+	if rt.Optional {
+		stripped := *rt
+		stripped.Optional = false
+		if Equal(lt, &stripped) {
+			return Bool, nil
+		}
+	}
+	// Collections and functions cannot be compared.
+	if lt.Kind == KindArray || lt.Kind == KindRecord || lt.Kind == KindFunc {
+		return nil, newTypeError(e.Pos,
+			"cannot compare %s with == (collections and functions have no equality)", lt)
+	}
+	// Numeric mixing (int/float) is allowed.
+	if isNumericOrAny(lt) && isNumericOrAny(rt) {
+		return Bool, nil
+	}
+	// Same primitive kind.
+	if lt.Kind == rt.Kind {
+		return Bool, nil
+	}
+	return nil, newTypeError(e.Pos,
+		"cannot compare %s and %s (no implicit cross-type comparison)", lt, rt)
 }
 
 // otherOp returns the non-string side's type name, for error messages.
@@ -323,6 +369,13 @@ func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 	}
 	c.scope = savedScope
 	c.returnType = savedReturn
+	// All-paths-return check: functions declared to return a non-none,
+	// non-any type must return on every execution path.
+	if sig.Return.Kind != KindNone && sig.Return.Kind != KindAny &&
+		!stmtsAlwaysReturn(fn.Body.Stmts) {
+		return nil, newTypeError(fn.Pos,
+			"function may exit without returning %s", sig.Return)
+	}
 	return sig, nil
 }
 

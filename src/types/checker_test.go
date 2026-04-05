@@ -273,6 +273,108 @@ func TestCheckScopeIsolation(t *testing.T) {
 show(to_string(y))`, "undefined variable 'y'")
 }
 
+// ─── All-paths-return ──────────────────────────────────────────────────────
+
+func TestCheckNoReturnErrors(t *testing.T) {
+	expectErr(t, `let add = (a int, b int) int {
+  let x = a + b
+}`, "function may exit without returning int")
+}
+
+func TestCheckIfWithoutElseErrors(t *testing.T) {
+	expectErr(t, `let pick = (x int) int {
+  if x > 0 { return 1 }
+}`, "function may exit without returning int")
+}
+
+func TestCheckIfElseBothReturnOk(t *testing.T) {
+	expectOk(t, `let pick = (x int) int {
+  if x > 0 { return 1 } else { return 0 }
+}`)
+}
+
+func TestCheckElseIfChainOk(t *testing.T) {
+	expectOk(t, `let classify = (n int) string {
+  if n < 0 { return "neg" }
+  else if n == 0 { return "zero" }
+  else { return "pos" }
+}`)
+}
+
+func TestCheckThrowTerminatesPath(t *testing.T) {
+	expectOk(t, `let guard_pos = (n int) int {
+  if n < 0 { throw "negative" }
+  return n
+}`)
+}
+
+func TestCheckNoneReturnAllowed(t *testing.T) {
+	// Functions returning none don't need explicit return.
+	expectOk(t, `let greet = (name string) none {
+  show("hi " + name)
+}`)
+}
+
+func TestCheckAnyReturnAllowed(t *testing.T) {
+	// Functions without explicit return type default to Any — permissive.
+	expectOk(t, `let maybe = () {
+  if true { return 1 }
+}`)
+}
+
+func TestCheckLoopBodyMissingReturnErrors(t *testing.T) {
+	// A while loop may not execute — can't rely on it to return.
+	expectErr(t, `let mystery = (n int) int {
+  while n > 0 { return n }
+}`, "function may exit without returning int")
+}
+
+// ─── Loop variable is const ────────────────────────────────────────────────
+
+func TestCheckLoopVarIsConst(t *testing.T) {
+	expectErr(t, `for i in range(5) {
+  i = 99
+}`, "cannot assign to const 'i'")
+}
+
+// ─── Equality rules ────────────────────────────────────────────────────────
+
+func TestCheckEqualitySameTypes(t *testing.T) {
+	expectOk(t, `let a = 1 == 2
+let b = "x" == "y"
+let c = true == false`)
+}
+
+func TestCheckEqualityIntFloat(t *testing.T) {
+	// int/float can be compared (numeric widening).
+	expectOk(t, `let eq = 1 == 2.0`)
+}
+
+func TestCheckEqualityCrossTypeError(t *testing.T) {
+	expectErr(t, `let eq = 5 == "5"`, "no implicit cross-type comparison")
+}
+
+func TestCheckEqualityNoneAlwaysOk(t *testing.T) {
+	// Per spec: comparing to none is always allowed.
+	expectOk(t, `let a = 42 == none
+let b = "x" == none`)
+}
+
+func TestCheckEqualityOptionalToBase(t *testing.T) {
+	expectOk(t, `let x int? = 5
+let b = x == 42`)
+}
+
+func TestCheckEqualityArraysError(t *testing.T) {
+	expectErr(t, `let eq = [1, 2] == [1, 2]`, "cannot compare")
+}
+
+func TestCheckEqualityRecordsError(t *testing.T) {
+	expectErr(t, `let a = {x: 1}
+let b = {x: 1}
+let eq = a == b`, "cannot compare")
+}
+
 // ─── Real-world examples — the test suite's examples/ programs ────────────
 
 func TestCheckFibonacciExample(t *testing.T) {

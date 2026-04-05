@@ -254,7 +254,8 @@ func (c *checker) checkFor(s *syntax.ForStmt) error {
 	}
 	c.scope = newScopeOf(c.scope)
 	defer func() { c.scope = c.scope.parent }()
-	c.scope.declare(s.VarName, elemType, false)
+	// Per spec: loop variable is const, scoped to the loop body.
+	c.scope.declare(s.VarName, elemType, true)
 	c.inLoop++
 	defer func() { c.inLoop-- }()
 	return c.checkBlock(s.Body, false)

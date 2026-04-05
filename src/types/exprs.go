@@ -227,6 +227,11 @@ func (c *checker) inferCall(e *syntax.CallExpr) (*Type, error) {
 	if calleeType.Kind != KindFunc {
 		return nil, newTypeError(e.Pos, "cannot call non-function of type %s", calleeType)
 	}
+	// REVIEW-SKIP: default-parameter values are deferred (ROADMAP Phase 4).
+	// When implemented, FuncType should grow a MinParams field and this check
+	// should become: MinParams <= len(args) <= len(Params). Until then, strict
+	// arity is correct — the parser accepts `b int = 0` but codegen doesn't
+	// honor defaults, so accepting a short call would produce wrong runtime.
 	if len(e.Args) != len(calleeType.Params) {
 		return nil, newTypeError(e.Pos,
 			"wrong number of arguments: expected %d, got %d",

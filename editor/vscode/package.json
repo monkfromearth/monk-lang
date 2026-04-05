@@ -1,0 +1,95 @@
+{
+  "name": "monk-lang",
+  "displayName": "Monk Language",
+  "description": "Syntax highlighting, snippets, and file icons for the Monk programming language",
+  "version": "0.1.0",
+  "publisher": "monkfromearth",
+  "author": {
+    "name": "Sameer Khan",
+    "email": "hi@monkfrom.earth"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/monkfromearth/monk-lang"
+  },
+  "main": "./out/extension.js",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "categories": [
+    "Programming Languages",
+    "Snippets"
+  ],
+  "keywords": [
+    "monk",
+    "mnk",
+    "programming language",
+    "syntax highlighting",
+    "compiled language",
+    "value semantics"
+  ],
+  "icon": "icons/monk-icon.png",
+  "galleryBanner": {
+    "color": "#1C1917",
+    "theme": "dark"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "monk",
+        "aliases": [
+          "Monk",
+          "monk"
+        ],
+        "extensions": [
+          ".monk",
+          ".mnk"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/monk-file-light.svg",
+          "dark": "./icons/monk-file-dark.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "monk",
+        "scopeName": "source.monk",
+        "path": "./syntaxes/monk.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.monk.codeblock",
+        "path": "./syntaxes/codeblock.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.monk": "monk"
+        }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "monk",
+        "path": "./snippets/monk.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "monk-icons",
+        "label": "Monk File Icons",
+        "path": "./themes/monk-icon-theme.json"
+      }
+    ]
+  }
+}

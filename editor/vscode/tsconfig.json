@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "outDir": "out",
+    "lib": ["ES2020"],
+    "strict": true,
+    "esModuleInterop": true,
+    "sourceMap": true,
+    "rootDir": "src",
+    "declaration": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules"]
+}

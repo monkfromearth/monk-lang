@@ -1,0 +1,211 @@
+{
+  "Variable": {
+    "prefix": "let",
+    "body": "let ${1:name} = ${2:value}",
+    "description": "Declare a mutable variable"
+  },
+  "Constant": {
+    "prefix": "const",
+    "body": "const ${1:NAME} = ${2:value}",
+    "description": "Declare an immutable constant"
+  },
+  "Typed Variable": {
+    "prefix": "lett",
+    "body": "let ${1:name} ${2:int} = ${3:value}",
+    "description": "Declare a typed variable"
+  },
+  "Typed Constant": {
+    "prefix": "constt",
+    "body": "const ${1:NAME} ${2:int} = ${3:value}",
+    "description": "Declare a typed constant"
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "let ${1:name} = (${2:params}) ${3:int} {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "Declare a function"
+  },
+  "Function (no return)": {
+    "prefix": "fnv",
+    "body": [
+      "let ${1:name} = (${2:params}) none {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "Declare a void function"
+  },
+  "If": {
+    "prefix": "if",
+    "body": [
+      "if ${1:condition} {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "If statement"
+  },
+  "If-Else": {
+    "prefix": "ife",
+    "body": [
+      "if ${1:condition} {",
+      "    ${2}",
+      "} else {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "If-else statement"
+  },
+  "If-Else If-Else": {
+    "prefix": "ifee",
+    "body": [
+      "if ${1:condition} {",
+      "    ${2}",
+      "} else if ${3:condition} {",
+      "    ${4}",
+      "} else {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "If-else if-else statement"
+  },
+  "While": {
+    "prefix": "while",
+    "body": [
+      "while ${1:condition} {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "While loop"
+  },
+  "For-In": {
+    "prefix": "for",
+    "body": [
+      "for ${1:item} in ${2:collection} {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "For-in loop"
+  },
+  "For Range": {
+    "prefix": "forr",
+    "body": [
+      "for ${1:i} in range(${2:n}) {",
+      "    ${0}",
+      "}"
+    ],
+    "description": "For loop over range"
+  },
+  "Guard-Against": {
+    "prefix": "guard",
+    "body": [
+      "guard ${1:result} = ${2:expression} against ${3:error} {",
+      "    ${1} = ${0}",
+      "}"
+    ],
+    "description": "Guard/against error handling"
+  },
+  "Throw": {
+    "prefix": "throw",
+    "body": "throw ${1:\"error message\"}",
+    "description": "Throw an error"
+  },
+  "Array": {
+    "prefix": "arr",
+    "body": "let ${1:name} = [${2:elements}]",
+    "description": "Declare an array"
+  },
+  "Record": {
+    "prefix": "rec",
+    "body": "let ${1:name} = {${2:key}: ${3:value}}",
+    "description": "Declare a record"
+  },
+  "Record (multiline)": {
+    "prefix": "record",
+    "body": [
+      "let ${1:name} = {",
+      "    ${2:key}: ${3:value},",
+      "    ${4:key}: ${5:value}",
+      "}"
+    ],
+    "description": "Declare a multiline record"
+  },
+  "Type Declaration": {
+    "prefix": "type",
+    "body": [
+      "type ${1:Name} = {",
+      "    ${2:field} ${3:int}",
+      "}"
+    ],
+    "description": "Declare a type"
+  },
+  "Show": {
+    "prefix": "show",
+    "body": "show(${1:value})",
+    "description": "Print a value"
+  },
+  "Show String": {
+    "prefix": "shows",
+    "body": "show(\"${1:message}\")",
+    "description": "Print a string"
+  },
+  "Show with toString": {
+    "prefix": "showt",
+    "body": "show(to_string(${1:value}))",
+    "description": "Print a value as string"
+  },
+  "Use Import": {
+    "prefix": "use",
+    "body": "use ${1:name} from \"${2:./path}\"",
+    "description": "Import a module"
+  },
+  "Use Import As": {
+    "prefix": "useas",
+    "body": "use ${1:name} as ${2:alias} from \"${3:./path}\"",
+    "description": "Import a module with alias"
+  },
+  "Export": {
+    "prefix": "export",
+    "body": "export ${1:name}",
+    "description": "Export a declaration"
+  },
+  "Template Literal": {
+    "prefix": "tmpl",
+    "body": "`${1:text} \\${${2:expr}}`",
+    "description": "Template literal with interpolation"
+  },
+  "File Read": {
+    "prefix": "fread",
+    "body": "let ${1:content} = file_read(\"${2:path}\")",
+    "description": "Read a file"
+  },
+  "File Write": {
+    "prefix": "fwrite",
+    "body": "file_write(\"${1:path}\", ${2:content})",
+    "description": "Write a file"
+  },
+  "Closure": {
+    "prefix": "closure",
+    "body": [
+      "let ${1:make_counter} = () {",
+      "    let ${2:count} = 0",
+      "    return () int {",
+      "        ${2} += 1",
+      "        return ${2}",
+      "    }",
+      "}"
+    ],
+    "description": "Closure pattern"
+  },
+  "Main Program": {
+    "prefix": "main",
+    "body": [
+      "// ${1:description}",
+      "",
+      "${0}",
+      ""
+    ],
+    "description": "New Monk program template"
+  }
+}

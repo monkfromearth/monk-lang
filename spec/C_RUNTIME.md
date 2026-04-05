@@ -7,7 +7,9 @@
 
 ## Overview
 
-The runtime is ~830 lines of C11. Every Monk program includes it. The codegen emits calls to these functions — Monk `+` becomes `monk_add()`, Monk `show` becomes `monk_show()`, etc.
+The runtime is ~860 lines of C11. Every Monk program includes it. The codegen emits calls to these functions — Monk `+` becomes `monk_add()`, Monk `show` becomes `monk_show()`, etc.
+
+**Unboxed fast path (Phase 6).** When the type checker proves a variable is `int`/`float`/`bool`, codegen stores it as a raw `int64_t`/`double`/`bool` and emits raw C arithmetic that skips the runtime entirely. The runtime is only called at boxing boundaries (show, to_string, etc.) and for heap types (strings, arrays, records).
 
 **Design rules enforced here:**
 - Value semantics via `monk_deep_copy()` on every assignment
@@ -100,13 +102,23 @@ All constructors **copy** their inputs. The caller retains ownership of the orig
 
 Recursively copies a value. Primitives return as-is. Strings are `strdup`'d. Arrays, records, and functions allocate new memory and deep-copy all contents (including closure captures).
 
-**Called by codegen on:** every `let`/`const` declaration, every assignment, every loop variable, every closure capture.
+**Called by codegen on:** every boxed `let`/`const` declaration, every boxed reassignment, every boxed loop variable, every closure capture. Scalar-unboxed variables use plain C assignment and skip this function entirely.
+
+**Fast path:** `monk_deep_copy` is a `static inline` function in `runtime.h` that short-circuits primitive kinds (int/float/bool/none) and only calls `monk_deep_copy_heap` (in `runtime.c`) for heap types. This is a significant perf win — a 20M-copy inner loop over int arrays used to make real function calls; now it's a kind-check and return.
 
 ### `monk_free(MonkValue v)`
 
 Recursively frees a value. Primitives are no-ops. Frees strings, array data + elements, record fields + values, function captures.
 
-**Called by codegen on:** scope exit, before reassignment (after computing the new value).
+**Called by codegen on:** scope exit for boxed variables, before reassignment (after computing the new value).
+
+**Fast path:** Same inline/heap split as `monk_deep_copy`.
+
+### `monk_panic(const char *msg)` — NEW
+
+Exported so codegen can raise runtime errors on the unboxed fast path (e.g., `int / 0` or `int % 0` produces the same "division by zero" / "modulo by zero" error as the boxed path). Prints to stderr and calls `exit(1)`.
+
+Prior to Phase 6 unboxing, `monk_panic` was `static` in `runtime.c`; now it's declared in `runtime.h` and linked into the generated object file.
 
 ### Memory Pattern in Generated C
 

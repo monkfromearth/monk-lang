@@ -43,7 +43,7 @@ The foundation. Monk compiles, runs, and produces native binaries.
 
 **Self-contained binary:** Runtime is embedded via go:embed. The `monk` binary works from any directory without needing the source tree.
 
-**Test suite:** 540 tests (195 syntax, 110 types, 45 codegen, 39 CLI, 151 C runtime).
+**Test suite:** 556 tests (195 syntax, 112 types, 59 codegen, 39 CLI, 151 C runtime).
 
 ### Hardening (2026-04-05)
 

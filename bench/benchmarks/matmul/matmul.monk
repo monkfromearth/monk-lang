@@ -1,0 +1,44 @@
+// Benchmark: naive integer matrix multiplication, 400x400.
+// Pre-allocate flat arrays via range(); index assignment in the hot loop.
+// Output: a checksum (sum of C[0][0], C[N-1][0], C[0][N-1], C[N-1][N-1]).
+
+let N = 400
+let TOTAL = N * N
+
+// Initialize A[i][j] = i + j, B[i][j] = i - j (deterministic)
+let A = range(TOTAL)
+let B = range(TOTAL)
+let C = range(TOTAL)
+
+let i = 0
+while i < N {
+    let j = 0
+    while j < N {
+        let idx = i * N + j
+        A[idx] = i + j
+        B[idx] = i - j
+        C[idx] = 0
+        j += 1
+    }
+    i += 1
+}
+
+// C = A * B
+i = 0
+while i < N {
+    let k = 0
+    while k < N {
+        let aik = A[i * N + k]
+        let j = 0
+        while j < N {
+            C[i * N + j] = C[i * N + j] + aik * B[k * N + j]
+            j += 1
+        }
+        k += 1
+    }
+    i += 1
+}
+
+// Checksum
+let sum = C[0] + C[N - 1] + C[N * (N - 1)] + C[N * N - 1]
+show(to_string(sum))

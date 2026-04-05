@@ -1,0 +1,10 @@
+// Benchmark: recursive fibonacci.
+// Pure function call overhead + int arithmetic. No allocation.
+// Output: a single integer (fib(N)), used for correctness diff.
+
+let fib = (n int) int {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+show(to_string(fib(35)))

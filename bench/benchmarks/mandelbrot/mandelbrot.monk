@@ -1,0 +1,49 @@
+// Benchmark: Mandelbrot set, count of bounded points.
+// Float compute in a tight loop. No allocation inside the loops.
+// Output: a single integer (count of points that stayed bounded).
+//
+// NOTE: Avoids parenthesized expressions beginning with function calls,
+// which the parser currently misreads as function literals.
+
+let W = 800
+let H = 800
+let MAX_ITER = 50
+let LIMIT = 4.0
+
+let Wf = W * 1.0
+let Hf = H * 1.0
+
+let count = 0
+let y = 0
+while y < H {
+    let cy = y / Hf * 2.0 - 1.0
+    let x = 0
+    while x < W {
+        let cx = x / Wf * 3.0 - 2.0
+        let zx = 0.0
+        let zy = 0.0
+        let iter = 0
+        let escaped = false
+        while iter < MAX_ITER {
+            let zx2 = zx * zx
+            let zy2 = zy * zy
+            let mag = zx2 + zy2
+            if mag > LIMIT {
+                escaped = true
+                iter = MAX_ITER
+            } else {
+                let new_zx = zx2 - zy2 + cx
+                zy = 2.0 * zx * zy + cy
+                zx = new_zx
+                iter += 1
+            }
+        }
+        if escaped == false {
+            count += 1
+        }
+        x += 1
+    }
+    y += 1
+}
+
+show(to_string(count))

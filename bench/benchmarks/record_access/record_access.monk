@@ -1,0 +1,18 @@
+// Benchmark: record field read/write in a tight loop.
+// Tests: record property access overhead (boxed path), field mutation.
+// Records have no unboxing — all ops go through MonkValue.
+// Output: integer checksum.
+
+let N = 1000000
+let r = {x: 0.0, y: 0.0, z: 0.0}
+let sum = 0.0
+
+let i = 0
+while i < N {
+    r.x = to_float(i)
+    r.y = r.x * 2.0
+    r.z = r.x + r.y
+    sum += r.x + r.y + r.z
+    i += 1
+}
+show(to_string(to_int(sum)))

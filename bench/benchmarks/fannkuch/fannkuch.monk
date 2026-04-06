@@ -1,0 +1,81 @@
+// Benchmark: Fannkuch-Redux (pancake flipping).
+// Permutation generation + array reversal. Classic Benchmarks Game.
+// Tests: array element swap, inner loops, int arithmetic.
+// Output: checksum and max flips (two lines).
+
+let N = 10
+
+let perm = range(N)
+let perm1 = range(N)
+let count = range(N)
+let max_flips = 0
+let perm_count = 0
+let checksum = 0
+
+let r = N
+let done = false
+
+while done == false {
+    while r > 1 {
+        count[r - 1] = r
+        r -= 1
+    }
+
+    // Copy perm1 to perm
+    let i = 0
+    while i < N {
+        perm[i] = perm1[i] + 0
+        i += 1
+    }
+
+    // Count flips
+    let flips = 0
+    while perm[0] + 0 != 0 {
+        let k = perm[0] + 0
+        let k2 = (k + 1) / 2
+        i = 0
+        while i < k2 {
+            let tmp = perm[i] + 0
+            perm[i] = perm[k - i] + 0
+            perm[k - i] = tmp
+            i += 1
+        }
+        flips += 1
+    }
+
+    if flips > max_flips {
+        max_flips = flips
+    }
+    if perm_count % 2 == 0 {
+        checksum += flips
+    } else {
+        checksum -= flips
+    }
+    perm_count += 1
+
+    // Next permutation
+    let found = false
+    while found == false {
+        if r == N {
+            done = true
+            found = true
+        } else {
+            let perm0 = perm1[0] + 0
+            i = 0
+            while i < r {
+                perm1[i] = perm1[i + 1] + 0
+                i += 1
+            }
+            perm1[r] = perm0
+            count[r] = count[r] - 1
+            if count[r] + 0 > 0 {
+                found = true
+            } else {
+                r += 1
+            }
+        }
+    }
+}
+
+show(to_string(checksum))
+show(to_string(max_flips))

@@ -1,0 +1,19 @@
+// Benchmark: count set bits across 1..N.
+// Bitwise operations (&, >>) in a tight loop. No arrays.
+// Tests: bitwise operator unboxing, inner while loop.
+// Output: total bit count (integer checksum).
+
+let N = 10000000
+let total = 0
+let n = 1
+while n <= N {
+    let x = n
+    let bits = 0
+    while x > 0 {
+        bits += x & 1
+        x = x >> 1
+    }
+    total += bits
+    n += 1
+}
+show(to_string(total))

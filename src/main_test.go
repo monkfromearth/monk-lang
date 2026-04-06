@@ -722,7 +722,7 @@ func TestEmbeddedRuntimeExtraction(t *testing.T) {
 
 	// Cache should now contain both runtime files.
 	cacheDir := filepath.Join(home, ".cache", "monk", "runtime")
-	for _, name := range []string{"runtime.h", "runtime.c"} {
+	for _, name := range []string{"runtime.h", "internal.h", "value.c", "arith.c", "string.c", "container.c", "math.c", "builtins.c", "error.c"} {
 		p := filepath.Join(cacheDir, name)
 		info, err := os.Stat(p)
 		if err != nil {

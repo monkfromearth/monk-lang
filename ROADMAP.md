@@ -155,7 +155,8 @@ Static analysis pass over the AST, before code generation.
 - [x] Typed array backing store — back `int[]` with `int64_t*` instead of `MonkValue*`. New `MONK_INT_ARRAY` kind + `MonkIntArray { int64_t* data; int64_t length }` struct in runtime. `monk_int_array_from()` converts/copies. Matmul: 3× C → ~2× C. See `spec/ARCHITECTURE_DECISIONS.md §4A`.
 - [ ] Copy-on-write for arrays — share backing storage on assign, copy only on mutation. Makes `let b = a` O(1) instead of O(n). No spec change needed. See `spec/ARCHITECTURE_DECISIONS.md §4B`.
 - [ ] Bounds-check elision for typed arrays in provably-safe loops (`for i in range(0, arr.length)`). Requires spec clarification that `int[]` OOB is always a panic (strict, not graceful). See `spec/ARCHITECTURE_DECISIONS.md §4C`.
-- [ ] Unboxed for-loop variables over typed iterables
+- [x] Unboxed for-loop variables over typed iterables — raw `int64_t`/`double`/`bool` loop variable, no boxing per element.
+- [x] Typed array index returns T not T? — strict OOB semantics, removes `+ 0` workaround.
 - [ ] Runtime typeof/is_* inlined for known-type values
 - [x] Default parameter values — arity-range check in type checker; `padDefaults()` fills defaults at call site in codegen.
 - [x] First-class function values in codegen — closures, trampolines, `monk_make_function`, capture-by-copy with save-back.

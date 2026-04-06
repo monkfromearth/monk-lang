@@ -33,6 +33,14 @@ Format: [Semantic Versioning](https://semver.org/). Each minor version gets an U
 ### Tests
 - 9 typed-array correctness tests (`TestTypedArray*`): reads, writes, arithmetic chains, mini matmul, float arrays, OOB panic.
 - 8 backing-store correctness tests (`TestBackingStore*`): int/float literal decls, range decls, element writes, for-in iteration, `show()`, `is_array()`, `length()`.
+- 6 record field unboxing tests (`TestRecordField*`): read unboxed (no `monk_record_get`), write unboxed (no `monk_record_set`), scalar read/write correctness, float chain, loop accumulation.
+
+### Performance (continued)
+- **Record field unboxing** — `rec.field` reads and writes now use direct index access (`obj.record_val->fields[N].value`) instead of the `monk_record_get`/`monk_record_set` strcmp loop. Scalar fields (`int`/`float`/`bool`) additionally skip the MonkValue wrapper — reads return `.int_val`/`.float_val`/`.bool_val` directly; writes skip the `monk_free` + `monk_deep_copy` cycle. RecordExpr literals are normalized to type-declaration field order to guarantee index consistency. Benchmark: `record_access` **25× C → ~1× C** (parity).
+
+### Bug Fixes (continued)
+- **Closure else-branch scope leak** — `collectRefsStmt` was passing the raw `locals` map to the else-branch instead of a copy. Variables declared in the else leaked into the outer scope after the if, potentially masking outer-scope closure captures. Fixed: else-branch now uses `copyLocals(locals)` like the then-branch.
+- **`funcExactMatch` nil panic** — accessing `src.Return.Kind` or `dst.Return.Kind` before checking for nil panicked on `none`-returning function types. Added nil guard using `Equal(src.Return, dst.Return)` for nil-equality semantics.
 
 ---
 

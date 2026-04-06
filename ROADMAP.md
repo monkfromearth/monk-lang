@@ -157,6 +157,7 @@ Static analysis pass over the AST, before code generation.
 - [ ] Bounds-check elision for typed arrays in provably-safe loops (`for i in range(0, arr.length)`). Requires spec clarification that `int[]` OOB is always a panic (strict, not graceful). See `spec/ARCHITECTURE_DECISIONS.md §4C`.
 - [x] Unboxed for-loop variables over typed iterables — raw `int64_t`/`double`/`bool` loop variable, no boxing per element.
 - [x] Typed array index returns T not T? — strict OOB semantics, removes `+ 0` workaround.
+- [x] Record field unboxing — `rec.field` reads/writes emit `obj.record_val->fields[N].value` (index-based, no strcmp). Scalar fields extract `.int_val`/`.float_val`/`.bool_val` directly. record_access: 25× C → ~1× C.
 - [ ] Runtime typeof/is_* inlined for known-type values
 - [x] Default parameter values — arity-range check in type checker; `padDefaults()` fills defaults at call site in codegen.
 - [x] First-class function values in codegen — closures, trampolines, `monk_make_function`, capture-by-copy with save-back.

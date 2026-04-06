@@ -1,6 +1,9 @@
 package syntax
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // --- Helpers ---
 
@@ -517,6 +520,54 @@ func TestParseMatchRightParenNesting(t *testing.T) {
 	e := parseExpr(t, `(f((x+1)) - 3)`)
 	if _, ok := e.(*BinaryExpr); !ok {
 		t.Fatalf("expected BinaryExpr, got %T", e)
+	}
+}
+
+func TestParseFuncParamWithNoneType(t *testing.T) {
+	// `none` is its own token kind (not Identifier). The param-detection
+	// heuristic must accept `ident none` as a param-name/type pair, same as
+	// `ident int`. Regression: previously fell through to grouped-expr parse.
+	fn := parseExpr(t, `(x none) none { return }`).(*FuncExpr)
+	if len(fn.Params) != 1 { t.Fatalf("expected 1 param, got %d", len(fn.Params)) }
+	if fn.Params[0].Type.Name != "none" { t.Errorf("expected none type, got %q", fn.Params[0].Type.Name) }
+}
+
+func TestParseFuncNoParamsFuncReturnType(t *testing.T) {
+	// `() (int) -> int { ... }` — zero params, function-type return.
+	// Regression: parseParenOrFunc only accepted ident/`none`/`{` after `()`,
+	// so it errored on the `(` that starts the return type.
+	fn := parseExpr(t, `() (int) -> int { return (x int) int { return x } }`).(*FuncExpr)
+	if !fn.ReturnType.IsFunc { t.Errorf("expected function return type") }
+}
+
+// Regression: the defensive "expected type name" guard in parseTypeExpr used
+// to return WITHOUT advancing the parser. parseFuncType's loop only exits on
+// ')' / EOF, so a non-type token inside a function type annotation — like the
+// `42` in `type F = (42) -> int` — spun forever. Fixed by advancing on the
+// error path AND short-circuiting parseFuncType's loop when typeErr is set.
+// Each of these inputs must terminate and produce an error, not hang.
+func TestParseFuncTypeBadParamDoesNotHang(t *testing.T) {
+	cases := []string{
+		`type F = (42) -> int`,
+		`type F = (true) -> int`,
+		`type G = (42, 43) -> int`,
+		`let f = (cb (42) -> int) int { return 1 }`,
+	}
+	for _, src := range cases {
+		done := make(chan struct{})
+		var err error
+		go func() {
+			_, err = Parse(src)
+			close(done)
+		}()
+		select {
+		case <-done:
+			if err == nil {
+				t.Errorf("%q: expected parse error, got nil", src)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%q: parser hung (infinite loop regression)", src)
+		}
 	}
 }
 

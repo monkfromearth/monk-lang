@@ -133,13 +133,12 @@ func cmdBuild(args []string) {
 
 	runtimeDir := findRuntime()
 
-	cmd := exec.Command("cc", "-std=c11", "-O3", "-flto",
-		"-I"+runtimeDir,
-		cFile,
-		filepath.Join(runtimeDir, "runtime.c"),
-		"-lm",
-		"-o", outputFile,
-	)
+	ccArgs := []string{"-std=c11", "-O3", "-flto", "-I" + runtimeDir, cFile}
+	for _, src := range runtimeSources {
+		ccArgs = append(ccArgs, filepath.Join(runtimeDir, src))
+	}
+	ccArgs = append(ccArgs, "-lm", "-o", outputFile)
+	cmd := exec.Command("cc", ccArgs...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -193,13 +192,12 @@ func cmdRun(args []string) int {
 
 	runtimeDir := findRuntime()
 
-	compile := exec.Command("cc", "-std=c11", "-O3", "-flto",
-		"-I"+runtimeDir,
-		cFile,
-		filepath.Join(runtimeDir, "runtime.c"),
-		"-lm",
-		"-o", binFile,
-	)
+	ccArgs := []string{"-std=c11", "-O3", "-flto", "-I" + runtimeDir, cFile}
+	for _, src := range runtimeSources {
+		ccArgs = append(ccArgs, filepath.Join(runtimeDir, src))
+	}
+	ccArgs = append(ccArgs, "-lm", "-o", binFile)
+	compile := exec.Command("cc", ccArgs...)
 	compile.Stderr = os.Stderr
 	if err := compile.Run(); err != nil {
 		fatal("monk run: compilation failed")
@@ -300,10 +298,41 @@ func extractEmbeddedRuntime() string {
 		fatal("monk: cannot create cache directory: %s", err)
 	}
 
-	writeIfChanged(filepath.Join(cacheDir, "runtime.h"), embeddedRuntimeH)
-	writeIfChanged(filepath.Join(cacheDir, "runtime.c"), embeddedRuntimeC)
+	for _, f := range embeddedRuntimeFiles {
+		writeIfChanged(filepath.Join(cacheDir, f.name), f.content)
+	}
 
 	return cacheDir
+}
+
+// embeddedRuntimeSourceFiles returns the list of .c files that make up the
+// runtime (matches the files in runtime/). Keep in sync with embed.go and
+// with the runtimeSources slice used at compile time.
+var runtimeSources = []string{
+	"value.c",
+	"arith.c",
+	"string.c",
+	"container.c",
+	"math.c",
+	"builtins.c",
+	"error.c",
+}
+
+// embeddedRuntimeFiles pairs each embedded runtime file with its on-disk
+// name under ~/.cache/monk/runtime/.
+var embeddedRuntimeFiles = []struct {
+	name    string
+	content []byte
+}{
+	{"runtime.h", embeddedRuntimeH},
+	{"internal.h", embeddedInternalH},
+	{"value.c", embeddedValueC},
+	{"arith.c", embeddedArithC},
+	{"string.c", embeddedStringC},
+	{"container.c", embeddedContainerC},
+	{"math.c", embeddedMathC},
+	{"builtins.c", embeddedBuiltinsC},
+	{"error.c", embeddedErrorC},
 }
 
 // writeIfChanged writes content to path only if the file is missing or differs.

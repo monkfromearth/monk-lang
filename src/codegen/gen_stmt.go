@@ -373,6 +373,65 @@ func (g *generator) emitFor(s *syntax.ForStmt) {
 	iter := g.emitExpr(s.Iterable)
 	varName := mangleName(s.VarName)
 
+	// Fast path: when we know the iterable is a typed array at compile time,
+	// emit a direct loop with a raw scalar loop variable — no boxing, no
+	// runtime kind-dispatch. This is what makes for-in over int[] match C.
+	if g.info != nil {
+		if iterType, ok := g.info.Types[s.Iterable]; ok && iterType != nil {
+			iterStore := storageFor(iterType)
+			if isArrayStorage(iterStore) {
+				ptrField := arrayPtrField(iterStore)
+				var elemStore storageKind
+				var cType string
+				switch iterStore {
+				case storeIntArray:
+					elemStore = storeInt
+					cType = "int64_t"
+				case storeFloatArray:
+					elemStore = storeFloat
+					cType = "double"
+				case storeBoolArray:
+					elemStore = storeBool
+					cType = "bool"
+				}
+				// Extract raw element from the iterable without conversion.
+				// Handles both typed backing store (MONK_INT_ARRAY) and generic
+				// MONK_ARRAY (reads .int_val from each MonkValue element).
+				// No allocation, no copy — just a branch at loop setup.
+				var kindName, genericField string
+				switch iterStore {
+				case storeIntArray:
+					kindName = "MONK_INT_ARRAY"
+					genericField = "int_val"
+				case storeFloatArray:
+					kindName = "MONK_FLOAT_ARRAY"
+					genericField = "float_val"
+				case storeBoolArray:
+					kindName = "MONK_BOOL_ARRAY"
+					genericField = "bool_val"
+				}
+				g.emitLine("    {\n")
+				g.emitLine("        MonkValue _iter = %s;\n", iter)
+				g.emitLine("        int64_t _len = (_iter.kind == %s) ? _iter.%s->length : _iter.array_val->length;\n",
+					kindName, ptrField)
+				g.emitLine("        for (int64_t _i = 0; _i < _len; _i++) {\n")
+				g.emitLine("            %s %s = (_iter.kind == %s) ? _iter.%s->data[_i] : _iter.array_val->data[_i].%s;\n",
+					cType, varName, kindName, ptrField, genericField)
+				g.emitLine("            {\n")
+				snap := g.saveStorage()
+				g.storage[varName] = elemStore
+				for _, stmt := range s.Body.Stmts {
+					g.emitStmt(stmt)
+				}
+				g.restoreStorage(snap)
+				g.emitLine("            }\n")
+				g.emitLine("        }\n")
+				g.emitLine("    }\n")
+				return
+			}
+		}
+	}
+
 	g.emitLine("    {\n")
 	g.emitLine("        MonkValue _iter = %s;\n", iter)
 	// Generic MONK_ARRAY path

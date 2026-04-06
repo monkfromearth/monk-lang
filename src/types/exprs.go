@@ -63,6 +63,7 @@ func (c *checker) inferExprInner(e syntax.Expr) (*Type, error) {
 	return Any, nil
 }
 
+// inferIdent looks up the identifier in the scope chain and returns its type.
 func (c *checker) inferIdent(e *syntax.IdentExpr) (*Type, error) {
 	b := c.scope.lookup(e.Name)
 	if b == nil {
@@ -71,6 +72,8 @@ func (c *checker) inferIdent(e *syntax.IdentExpr) (*Type, error) {
 	return b.Type, nil
 }
 
+// inferUnary infers the type of a unary expression. `-` requires numeric;
+// `not`/`!` accept any type and return bool; `~` requires int and returns int.
 func (c *checker) inferUnary(e *syntax.UnaryExpr) (*Type, error) {
 	t, err := c.inferExpr(e.Operand)
 	if err != nil {
@@ -94,6 +97,9 @@ func (c *checker) inferUnary(e *syntax.UnaryExpr) (*Type, error) {
 	return Any, nil
 }
 
+// inferBinary dispatches to inferArith, inferEquality, or inline logic for
+// comparison, logical, bitwise operators. Returns the result type or an error
+// if the operand types are incompatible.
 func (c *checker) inferBinary(e *syntax.BinaryExpr) (*Type, error) {
 	lt, err := c.inferExpr(e.Left)
 	if err != nil {
@@ -227,6 +233,9 @@ func otherOp(l, r *Type) string {
 	return l.String()
 }
 
+// inferCall checks that the callee is a function, validates argument count
+// (accounting for optional/default params), and verifies each argument type.
+// Returns the function's declared return type.
 func (c *checker) inferCall(e *syntax.CallExpr) (*Type, error) {
 	calleeType, err := c.inferExpr(e.Callee)
 	if err != nil {
@@ -268,6 +277,9 @@ func (c *checker) inferCall(e *syntax.CallExpr) (*Type, error) {
 	return calleeType.Return, nil
 }
 
+// inferIndex infers the type of `expr[index]`. For typed arrays (non-Any element),
+// returns the element type directly (OOB panics). For untyped arrays and strings,
+// returns T? (graceful OOB returns none).
 func (c *checker) inferIndex(e *syntax.IndexExpr) (*Type, error) {
 	objType, err := c.inferExpr(e.Object)
 	if err != nil {
@@ -298,6 +310,9 @@ func (c *checker) inferIndex(e *syntax.IndexExpr) (*Type, error) {
 	return nil, newTypeError(e.Pos, "cannot index %s", objType)
 }
 
+// inferProperty infers the type of `expr.field`. For named records, an unknown
+// field is a compile error. For anonymous (untyped) records, returns none (spec:
+// graceful on reads). For Any, returns Any.
 func (c *checker) inferProperty(e *syntax.PropertyExpr) (*Type, error) {
 	objType, err := c.inferExpr(e.Object)
 	if err != nil {
@@ -324,6 +339,9 @@ func (c *checker) inferProperty(e *syntax.PropertyExpr) (*Type, error) {
 		"cannot access property '%s' on %s", e.Property, objType)
 }
 
+// inferArray infers the element type from the literal. Mixed int/float elements
+// are widened to float[]. Heterogeneous elements (e.g. int and string) are a
+// type error — Monk arrays are homogeneous.
 func (c *checker) inferArray(e *syntax.ArrayExpr) (*Type, error) {
 	if len(e.Elements) == 0 {
 		// Empty array — element type unknown, will be inferred from context
@@ -356,6 +374,8 @@ func (c *checker) inferArray(e *syntax.ArrayExpr) (*Type, error) {
 	return ArrayOf(elemType), nil
 }
 
+// inferRecord builds a structural record type from the literal's fields.
+// Duplicate keys in the same literal are a compile error.
 func (c *checker) inferRecord(e *syntax.RecordExpr) (*Type, error) {
 	fields := make([]RecordTypeField, len(e.Fields))
 	seen := make(map[string]bool, len(e.Fields))
@@ -373,6 +393,9 @@ func (c *checker) inferRecord(e *syntax.RecordExpr) (*Type, error) {
 	return &Type{Kind: KindRecord, Fields: fields}, nil
 }
 
+// inferFunc extracts the function signature, checks the body in a new scope
+// with params bound, and runs the all-paths-return check for typed returns.
+// The signature is recorded in c.info.Funcs for codegen's unboxing decision.
 func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 	sig, err := c.funcSignature(fn)
 	if err != nil {
@@ -410,14 +433,17 @@ func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
+// isNumericOrAny reports whether t is int, float, or any (for arithmetic checks).
 func isNumericOrAny(t *Type) bool {
 	return t.Kind == KindInt || t.Kind == KindFloat || t.Kind == KindAny
 }
 
+// isNonComparable reports whether t cannot participate in == (arrays, records, functions).
 func isNonComparable(t *Type) bool {
 	return t.Kind == KindArray || t.Kind == KindRecord || t.Kind == KindFunc
 }
 
+// isIntOrAny reports whether t is int or any (for bitwise-operator checks).
 func isIntOrAny(t *Type) bool {
 	return t.Kind == KindInt || t.Kind == KindAny
 }

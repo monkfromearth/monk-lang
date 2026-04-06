@@ -27,9 +27,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                 </div>
             </div>
             <div class="flex items-center gap-4 text-sm text-monk-muted">
-                <span>6 units</span>
+                <span>7 units</span>
                 <span class="text-monk-border">|</span>
-                <span>25 lessons</span>
+                <span>30 lessons</span>
             </div>
         </div>
     </header>
@@ -287,7 +287,34 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                 </div>
             </div>
 
-            <!-- Units 6-11: Coming Up -->
+            <!-- Unit 6: Type System -->
+            <div class="mb-10">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="tag text-sky-600 bg-sky-50 px-2 py-0.5 rounded-full">Phase 6</span>
+                    <span class="text-monk-muted text-sm">Type System + Scalar Unboxing</span>
+                </div>
+
+                <div class="unit-card bg-white rounded-2xl border border-monk-border overflow-hidden">
+                    <div class="p-6 border-b border-monk-border bg-gradient-to-r from-sky-50 to-white">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h3 class="font-bold text-xl">Unit 6 — The Type System</h3>
+                                <p class="text-monk-muted mt-1">Static analysis before codegen. Type inference, structural records, all-paths return, and scalar unboxing to C parity.</p>
+                            </div>
+                            <div class="flex gap-1.5"><span class="tag text-sky-600 bg-white px-2 py-0.5 rounded-full border border-sky-200">5 lessons</span></div>
+                        </div>
+                    </div>
+                    <div class="divide-y divide-monk-border">
+                        <a href={base + "/phase-6-types/why-types"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0"><span class="text-sky-600 font-semibold text-sm">6.1</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Why Add a Type System?</h4><p class="text-monk-muted text-xs mt-0.5">What breaks without one. What Monk's checker catches before runtime.</p></div><TagBadge variant="concepts">concepts</TagBadge></a>
+                        <a href={base + "/phase-6-types/monks-type-model"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0"><span class="text-sky-600 font-semibold text-sm">6.2</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Monk's Type Model</h4><p class="text-monk-muted text-xs mt-0.5">Nine kinds, optional flag, AssignableTo. The whole model in three parts.</p></div><div class="flex gap-1.5"><TagBadge variant="concepts">concepts</TagBadge><TagBadge variant="go">go</TagBadge></div></a>
+                        <a href={base + "/phase-6-types/building-the-checker"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0"><span class="text-sky-600 font-semibold text-sm">6.3</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Building the Checker</h4><p class="text-monk-muted text-xs mt-0.5">Scope, hoisting, all-paths return, and the bugs we found building it.</p></div><TagBadge variant="go">go</TagBadge></a>
+                        <a href={base + "/phase-6-types/scalar-unboxing"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0"><span class="text-sky-600 font-semibold text-sm">6.4</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Scalar Unboxing</h4><p class="text-monk-muted text-xs mt-0.5">Eliminating MonkValue overhead. How Monk reached C parity on scalar benchmarks.</p></div><div class="flex gap-1.5"><TagBadge variant="go">go</TagBadge><TagBadge variant="c">c</TagBadge></div></a>
+                        <a href={base + "/phase-6-types/references"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0"><span class="text-sky-600 font-semibold text-sm">6.5</span></div><div class="flex-1"><h4 class="font-semibold text-sm">References & Further Reading</h4><p class="text-monk-muted text-xs mt-0.5">Type systems, static analysis, V8 hidden classes, TAPL.</p></div><TagBadge variant="links">links</TagBadge></a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Units 7-11: Coming Up -->
             <div class="mb-10">
                 <div class="flex items-center gap-2 mb-4">
                     <span class="tag text-monk-muted bg-stone-100 px-2 py-0.5 rounded-full">Coming Up</span>
@@ -295,12 +322,6 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                 </div>
 
                 <div class="grid gap-4">
-                    <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
-                        <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">6</span></div>
-                            <div class="flex-1"><h3 class="font-bold">Type System</h3><p class="text-monk-muted text-sm">Static analysis. Type checking, inference, structural typing, optionals.</p></div>
-                        </div>
-                    </div>
                     <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
                         <div class="flex items-center gap-4">
                             <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">7</span></div>

@@ -1,0 +1,153 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+---
+
+<LessonLayout title="References & Further Reading" lessonNumber="6.5" section="Phase 6">
+
+    <LessonHeader lessonNumber="6.5" title="References & Further Reading" description="Type systems, static analysis, and compiler optimization resources.">
+        <TagBadge variant="links">links</TagBadge>
+        <TagBadge variant="default">5 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Type systems -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Type systems: the fundamentals.</h2>
+
+        <div class="space-y-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">Types and Programming Languages</h3>
+                        <p class="text-monk-muted text-sm mt-1">Benjamin Pierce</p>
+                        <p class="text-monk-muted text-sm mt-2">The standard graduate textbook on type theory. Pierce builds up from the simply-typed lambda calculus through subtyping, polymorphism, and recursive types. Rigorous -- proofs throughout. Monk's type model is at the simple end of what this book covers, which is intentional: simple systems are understandable systems.</p>
+                        <a href="https://www.cis.upenn.edu/~bcpierce/tapl/" class="text-sky-600 text-sm hover:underline mt-2 inline-block">cis.upenn.edu/~bcpierce/tapl</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-sky-50 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">Crafting Interpreters, Chapter 8 — "Statements and State"</h3>
+                        <p class="text-monk-muted text-sm mt-1">Robert Nystrom — craftinginterpreters.com</p>
+                        <p class="text-monk-muted text-sm mt-2">The resolver chapter in Crafting Interpreters is the closest analog to what Monk's checker does -- a second pass over the AST that resolves variable bindings and catches scope errors. Different goals, same architecture. Free to read online.</p>
+                        <a href="https://craftinginterpreters.com/resolving-and-binding.html" class="text-sky-600 text-sm hover:underline mt-2 inline-block">craftinginterpreters.com/resolving-and-binding.html</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Monk's type system is intentionally simple.</strong> Structural typing, nine kinds, one optional flag. The goal is zero annotation burden for common programs while catching the bugs that actually bite people. TAPL shows where the complexity ceiling is -- Monk lives well below it.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Hindley-Milner -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Type inference: Hindley-Milner.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Hindley-Milner type system (Wikipedia)</h3>
+                <p class="text-monk-muted text-sm mt-2">The algorithm behind ML, Haskell, and Rust's type inference. Hindley-Milner infers types globally using unification -- it can infer the type of a function from how it's used, not just how it's defined. Monk uses a simpler, local inference (first-assignment rule) -- but understanding H-M illuminates why full global inference is complex and what trade-offs Monk avoids.</p>
+                <a href="https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system" class="text-sky-600 text-sm hover:underline mt-2 inline-block">en.wikipedia.org/wiki/Hindley-Milner_type_system</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">"Write You a Haskell" — type inference chapters</h3>
+                <p class="text-monk-muted text-sm mt-1">by Stephen Diehl</p>
+                <p class="text-monk-muted text-sm mt-2">A walkthrough of building a Haskell-like language from scratch. The chapters on constraint generation and unification are excellent practical introductions to full type inference. More complex than what Monk does, but the same conceptual foundation.</p>
+                <a href="http://dev.stephendiehl.com/fun/006_hindley_milner.html" class="text-sky-600 text-sm hover:underline mt-2 inline-block">dev.stephendiehl.com/fun/006_hindley_milner.html</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Structural vs nominal -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Structural vs nominal typing.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">TypeScript Handbook — "Type Compatibility"</h3>
+                <p class="text-monk-muted text-sm mt-2">TypeScript uses structural typing for objects -- compatibility is determined by shape, not name. Monk's record types work the same way: a record is valid if its fields match, regardless of what type name was declared. The TypeScript handbook's explanation of structural compatibility is a clean, practical treatment of the concept.</p>
+                <a href="https://www.typescriptlang.org/docs/handbook/type-compatibility.html" class="text-sky-600 text-sm hover:underline mt-2 inline-block">typescriptlang.org/docs/handbook/type-compatibility</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Go's structural typing for interfaces</h3>
+                <p class="text-monk-muted text-sm mt-2">Go uses structural typing for interfaces -- a type satisfies an interface if it has the right methods, no explicit declaration needed. Monk's compiler is written in Go, and the design philosophy (implicit satisfaction, shape-based compatibility) influenced Monk's own record typing. Reading Go's interface spec shows the practical benefits of structural over nominal.</p>
+                <a href="https://go.dev/ref/spec#Interface_types" class="text-sky-600 text-sm hover:underline mt-2 inline-block">go.dev/ref/spec#Interface_types</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Optimization -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Type-directed optimization.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">V8 Hidden Classes and Inline Caches</h3>
+                <p class="text-monk-muted text-sm mt-2">V8 (JavaScript's engine) achieves near-native performance on typed code by tracking the "hidden class" (shape) of objects at runtime and using that to skip dynamic dispatch. Monk's unboxing does the same thing, but at compile time using static types. The V8 approach works without static types -- but needs complex runtime machinery. Monk's approach is simpler because the types are already known.</p>
+                <a href="https://v8.dev/docs/hidden-classes" class="text-sky-600 text-sm hover:underline mt-2 inline-block">v8.dev/docs/hidden-classes</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Julia's type specialization</h3>
+                <p class="text-monk-muted text-sm mt-2">Julia compiles specialized versions of functions for each combination of argument types it sees. This is why Julia can match C for numerical code -- it generates unboxed, type-specific machine code. Monk uses a simpler static version of the same idea: one unboxed function per known-type signature, generated at compile time rather than JIT-compiled at runtime.</p>
+                <a href="https://docs.julialang.org/en/v1/manual/performance-tips/#Specialize-on-types" class="text-sky-600 text-sm hover:underline mt-2 inline-block">docs.julialang.org/en/v1/manual/performance-tips/#Specialize-on-types</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">GCC's -O3 and -flto flags</h3>
+                <p class="text-monk-muted text-sm mt-2">Monk compiles generated C with <code class="bg-stone-100 px-1 rounded text-xs">cc -O3 -flto</code>. O3 enables aggressive optimization passes (loop unrolling, vectorization, function inlining). LTO (link-time optimization) lets GCC inline across translation unit boundaries -- so <code class="bg-stone-100 px-1 rounded text-xs">monk_add</code> gets inlined even when defined in a separate .c file. The combination is what makes unboxed Monk code reach C parity.</p>
+                <a href="https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html" class="text-sky-600 text-sm hover:underline mt-2 inline-block">gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Reading order -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Suggested reading order.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Crafting Interpreters, resolver chapter</strong> -- the closest practical analog to Monk's checker. Read this if you want to understand the architecture before reading the theory.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>TypeScript type compatibility</strong> -- structural typing explained through a practical, widely-used language. Monk's records follow the same model.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>V8 hidden classes</strong> -- understand the problem Monk solves with static unboxing, from the perspective of a JIT that has to solve it dynamically.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>Write You a Haskell, H-M chapters</strong> -- for understanding what full global inference looks like and why Monk's local inference is simpler.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">5</span></div>
+                <p class="text-sm"><strong>TAPL</strong> -- only if you want the full theoretical foundation. Heavyweight, but the definitive reference.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-6-types/scalar-unboxing"
+        prevLabel="Prev: Scalar Unboxing"
+    />
+
+</LessonLayout>

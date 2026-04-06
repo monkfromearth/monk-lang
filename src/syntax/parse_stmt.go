@@ -4,6 +4,8 @@ package syntax
 // position and returns a typed Stmt. Blocks are handled by parseBlock, which
 // is the only parser that consumes matching `{` ... `}`.
 
+// parseStmt dispatches to the appropriate statement parser based on the
+// current token. break/continue legality is checked here against loopDepth.
 func (p *Parser) parseStmt() (Stmt, error) {
 	switch p.current().Kind {
 	case Let, Const:
@@ -71,6 +73,9 @@ func (p *Parser) parseExprOrAssignStmt() (Stmt, error) {
 	return &ExprStmt{Pos: pos, Expr: expr}, nil
 }
 
+// parseVarDecl parses `let name [type] = expr` or `const name [type] = expr`.
+// The optional type annotation is attempted via tryParseTypeExpr, which rolls
+// back cleanly if the next token is not a valid type name.
 func (p *Parser) parseVarDecl() (*VarDeclStmt, error) {
 	pos := p.currentPos()
 	isConst := p.current().Kind == Const
@@ -110,6 +115,7 @@ func (p *Parser) parseVarDecl() (*VarDeclStmt, error) {
 	}, nil
 }
 
+// parseIf parses `if expr { ... } [else { ... } | else if ...]` recursively.
 func (p *Parser) parseIf() (*IfStmt, error) {
 	pos := p.currentPos()
 	p.advance() // skip 'if'
@@ -145,6 +151,8 @@ func (p *Parser) parseIf() (*IfStmt, error) {
 	return &IfStmt{Pos: pos, Condition: condition, Then: then, Else: elseStmt}, nil
 }
 
+// parseWhile parses `while expr { ... }`, bumping loopDepth so nested
+// break/continue are permitted inside the body.
 func (p *Parser) parseWhile() (*WhileStmt, error) {
 	pos := p.currentPos()
 	p.advance() // skip 'while'
@@ -164,6 +172,8 @@ func (p *Parser) parseWhile() (*WhileStmt, error) {
 	return &WhileStmt{Pos: pos, Condition: condition, Body: body}, nil
 }
 
+// parseFor parses `for varName in expr { ... }`, bumping loopDepth so
+// break/continue are valid inside the body.
 func (p *Parser) parseFor() (*ForStmt, error) {
 	pos := p.currentPos()
 	p.advance() // skip 'for'
@@ -194,6 +204,9 @@ func (p *Parser) parseFor() (*ForStmt, error) {
 	return &ForStmt{Pos: pos, VarName: varName, Iterable: iterable, Body: body}, nil
 }
 
+// parseReturn parses `return [expr]`. The value is optional: a bare `return`
+// at end-of-input, before `}`, or before another statement keyword is a
+// value-less return.
 func (p *Parser) parseReturn() (*ReturnStmt, error) {
 	pos := p.currentPos()
 	p.advance() // skip 'return'
@@ -209,6 +222,9 @@ func (p *Parser) parseReturn() (*ReturnStmt, error) {
 	return &ReturnStmt{Pos: pos, Value: value}, nil
 }
 
+// parseGuard parses `guard varName = expr against errName { ... }`.
+// The guard evaluates expr inside a setjmp context; if it throws, the
+// against block runs with errName bound to the thrown value.
 func (p *Parser) parseGuard() (*GuardStmt, error) {
 	pos := p.currentPos()
 	p.advance() // skip 'guard'
@@ -254,6 +270,8 @@ func (p *Parser) parseGuard() (*GuardStmt, error) {
 	}, nil
 }
 
+// parseTypeDecl parses `type Name = typeDef`, creating a named type alias or
+// record-type definition.
 func (p *Parser) parseTypeDecl() (*TypeDeclStmt, error) {
 	pos := p.currentPos()
 	p.advance() // skip 'type'
@@ -366,6 +384,9 @@ func (p *Parser) parseUse() (*UseStmt, error) {
 	return u, nil
 }
 
+// parseExport wraps any statement in an ExportStmt, marking it as part of the
+// module's public surface. Only valid at the top level (enforced by the module
+// system in a later phase).
 func (p *Parser) parseExport() (*ExportStmt, error) {
 	pos := p.currentPos()
 	p.advance() // skip 'export'
@@ -378,6 +399,9 @@ func (p *Parser) parseExport() (*ExportStmt, error) {
 	return &ExportStmt{Pos: pos, Stmt: stmt}, nil
 }
 
+// parseBlock consumes `{ stmt* }` and returns a BlockStmt. It is the only
+// parser that handles matching braces — individual statement parsers call
+// parseBlock rather than consuming braces themselves.
 func (p *Parser) parseBlock() (*BlockStmt, error) {
 	pos := p.currentPos()
 	if p.current().Kind != LeftBrace {

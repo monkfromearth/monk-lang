@@ -1148,3 +1148,76 @@ show(to_string(length(arr)))`)
 		t.Errorf("want '5', got %q", out)
 	}
 }
+
+// ── Record field unboxing tests ──────────────────────────────────────────────
+
+// Verify that record field reads emit direct index access, not monk_record_get.
+func TestRecordFieldReadUnboxed(t *testing.T) {
+	_, src := runMonkTyped(t, `let r = {x: 1, y: 2}
+show(to_string(r.x))`)
+	if strings.Contains(src, "monk_record_get") {
+		t.Errorf("expected no monk_record_get for typed record read, generated:\n%s", src)
+	}
+	if !strings.Contains(src, "record_val->fields[") {
+		t.Errorf("expected direct fields[] access in generated C:\n%s", src)
+	}
+}
+
+// Verify that record field writes emit direct index assignment, not monk_record_set.
+func TestRecordFieldWriteUnboxed(t *testing.T) {
+	_, src := runMonkTyped(t, `let r = {x: 0, y: 0}
+r.x = 42
+show(to_string(r.x))`)
+	if strings.Contains(src, "monk_record_set") {
+		t.Errorf("expected no monk_record_set for typed record write, generated:\n%s", src)
+	}
+}
+
+// Verify correct runtime behavior for scalar record field reads.
+func TestRecordFieldReadScalarCorrect(t *testing.T) {
+	out, _ := runMonkTyped(t, `let r = {x: 10, y: 20}
+show(to_string(r.x + r.y))`)
+	if out != "30" {
+		t.Errorf("want '30', got %q", out)
+	}
+}
+
+// Verify correct runtime behavior for record field writes (scalar floats).
+// to_string on floats uses %g (strips trailing zeros), so 9.0 → "9".
+func TestRecordFieldWriteScalarCorrect(t *testing.T) {
+	out, _ := runMonkTyped(t, `let r = {x: 0.0, y: 0.0, z: 0.0}
+r.x = 3.0
+r.y = r.x * 2.0
+r.z = r.x + r.y
+show(to_string(to_int(r.z)))`)
+	if out != "9" {
+		t.Errorf("want '9', got %q", out)
+	}
+}
+
+// Verify that float record fields stay scalar through arithmetic chains.
+func TestRecordFieldFloatChain(t *testing.T) {
+	out, _ := runMonkTyped(t, `let r = {a: 1.0, b: 3.0}
+let sum = r.a + r.b
+show(to_string(to_int(sum)))`)
+	if out != "4" {
+		t.Errorf("want '4', got %q", out)
+	}
+}
+
+// Verify record field unboxing works in a tight accumulation loop.
+func TestRecordFieldLoopAccumulate(t *testing.T) {
+	out, _ := runMonkTyped(t, `let r = {x: 0, y: 0}
+let sum = 0
+let i = 0
+while i < 100 {
+    r.x = i
+    r.y = r.x * 2
+    sum += r.x + r.y
+    i += 1
+}
+show(to_string(sum))`)
+	if out != "14850" {
+		t.Errorf("want '14850', got %q", out)
+	}
+}

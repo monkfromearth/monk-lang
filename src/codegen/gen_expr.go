@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/monkfromearth/monk-lang/syntax"
+	"github.com/monkfromearth/monk-lang/types"
 )
 
 // Expression emission — BOXED path.
@@ -13,6 +14,8 @@ import (
 // When the type checker told us a scalar storage is safe, the caller should
 // use the typed variants in unbox.go (emitExprTyped) instead.
 
+// emitExpr returns a C expression string that evaluates to a MonkValue.
+// This is the classic boxed path; for scalar-unboxed variants call emitExprTyped.
 func (g *generator) emitExpr(expr syntax.Expr) string {
 	switch e := expr.(type) {
 	case *syntax.NumberExpr:
@@ -76,6 +79,23 @@ func (g *generator) emitExpr(expr syntax.Expr) string {
 			tmpObj, tmpObj, tmpIdx, tmpObj, tmpIdx)
 
 	case *syntax.PropertyExpr:
+		// Fast path: if the object's record type is statically known, use direct
+		// index access (obj.record_val->fields[N].value) instead of the runtime
+		// monk_record_get strcmp loop. For scalar fields, skip the deep copy too.
+		if g.info != nil {
+			if objType, ok := g.info.Types[e.Object]; ok && objType != nil {
+				idx, fieldSt := recordField(objType, e.Property)
+				if idx >= 0 {
+					obj := g.emitExpr(e.Object)
+					fieldVal := fmt.Sprintf("(%s).record_val->fields[%d].value", obj, idx)
+					// Scalars: no heap allocation, deep copy is a no-op — skip it.
+					if isRawScalar(fieldSt) {
+						return fieldVal
+					}
+					return fmt.Sprintf("monk_deep_copy(%s)", fieldVal)
+				}
+			}
+		}
 		obj := g.emitExpr(e.Object)
 		return fmt.Sprintf("monk_record_get(%s, \"%s\")", obj, e.Property)
 
@@ -93,6 +113,27 @@ func (g *generator) emitExpr(expr syntax.Expr) string {
 		if len(e.Fields) == 0 {
 			return "monk_record(NULL, 0)"
 		}
+		// Normalize field order to match the type-checker's Fields slice order.
+		// This is required for index-based field access (recordField) to be
+		// correct: index N in the type must align with runtime fields[N]. For
+		// anonymous records the order already matches; for named records the
+		// literal source order may differ from the type declaration order.
+		if g.info != nil {
+			if recType, ok := g.info.Types[e]; ok && recType != nil && recType.Kind == types.KindRecord {
+				valMap := make(map[string]string, len(e.Fields))
+				for _, f := range e.Fields {
+					valMap[f.Key] = g.emitExpr(f.Value)
+				}
+				fields := make([]string, 0, len(recType.Fields))
+				for _, tf := range recType.Fields {
+					if v, ok2 := valMap[tf.Name]; ok2 {
+						fields = append(fields, fmt.Sprintf("{.key = %s, .value = %s}", cString(tf.Name), v))
+					}
+				}
+				return fmt.Sprintf("monk_record((MonkRecordField[]){%s}, %d)", strings.Join(fields, ", "), len(fields))
+			}
+		}
+		// Fallback: emit in source order (no type info available).
 		fields := make([]string, len(e.Fields))
 		for i, f := range e.Fields {
 			fields[i] = fmt.Sprintf("{.key = %s, .value = %s}", cString(f.Key), g.emitExpr(f.Value))
@@ -110,6 +151,8 @@ func (g *generator) emitExpr(expr syntax.Expr) string {
 	return "monk_none() /* unhandled expr */"
 }
 
+// emitBinary emits a binary expression as a boxed MonkValue. For the typed
+// (unboxed) path, callers use emitExprTyped which short-circuits to raw C ops.
 func (g *generator) emitBinary(e *syntax.BinaryExpr) string {
 	left := g.emitExpr(e.Left)
 	right := g.emitExpr(e.Right)

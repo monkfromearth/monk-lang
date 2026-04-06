@@ -132,6 +132,25 @@ func elemZero(s storageKind) string {
 	return "monk_none()"
 }
 
+// recordField looks up a field in a typed record and returns its index (into
+// the runtime fields[] array) and the corresponding storageKind for the field
+// value. Returns (-1, storeBoxed) when the type is unknown, not a record, or
+// the field name is not present.
+//
+// The index is ONLY valid if record literals for this type are emitted with
+// fields in type-declaration order (enforced by emitExpr's RecordExpr branch).
+func recordField(t *types.Type, name string) (int, storageKind) {
+	if t == nil || t.Kind != types.KindRecord {
+		return -1, storeBoxed
+	}
+	for i, f := range t.Fields {
+		if f.Name == name {
+			return i, storageFor(f.Type)
+		}
+	}
+	return -1, storeBoxed
+}
+
 // storageFor picks the storage kind for a given static Monk type.
 //   - Non-optional int/float/bool → raw scalar storage
 //   - Non-optional int[]/float[]/bool[] → typed-array storage (MonkValue
@@ -278,6 +297,8 @@ func (g *generator) emitExprTyped(expr syntax.Expr) (string, storageKind) {
 		return g.emitCallTyped(e)
 	case *syntax.IndexExpr:
 		return g.emitIndexTyped(e)
+	case *syntax.PropertyExpr:
+		return g.emitPropertyTyped(e)
 	}
 
 	// Fall through — any other expression goes through the classic boxed path.
@@ -318,6 +339,54 @@ func (g *generator) emitIndexTyped(e *syntax.IndexExpr) (string, storageKind) {
 		"({MonkValue %s=%s; int64_t %s=%s; (%s<0||%s>=%s.%s->length)?(monk_panic(\"index out of bounds\"),%s):%s.%s->data[%s];})",
 		tobj, objCode, tidx, idxC, tidx, tidx, tobj, ptrField, zero, tobj, ptrField, tidx,
 	), elemSt
+}
+
+// emitPropertyTyped handles record.field access when the object's type is
+// statically known. For scalar fields (int/float/bool) it extracts the raw C
+// value directly from the fields array by index, avoiding the runtime
+// monk_record_get strcmp loop entirely. For boxed fields it returns the
+// MonkValue via the same index path but with a deep copy (storeBoxed).
+//
+// Falls back to the classic boxed path when type info is unavailable.
+func (g *generator) emitPropertyTyped(e *syntax.PropertyExpr) (string, storageKind) {
+	objType, ok := g.info.Types[e.Object]
+	if !ok || objType == nil {
+		return g.emitExpr(e), storeBoxed
+	}
+	idx, fieldSt := recordField(objType, e.Property)
+	if idx < 0 {
+		return g.emitExpr(e), storeBoxed
+	}
+
+	// Simple ident object: access directly, no temp.
+	if _, isIdent := e.Object.(*syntax.IdentExpr); isIdent {
+		obj := g.emitExpr(e.Object)
+		fieldVal := fmt.Sprintf("%s.record_val->fields[%d].value", obj, idx)
+		switch fieldSt {
+		case storeInt:
+			return fieldVal + ".int_val", storeInt
+		case storeFloat:
+			return fieldVal + ".float_val", storeFloat
+		case storeBool:
+			return fieldVal + ".bool_val", storeBool
+		}
+		// Boxed field: deep copy so caller can free/store safely.
+		return fmt.Sprintf("monk_deep_copy(%s)", fieldVal), storeBoxed
+	}
+
+	// Complex object: stash in a temp to avoid double evaluation.
+	obj := g.emitExpr(e.Object)
+	tobj := g.newTemp()
+	fieldVal := fmt.Sprintf("%s.record_val->fields[%d].value", tobj, idx)
+	switch fieldSt {
+	case storeInt:
+		return fmt.Sprintf("({MonkValue %s=%s; %s.int_val;})", tobj, obj, fieldVal), storeInt
+	case storeFloat:
+		return fmt.Sprintf("({MonkValue %s=%s; %s.float_val;})", tobj, obj, fieldVal), storeFloat
+	case storeBool:
+		return fmt.Sprintf("({MonkValue %s=%s; %s.bool_val;})", tobj, obj, fieldVal), storeBool
+	}
+	return fmt.Sprintf("({MonkValue %s=%s; monk_deep_copy(%s);})", tobj, obj, fieldVal), storeBoxed
 }
 
 // emitCallTyped handles calls where the callee is a fully-unboxed user

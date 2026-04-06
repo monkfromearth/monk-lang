@@ -49,10 +49,13 @@ type scope struct {
 	names  map[string]*Binding
 }
 
+// newScope allocates a fresh scope chained to parent. Pass nil for the top-level scope.
 func newScope(parent *scope) *scope {
 	return &scope{parent: parent, names: make(map[string]*Binding)}
 }
 
+// lookup walks the scope chain and returns the binding for name, or nil if
+// the name is not declared in any enclosing scope.
 func (s *scope) lookup(name string) *Binding {
 	if b, ok := s.names[name]; ok {
 		return b
@@ -63,6 +66,8 @@ func (s *scope) lookup(name string) *Binding {
 	return nil
 }
 
+// declare adds name to the current scope. Shadowing an outer binding is
+// intentional (inner let/const always wins within its block).
 func (s *scope) declare(name string, t *Type, isConst bool) {
 	s.names[name] = &Binding{Type: t, IsConst: isConst}
 }
@@ -76,6 +81,8 @@ type checker struct {
 	info       *Info            // collected type info, returned to codegen
 }
 
+// newChecker creates a checker with a fresh top-level scope pre-populated
+// with all builtin function signatures.
 func newChecker() *checker {
 	c := &checker{
 		scope:    newScope(nil),
@@ -161,6 +168,9 @@ func (c *checker) declareBuiltins() {
 
 // ─── Program / statements ──────────────────────────────────────────────────
 
+// checkProgram runs in three sub-passes: (1) resolve named type declarations,
+// (2) hoist top-level function signatures for recursive/forward references,
+// (3) type-check every statement in order.
 func (c *checker) checkProgram(prog *syntax.Program) error {
 	// Two-pass: (1) hoist all function declarations and type defs so forward
 	// references work, (2) check everything.
@@ -197,6 +207,7 @@ func (c *checker) checkProgram(prog *syntax.Program) error {
 	return nil
 }
 
+// checkStmt dispatches to the appropriate check function for each statement kind.
 func (c *checker) checkStmt(stmt syntax.Stmt) error {
 	switch s := stmt.(type) {
 	case *syntax.VarDeclStmt:
@@ -236,6 +247,9 @@ func (c *checker) checkStmt(stmt syntax.Stmt) error {
 	return nil
 }
 
+// checkBlock type-checks all statements in a block. When newScope is true, a
+// child scope is pushed for the block and popped on return. Passing false is
+// used by guard's against block, which shares the outer scope.
 func (c *checker) checkBlock(b *syntax.BlockStmt, newScope bool) error {
 	if newScope {
 		c.scope = newScopeOf(c.scope)
@@ -249,4 +263,6 @@ func (c *checker) checkBlock(b *syntax.BlockStmt, newScope bool) error {
 	return nil
 }
 
+// newScopeOf is a named alias for newScope used at call sites where the intent
+// ("create a scope OF this parent") aids readability.
 func newScopeOf(parent *scope) *scope { return newScope(parent) }

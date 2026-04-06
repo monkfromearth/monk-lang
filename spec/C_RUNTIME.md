@@ -1,13 +1,13 @@
 # Monk C Runtime Reference
 
-> API reference for `runtime.h` and `runtime.c` — the C library linked into every compiled Monk program.
-> Source: `src/runtime/runtime.h`, `src/runtime/runtime.c`
+> API reference for the C runtime library linked into every compiled Monk program.
+> Source: `src/runtime/` — see `src/runtime/INDEX.md` for the file map.
 
 ---
 
 ## Overview
 
-The runtime is ~860 lines of C11. Every Monk program includes it. The codegen emits calls to these functions — Monk `+` becomes `monk_add()`, Monk `show` becomes `monk_show()`, etc.
+The runtime is ~1,000 lines of C11, split across 7 `.c` files and 2 headers (`runtime.h` public API, `internal.h` shared helpers). Every Monk program links all of them. The codegen emits calls to these functions — Monk `+` becomes `monk_add()`, Monk `show` becomes `monk_show()`, etc.
 
 **Unboxed fast path (Phase 6).** When the type checker proves a variable is `int`/`float`/`bool`, codegen stores it as a raw `int64_t`/`double`/`bool` and emits raw C arithmetic that skips the runtime entirely. The runtime is only called at boxing boundaries (show, to_string, etc.) and for heap types (strings, arrays, records).
 
@@ -118,7 +118,7 @@ Recursively frees a value. Primitives are no-ops. Frees strings, array data + el
 
 Exported so codegen can raise runtime errors on the unboxed fast path (e.g., `int / 0` or `int % 0` produces the same "division by zero" / "modulo by zero" error as the boxed path). Prints to stderr and calls `exit(1)`.
 
-Prior to Phase 6 unboxing, `monk_panic` was `static` in `runtime.c`; now it's declared in `runtime.h` and linked into the generated object file.
+Prior to Phase 6 unboxing, `monk_panic` was `static` in the runtime; now it's declared in `runtime.h` and linked into the generated object file.
 
 ### Memory Pattern in Generated C
 
@@ -348,9 +348,11 @@ Guard contexts form a **linked-list stack**. Nested guards work correctly. `monk
 The runtime is compiled alongside the generated C:
 
 ```bash
-cc -std=c11 -O2 -I<runtime_dir> program.c runtime.c -lm -o program
+cc -std=c11 -O3 -flto -I<runtime_dir> program.c \
+   value.c arith.c string.c container.c math.c builtins.c error.c \
+   -lm -o program
 ```
 
 The `-lm` flag links the math library (required for `sin`, `cos`, `sqrt`, etc.).
 
-When using the `monk` CLI, the runtime is embedded in the Go binary via `go:embed` and extracted to `~/.cache/monk/runtime/` on first use.
+When using the `monk` CLI, all runtime files are embedded in the Go binary via `go:embed` and extracted to `~/.cache/monk/runtime/` on first use.

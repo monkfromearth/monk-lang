@@ -30,6 +30,14 @@ func freeVars(fn *syntax.FuncExpr) []string {
 	return result
 }
 
+func copyLocals(m map[string]bool) map[string]bool {
+	c := make(map[string]bool, len(m))
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
+}
+
 // collectRefs walks statements, tracking local declarations and collecting
 // references to variables not in locals.
 func collectRefs(stmts []syntax.Stmt, locals map[string]bool, refs map[string]bool) {
@@ -56,7 +64,10 @@ func collectRefsStmt(stmt syntax.Stmt, locals map[string]bool, refs map[string]b
 		}
 	case *syntax.IfStmt:
 		collectRefsExpr(s.Condition, locals, refs)
-		collectRefs(s.Then.Stmts, locals, refs)
+		// Copy locals so declarations in the then-branch don't bleed into the
+		// else-branch (and don't leak into the outer scope after the if).
+		thenLocals := copyLocals(locals)
+		collectRefs(s.Then.Stmts, thenLocals, refs)
 		if s.Else != nil {
 			collectRefsStmt(s.Else, locals, refs)
 		}
@@ -114,9 +125,11 @@ func collectRefsExpr(expr syntax.Expr, locals map[string]bool, refs map[string]b
 			collectRefsExpr(f.Value, locals, refs)
 		}
 	case *syntax.FuncExpr:
-		// Nested function — collect its free vars but don't add its params
-		// to the current scope. Its own free vars become refs for us.
-		inner := make(map[string]bool)
+		// Nested function: seed inner with the current scope so that outer
+		// locals aren't mistakenly reported as free vars. Outer-scope vars NOT
+		// in locals (grandparent captures) remain absent and correctly flow into
+		// refs. The nested function's own params override any outer binding.
+		inner := copyLocals(locals)
 		for _, p := range e.Params {
 			inner[p.Name] = true
 		}

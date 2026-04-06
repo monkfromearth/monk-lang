@@ -33,16 +33,19 @@ func (g *generator) deriveFuncStorage(e *syntax.FuncExpr) funcStorage {
 	if sig == nil {
 		return fs
 	}
-	// Require a known return type and all known param types to be scalar.
+	// Require a known return type and all known param types to be RAW scalars
+	// (int64_t / double / bool). Typed-array kinds (storeIntArray etc.) are
+	// still MonkValue at the C level — they can't participate in an unboxed
+	// function signature, so isRawScalar guards both the return and params.
 	fs.Return = storageFor(sig.Return)
-	if fs.Return == storeBoxed {
+	if !isRawScalar(fs.Return) {
 		return fs
 	}
 	allScalar := true
 	for i, p := range sig.Params {
 		ps := storageFor(p)
 		fs.Params[i] = ps
-		if ps == storeBoxed {
+		if !isRawScalar(ps) {
 			allScalar = false
 		}
 	}

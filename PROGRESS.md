@@ -570,6 +570,28 @@ Handles both `MONK_INT_ARRAY` (typed backing store) and `MONK_ARRAY` (generic) a
 
 Note: the `for_in_sum` benchmark (10M elements) didn't improve because its bottleneck is `range(10M)` allocation (80MB), not iteration overhead. Real programs iterating over existing arrays will benefit.
 
+### Record field unboxing (2026-04-06)
+
+Record field reads and writes now use direct index-based access instead of the runtime `monk_record_get`/`monk_record_set` strcmp loop.
+
+**Read path:** `emitPropertyTyped` in `unbox.go` — for scalar fields (int/float/bool), extracts the raw C scalar directly: `obj.record_val->fields[N].value.float_val`. No MonkValue boxing, no strcmp. For boxed fields (string, array, nested record), falls back to `monk_deep_copy(fields[N].value)` (still index-based, no strcmp). The boxed `emitExpr` path also gained the index optimization: `(obj).record_val->fields[N].value` instead of `monk_record_get`.
+
+**Write path:** `emitAssign` — for `rec.field = value` where rec is a plain ident with a statically known record type, emits `obj.record_val->fields[N].value = monk_float(rhs)` for scalar fields (no free needed — scalars have no heap allocation) and `{ MonkValue tmp = monk_deep_copy(rhs); monk_free(obj.record_val->fields[N].value); obj.record_val->fields[N].value = tmp; }` for boxed fields. All path avoid the strcmp loop.
+
+**RecordExpr normalization:** Record literals with a known type are emitted with fields in type-declaration order (not source order). This guarantees field index N in the runtime `fields[]` array always matches index N in `objType.Fields` — the precondition for index-based access to be correct. For anonymous records (inferred from literal), source order and type order already match.
+
+**`recordField()` helper:** Takes `*types.Type` and field name, returns `(index, storageKind)`. Used by all three paths above.
+
+**Benchmark result:** `record_access` — 25× C → **~1.1× C** (parity).
+
+**6 new tests:** read unboxed (checks no `monk_record_get`), write unboxed (checks no `monk_record_set`), scalar read/write correctness, float chain, loop accumulation.
+
+**CodeRabbit fixes (same session):**
+- `capture.go`: else-branch now uses `copyLocals(locals)` like the then-branch — prevents variables declared in else from leaking into the outer scope.
+- `types/types.go`: `funcExactMatch` nil-guards `src.Return`/`dst.Return` before accessing `.Kind` — prevents panic on `none`-returning function types.
+
+Tests: 648 → 463 Go + 163 C runtime = 626 total. All 23 examples pass. All 21 benchmarks match expected.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
@@ -579,8 +601,8 @@ Note: the `for_in_sum` benchmark (10M elements) didn't improve because its bottl
 | 6 | Typed array backing store (`int64_t*`) | **Complete** ✅ — matmul ~2× C |
 | 6 | Unboxed for-in over typed arrays | **Complete** ✅ — raw scalar loop variable |
 | 6 | Typed array index returns T not T? | **Complete** ✅ — removes + 0 workaround |
+| 6 | Record field unboxing | **Complete** ✅ — record_access 25×→~1× C |
 | 6 | Bounds-check elision for typed arrays | Deferred — matmul/sieve/nbody to ~1× C |
-| 6 | Record field unboxing | Deferred — record_access 25x→~1x |
 | 6 | Copy-on-write for arrays | Deferred — binary_trees 31x→~1x |
 | 6 | Closure inlining (non-escaping) | Deferred — closure_invoke 20x→~1x |
 | 7 | Module System | Not started |

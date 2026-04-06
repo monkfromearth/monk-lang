@@ -40,12 +40,17 @@ func (g *generator) emitStmt(stmt syntax.Stmt) {
 }
 
 func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
-	// Function declarations: hoist the C function, track the name mapping
+	// Function declarations: hoist the C function, track the name mapping,
+	// and emit a MonkValue wrapper so the function can be used as a value.
 	if fnExpr, isFn := s.Value.(*syntax.FuncExpr); isFn {
+		// Pre-register the function name so recursive self-references inside
+		// the body can find it during hoisting.
 		g.funcCount++
 		cFuncName := fmt.Sprintf("_monk_func_%d", g.funcCount)
 		g.funcNames[s.Name] = cFuncName
-		g.hoistFunction(cFuncName, fnExpr)
+		// emitFuncValueNamed uses the pre-allocated cName (doesn't increment funcCount again).
+		funcVal := g.emitFuncValueNamed(cFuncName, fnExpr)
+		g.emitLine("    MonkValue %s = %s;\n", mangleName(s.Name), funcVal)
 		return
 	}
 
@@ -344,12 +349,13 @@ func (g *generator) emitFor(s *syntax.ForStmt) {
 }
 
 func (g *generator) emitReturn(s *syntax.ReturnStmt) {
+	// Save captured variables back to _self->captures before returning.
+	g.emitCaptureSaveBack()
+
 	if s.Value == nil {
 		if g.retStorage == storeBoxed {
 			g.emitLine("    return monk_none();\n")
 		} else {
-			// Bare return in a void-scalar fn doesn't really happen (type
-			// checker rejects it), but be safe.
 			g.emitLine("    return 0;\n")
 		}
 		return
@@ -361,6 +367,15 @@ func (g *generator) emitReturn(s *syntax.ReturnStmt) {
 	// Unboxed return: evaluate in typed form and coerce.
 	code, kind := g.emitExprTyped(s.Value)
 	g.emitLine("    return %s;\n", coerce(code, kind, g.retStorage))
+}
+
+// emitCaptureSaveBack writes local capture variables back to _self->captures
+// so mutations persist across calls. Only emits if the current function has captures.
+func (g *generator) emitCaptureSaveBack() {
+	for i, name := range g.currentCaptures {
+		mn := mangleName(name)
+		g.emitLine("    _self->captures[%d] = %s;\n", i, mn)
+	}
 }
 
 func (g *generator) emitGuard(s *syntax.GuardStmt) {

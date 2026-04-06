@@ -9,9 +9,9 @@ type TokenKind int
 
 const (
 	// Special tokens
-	Illegal TokenKind = iota // unrecognized character
-	Eof                      // end of input
-	Identifier               // user-defined name (variable, function, type)
+	Illegal    TokenKind = iota // unrecognized character
+	Eof                         // end of input
+	Identifier                  // user-defined name (variable, function, type)
 
 	// Literal tokens
 	IntLiteral      // integer: 42, 0xFF, 0b1010, 0o77, 1_000

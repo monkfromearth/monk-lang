@@ -91,19 +91,37 @@ func (c *checker) resolveTypeExpr(te *syntax.TypeExpr, pos syntax.Pos) (*Type, e
 // Used during hoisting so recursive/forward references typecheck.
 func (c *checker) funcSignature(fn *syntax.FuncExpr) (*Type, error) {
 	params := make([]*Type, len(fn.Params))
+	seenDefault := false
 	for i, p := range fn.Params {
 		// Distinguish "missing annotation" (Name == "" AND not a function
 		// type) from a legitimate function-type annotation which has IsFunc
 		// true and Name == "". Untyped params fall back to Any for ergonomics.
 		if p.Type.Name == "" && !p.Type.IsFunc {
 			params[i] = Any
-			continue
+		} else {
+			pt, err := c.resolveTypeExpr(&p.Type, fn.Pos)
+			if err != nil {
+				return nil, err
+			}
+			params[i] = pt
 		}
-		pt, err := c.resolveTypeExpr(&p.Type, fn.Pos)
-		if err != nil {
-			return nil, err
+		// Validate defaults: must be trailing (no required param after a default).
+		if p.Default != nil {
+			seenDefault = true
+			dt, err := c.inferExpr(p.Default)
+			if err != nil {
+				return nil, err
+			}
+			if !AssignableTo(dt, params[i]) {
+				return nil, newTypeError(fn.Pos,
+					"default value for parameter '%s': cannot assign %s to %s",
+					p.Name, dt, params[i])
+			}
+		} else if seenDefault {
+			return nil, newTypeError(fn.Pos,
+				"required parameter '%s' cannot follow a parameter with a default value",
+				p.Name)
 		}
-		params[i] = pt
 	}
 	var ret *Type
 	if fn.ReturnType.Name == "" && !fn.ReturnType.IsFunc {
@@ -115,7 +133,17 @@ func (c *checker) funcSignature(fn *syntax.FuncExpr) (*Type, error) {
 			return nil, err
 		}
 	}
-	return FuncType(params, ret), nil
+	ft := FuncType(params, ret)
+	// Compute MinParams: count leading required (non-default) params.
+	ft.MinParams = len(params)
+	for i := len(fn.Params) - 1; i >= 0; i-- {
+		if fn.Params[i].Default != nil {
+			ft.MinParams = i
+		} else {
+			break
+		}
+	}
+	return ft, nil
 }
 
 // ─── Var decl & assignment ────────────────────────────────────────────────

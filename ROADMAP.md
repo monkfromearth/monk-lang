@@ -96,7 +96,7 @@ The compiler core. Walk the AST, emit C source code.
 - [x] Function expressions → C function definitions + closure struct
 - [x] Closure capture by copy → snapshot environment into struct
 - [x] Self-reference for recursion
-- [ ] Default parameter values (deferred)
+- [x] Default parameter values
 
 ### Output
 - [x] Generate valid, compilable `.c` file
@@ -154,6 +154,13 @@ Static analysis pass over the AST, before code generation.
 - [ ] Typed array unboxing — back `int[]` with `int64_t*`, `float[]` with `double*`. Matmul is the motivating case (12× C today). Requires new runtime variant and ~4-6 hours.
 - [ ] Unboxed for-loop variables over typed iterables
 - [ ] Runtime typeof/is_* inlined for known-type values
+- [x] Default parameter values — arity-range check in type checker; `padDefaults()` fills defaults at call site in codegen.
+- [x] First-class function values in codegen — closures, trampolines, `monk_make_function`, capture-by-copy with save-back.
+- [x] Higher-order builtins wired into type checker — `map`, `filter`, `reduce` recognized as builtins; `funcExactMatch` accepts `Any` wildcard for callbacks.
+- [x] `abs()` return type — type-preserving (int→int, float→float).
+- [x] Hex/binary/octal underscore literals in codegen — stripped during emission.
+- [x] Function parameter deep copy — `monk_deep_copy` emitted at entry for each boxed param.
+- [ ] Typed array unboxing — back `int[]` with `int64_t*`, `float[]` with `double*`. Matmul is the motivating case (12× C today). Requires new runtime variant and ~4-6 hours.
 
 ---
 

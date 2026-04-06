@@ -48,10 +48,11 @@ type Type struct {
 	Kind     Kind
 	Optional bool // T? — accepts T or none
 	// Kind-specific fields (only the relevant one is populated):
-	Elem   *Type            // Array element type
-	Fields []RecordTypeField // Record fields (ordered)
-	Params []*Type          // Func params
-	Return *Type            // Func return
+	Elem      *Type             // Array element type
+	Fields    []RecordTypeField // Record fields (ordered)
+	Params    []*Type           // Func params
+	Return    *Type             // Func return
+	MinParams int               // Minimum required args (len(Params) minus trailing defaults)
 	// RecordName is "" for anonymous records (literals like {x: 1, y: 2}).
 	// For `type Point = {x: int, y: int}; let p Point = ...`, the name is "Point".
 	// Typed records reject unknown fields; anonymous records read-graceful, write-strict.
@@ -85,9 +86,9 @@ func OptionalOf(t *Type) *Type {
 	return &c
 }
 
-// FuncType returns (params) -> ret.
+// FuncType returns (params) -> ret. MinParams defaults to len(params) (no defaults).
 func FuncType(params []*Type, ret *Type) *Type {
-	return &Type{Kind: KindFunc, Params: params, Return: ret}
+	return &Type{Kind: KindFunc, Params: params, Return: ret, MinParams: len(params)}
 }
 
 // String returns a human-readable type name for error messages.
@@ -251,21 +252,24 @@ func recordAssignable(src, dst *Type) bool {
 	return true
 }
 
-// funcExactMatch enforces exact equality on params and return type.
-// We deliberately don't use AssignableTo (which permits int->float widening)
-// because a function typed (float) -> int being called via a (int) -> int
-// slot would let callers pass a float where the callee expects an int.
-// Proper contravariance requires dst.Params[i] to be assignable to
-// src.Params[i], not the other way round — but that's overkill for pre-1.0,
-// so we require exact matching until we have a concrete need for variance.
+// funcExactMatch enforces exact equality on params and return type, with
+// Any acting as a wildcard on either side. This lets concrete function types
+// like (int) -> int flow into higher-order slots typed as (any) -> any
+// (e.g. map/filter/reduce callbacks).
 func funcExactMatch(src, dst *Type) bool {
 	if len(src.Params) != len(dst.Params) {
 		return false
 	}
 	for i := range src.Params {
+		if src.Params[i].Kind == KindAny || dst.Params[i].Kind == KindAny {
+			continue
+		}
 		if !Equal(src.Params[i], dst.Params[i]) {
 			return false
 		}
+	}
+	if src.Return.Kind == KindAny || dst.Return.Kind == KindAny {
+		return true
 	}
 	return Equal(src.Return, dst.Return)
 }

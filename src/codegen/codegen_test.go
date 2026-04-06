@@ -11,18 +11,20 @@ import (
 	"github.com/monkfromearth/monk-lang/types"
 )
 
-// runtimeTestSources lists the runtime .c files for test compilation. Keep
-// in sync with runtimeSources in src/main.go and the runtime/ directory.
-var runtimeTestSources = []string{
-	"value.c", "arith.c", "string.c", "container.c",
-	"math.c", "builtins.c", "error.c",
-}
-
 // runtimeArgs builds the cc argument list for linking the runtime into a test.
+// Discovers .c files from the runtime/ directory at test time — no manual
+// sync needed when new runtime files are added.
 func runtimeArgs(runtimeDir string) []string {
-	args := make([]string, 0, len(runtimeTestSources))
-	for _, f := range runtimeTestSources {
-		args = append(args, filepath.Join(runtimeDir, f))
+	entries, err := os.ReadDir(runtimeDir)
+	if err != nil {
+		return nil
+	}
+	var args []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".c") && name != "runtime_test.c" {
+			args = append(args, filepath.Join(runtimeDir, name))
+		}
 	}
 	return args
 }
@@ -540,12 +542,12 @@ let a = 100
 let b = a / get_divisor(5)
 show(to_string(b))`)
 	// The call must appear exactly once in the generated expression.
-	// Two occurrences expected: definition `static int64_t _monk_func_1(...)`
-	// and the single call `_monk_func_1(5)` — total 2. Three would mean the
-	// expression was evaluated twice.
+	// Three occurrences expected: definition `static int64_t _monk_func_1(...)`,
+	// the thunk `_monk_func_1(...)`, and the single call `_monk_func_1(5)`.
+	// Four would mean the expression was evaluated twice.
 	callCount := strings.Count(src, "_monk_func_1(")
-	if callCount != 2 {
-		t.Errorf("expected 2 occurrences (1 def + 1 call), got %d\n%s", callCount, src)
+	if callCount != 3 {
+		t.Errorf("expected 3 occurrences (1 def + 1 thunk + 1 call), got %d\n%s", callCount, src)
 	}
 }
 
@@ -734,5 +736,149 @@ func TestCodegenFilenameWithBackslashes(t *testing.T) {
 	cmd := exec.Command("cc", ccArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("cc failed on escaped path:\n%s\n\n%s", out, cSource)
+	}
+}
+
+// === UNDERSCORE NUMERIC LITERALS ===
+
+func TestCodegenUnderscoreInt(t *testing.T) {
+	// Monk allows 1_000_000 but C doesn't — codegen must strip underscores.
+	expectOutput(t, `let x = 1_000_000
+show(to_string(x))`, "1000000")
+}
+
+func TestCodegenUnderscoreHex(t *testing.T) {
+	expectOutput(t, `let x = 0xFF_FF
+show(to_string(x))`, "65535")
+}
+
+func TestCodegenUnderscoreBinary(t *testing.T) {
+	expectOutput(t, `let x = 0b1010_0101
+show(to_string(x))`, "165")
+}
+
+func TestCodegenUnderscoreTypedInt(t *testing.T) {
+	// Typed path (unboxed) must also strip underscores.
+	out, _ := runMonkTyped(t, `let x int = 1_000_000
+show(to_string(x))`)
+	if out != "1000000" {
+		t.Errorf("expected '1000000', got %q", out)
+	}
+}
+
+// === FUNCTION PARAM DEEP COPY (VALUE SEMANTICS) ===
+
+func TestCodegenFuncParamDeepCopyArray(t *testing.T) {
+	// Spec: function args are copies. Mutating arr inside the function
+	// must not affect the caller's data.
+	expectOutput(t, `let mutate = (arr array) none {
+    arr[0] = 999
+}
+let data = [10, 20, 30]
+mutate(data)
+show(to_string(data))`, "[10, 20, 30]")
+}
+
+func TestCodegenFuncParamDeepCopyRecord(t *testing.T) {
+	expectOutput(t, `let mutate = (r record) none {
+    r.x = 999
+}
+let p = {x: 1, y: 2}
+mutate(p)
+show(to_string(p.x))`, "1")
+}
+
+// === ABS RETURNS INT FOR INT INPUT ===
+
+func TestCodegenAbsReturnsIntForInt(t *testing.T) {
+	// abs() on an int arg should be usable in an int-returning function.
+	out, _ := runMonkTyped(t, `let my_abs = (a int, b int) int {
+    return abs(a * b)
+}
+show(to_string(my_abs(3, -7)))`)
+	if out != "21" {
+		t.Errorf("expected '21', got %q", out)
+	}
+}
+
+// === DEFAULT PARAMETER VALUES ===
+
+func TestCodegenDefaultParamOmitted(t *testing.T) {
+	expectOutput(t, `let greet = (name string, greeting string = "Hello") string {
+    return greeting + ", " + name
+}
+show(greet("Alice"))`, "Hello, Alice")
+}
+
+func TestCodegenDefaultParamProvided(t *testing.T) {
+	expectOutput(t, `let greet = (name string, greeting string = "Hello") string {
+    return greeting + ", " + name
+}
+show(greet("Alice", "Hey"))`, "Hey, Alice")
+}
+
+func TestCodegenDefaultParamMultiple(t *testing.T) {
+	expectOutput(t, `let f = (a int, b int = 10, c int = 20) int {
+    return a + b + c
+}
+show(to_string(f(1)))
+show(to_string(f(1, 2)))
+show(to_string(f(1, 2, 3)))`, "31\n23\n6")
+}
+
+func TestCodegenDefaultParamTypedUnboxed(t *testing.T) {
+	out, _ := runMonkTyped(t, `let add = (a int, b int = 100) int {
+    return a + b
+}
+show(to_string(add(5)))
+show(to_string(add(5, 7)))`)
+	if out != "105\n12" {
+		t.Errorf("expected '105\\n12', got %q", out)
+	}
+}
+
+// Regression: void closures (no explicit return) must still persist mutations
+// to captured variables through the fallback return path.
+func TestCodegenVoidClosureSavesCaptures(t *testing.T) {
+	out := runMonk(t, `let make_counter = () () -> none {
+    let count = 0
+    return () none {
+        count = count + 1
+        show(to_string(count))
+    }
+}
+let inc = make_counter()
+inc()
+inc()
+inc()`)
+	if out != "1\n2\n3" {
+		t.Errorf("expected '1\\n2\\n3', got %q", out)
+	}
+}
+
+func TestCodegenMapBuiltin(t *testing.T) {
+	out := runMonk(t, `let nums = [1, 2, 3]
+let doubled = map(nums, (x int) { return x * 2 })
+show(to_string(doubled))`)
+	if out != "[2, 4, 6]" {
+		t.Errorf("expected '[2, 4, 6]', got %q", out)
+	}
+}
+
+func TestCodegenFilterBuiltin(t *testing.T) {
+	out := runMonk(t, `let nums = [1, 2, 3, 4, 5]
+let evens = filter(nums, (x int) { return x % 2 == 0 })
+show(to_string(evens))`)
+	if out != "[2, 4]" {
+		t.Errorf("expected '[2, 4]', got %q", out)
+	}
+}
+
+func TestCodegenReduceBuiltin(t *testing.T) {
+	out := runMonk(t, `let nums = [1, 2, 3, 4, 5]
+let total = reduce(nums, (acc int, x int) { return acc + x }, 0)
+show(to_string(total))`)
+	if out != "15" {
+		t.Errorf("expected '15', got %q", out)
 	}
 }

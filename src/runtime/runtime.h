@@ -73,7 +73,7 @@ struct MonkRecord {
     int64_t length;
 };
 
-typedef MonkValue (*MonkFuncPtr)(MonkValue *args, int64_t argc);
+typedef MonkValue (*MonkFuncPtr)(struct MonkFunction *self, MonkValue *args, int64_t argc);
 
 struct MonkFunction {
     MonkFuncPtr fn;
@@ -90,6 +90,10 @@ MonkValue monk_bool(bool b);
 MonkValue monk_none(void);
 MonkValue monk_array(MonkValue *elements, int64_t length);  /* copies elements */
 MonkValue monk_record(MonkRecordField *fields, int64_t length); /* copies fields */
+MonkValue monk_make_function(MonkFuncPtr fn, MonkValue *captures, int64_t capture_count);
+
+/* Call a MonkValue function with an array of arguments. */
+MonkValue monk_call(MonkValue fn, MonkValue *args, int64_t argc);
 
 /* Abort with a runtime error message and exit 1. Available to codegen for
  * inline runtime errors (e.g. int division by zero on the unboxed path). */
@@ -179,6 +183,12 @@ MonkValue monk_drop(MonkValue arr, MonkValue n);
 MonkValue monk_take(MonkValue arr, MonkValue n);
 MonkValue monk_slice(MonkValue arr, MonkValue start, MonkValue end);
 MonkValue monk_range(MonkValue n);
+
+/* --- Higher-order array functions --- */
+
+MonkValue monk_map(MonkValue arr, MonkValue fn);
+MonkValue monk_filter(MonkValue arr, MonkValue fn);
+MonkValue monk_reduce(MonkValue arr, MonkValue fn, MonkValue initial);
 
 /* --- String indexing --- */
 

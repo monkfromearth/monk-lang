@@ -1,0 +1,51 @@
+// Higher-order functions: map, filter, reduce.
+// Functions are values — pass them around, return them, store them.
+
+// ─── map: transform every element ──────────────────────────────────────────
+
+let nums = [1, 2, 3, 4, 5]
+let doubled = map(nums, (x int) int { return x * 2 })
+show("doubled: " + to_string(doubled))   // [2, 4, 6, 8, 10]
+
+let words = ["hello", "world"]
+let upper = map(words, (s string) string { return to_upper_case(s) })
+show("upper: " + to_string(upper))   // ["HELLO", "WORLD"]
+
+// ─── filter: keep matching elements ────────────────────────────────────────
+
+let evens = filter(nums, (x int) boolean { return x % 2 == 0 })
+show("evens: " + to_string(evens))   // [2, 4]
+
+let long_words = filter(
+    ["hi", "monk", "a", "language"],
+    (s string) boolean { return length(s) > 2 }
+)
+show("long: " + to_string(long_words))   // ["monk", "language"]
+
+// ─── reduce: fold into a single value ──────────────────────────────────────
+
+let sum = reduce(nums, (acc int, x int) int { return acc + x }, 0)
+show("sum: " + to_string(sum))   // 15
+
+let product = reduce(nums, (acc int, x int) int { return acc * x }, 1)
+show("product: " + to_string(product))   // 120
+
+// ─── compose: chain transformations ────────────────────────────────────────
+
+let data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+// Sum of squares of even numbers
+let even_data = filter(data, (x int) boolean { return x % 2 == 0 })
+let squared = map(even_data, (x int) int { return x * x })
+let total = reduce(squared, (acc int, x int) int { return acc + x }, 0)
+show("sum of even squares: " + to_string(total))   // 220
+
+// ─── Pass named functions ──────────────────────────────────────────────────
+
+let double = (x int) int { return x * 2 }
+let is_positive = (x int) boolean { return x > 0 }
+
+let mixed = [-3, -1, 0, 2, 5]
+let positives = filter(mixed, is_positive)
+let doubled_pos = map(positives, double)
+show("doubled positives: " + to_string(doubled_pos))   // [4, 10]

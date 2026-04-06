@@ -16,10 +16,12 @@ import (
 func (g *generator) emitExpr(expr syntax.Expr) string {
 	switch e := expr.(type) {
 	case *syntax.NumberExpr:
+		// Strip underscores — Monk allows 1_000_000 but C doesn't.
+		lit := strings.ReplaceAll(e.Value, "_", "")
 		if e.IsInt {
-			return fmt.Sprintf("monk_int(%s)", e.Value)
+			return fmt.Sprintf("monk_int(%s)", lit)
 		}
-		return fmt.Sprintf("monk_float(%s)", e.Value)
+		return fmt.Sprintf("monk_float(%s)", lit)
 
 	case *syntax.StringExpr:
 		return fmt.Sprintf("monk_string(%s)", cString(e.Value))
@@ -170,11 +172,26 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 	// emitExpr always returns MonkValue for compatibility with the classic
 	// emission paths.
 	if ident, ok := e.Callee.(*syntax.IdentExpr); ok {
+		// User-defined function — pad defaults, then decide call form.
 		if cName, ok := g.funcNames[ident.Name]; ok {
+			fullArgs := g.padDefaults(cName, e.Args)
+			// Unboxed-all path: call with raw scalars and box the return.
 			if fs, unboxed := g.fnStorage[cName]; unboxed && fs.All {
-				rawCall := g.emitUnboxedCall(cName, fs, e.Args)
+				rawCall := g.emitUnboxedCall(cName, fs, fullArgs)
 				return boxExpr(rawCall, fs.Return)
 			}
+			// Boxed path: emit args as MonkValue, route through monk_call if
+			// the function has captures (needs _self for capture state).
+			args := make([]string, len(fullArgs))
+			for i, arg := range fullArgs {
+				args[i] = g.emitExpr(arg)
+			}
+			if g.funcHasCapture[cName] {
+				mn := mangleName(ident.Name)
+				return fmt.Sprintf("monk_call(%s, (MonkValue[]){%s}, %d)",
+					mn, strings.Join(args, ", "), len(args))
+			}
+			return fmt.Sprintf("%s(%s)", cName, strings.Join(args, ", "))
 		}
 	}
 
@@ -190,16 +207,29 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 			return fmt.Sprintf("%s(%s)", fn, argStr)
 		}
 
-		// User-defined function → call the hoisted C function
-		if cName, ok := g.funcNames[ident.Name]; ok {
-			return fmt.Sprintf("%s(%s)", cName, argStr)
-		}
-
-		// Unknown — forward reference or passed-in function
-		return fmt.Sprintf("%s(%s)", mangleName(ident.Name), argStr)
+		// Function value (parameter or variable) — indirect call via monk_call
+		name := mangleName(ident.Name)
+		return fmt.Sprintf("monk_call(%s, (MonkValue[]){%s}, %d)", name, argStr, len(e.Args))
 	}
 
-	return "monk_none() /* indirect call TODO */"
+	// Indirect call — call through the function value's fn pointer.
+	callee := g.emitExpr(e.Callee)
+	return fmt.Sprintf("monk_call(%s, (MonkValue[]){%s}, %d)", callee, argStr, len(e.Args))
+}
+
+// padDefaults returns a full argument list, appending default expressions
+// for any trailing parameters the caller omitted.
+func (g *generator) padDefaults(cName string, args []syntax.Expr) []syntax.Expr {
+	defs, ok := g.funcDefaults[cName]
+	if !ok || len(args) >= len(defs) {
+		return args
+	}
+	full := make([]syntax.Expr, len(defs))
+	copy(full, args)
+	for i := len(args); i < len(defs); i++ {
+		full[i] = defs[i] // the default expression from the FuncExpr
+	}
+	return full
 }
 
 // emitUnboxedCall emits a call to a fully-unboxed user function, coercing

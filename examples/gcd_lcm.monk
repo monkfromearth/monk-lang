@@ -1,0 +1,57 @@
+// GCD and LCM using Euclid's algorithm.
+// Demonstrates: recursion, modulo, functions calling functions.
+
+let gcd = (a int, b int) int {
+    if b == 0 { return a }
+    return gcd(b, a % b)
+}
+
+let my_abs = (x int) int {
+    if x < 0 { return 0 - x }
+    return x
+}
+
+let lcm = (a int, b int) int {
+    if a == 0 { return 0 }
+    if b == 0 { return 0 }
+    return my_abs(a * b) / gcd(a, b)
+}
+
+// ─── Test pairs ────────────────────────────────────────────────────────────
+
+show("gcd(12, 8)   = " + to_string(gcd(12, 8)))      // 4
+show("gcd(54, 24)  = " + to_string(gcd(54, 24)))     // 6
+show("gcd(17, 13)  = " + to_string(gcd(17, 13)))     // 1 (coprime)
+show("gcd(100, 75) = " + to_string(gcd(100, 75)))    // 25
+
+show("")
+
+show("lcm(4, 6)    = " + to_string(lcm(4, 6)))       // 12
+show("lcm(12, 18)  = " + to_string(lcm(12, 18)))     // 36
+show("lcm(7, 5)    = " + to_string(lcm(7, 5)))       // 35
+
+// ─── GCD of a list via reduce-style loop ───────────────────────────────────
+
+let numbers = [48, 36, 24, 60, 12]
+let result = 48
+let i = 1
+while i < length(numbers) {
+    let n int? = numbers[i]
+    if not is_none(n) {
+        result = gcd(result, to_int(n))
+    }
+    i += 1
+}
+show("")
+show("gcd of " + to_string(numbers) + " = " + to_string(result))   // 12
+
+// ─── Coprimality check ────────────────────────────────────────────────────
+
+let is_coprime = (a int, b int) boolean {
+    return gcd(a, b) == 1
+}
+
+show(to_string(15) + " and " + to_string(28) + ": coprime=" + to_string(is_coprime(15, 28)))
+show(to_string(12) + " and " + to_string(18) + ": coprime=" + to_string(is_coprime(12, 18)))
+show(to_string(7) + " and " + to_string(13) + ": coprime=" + to_string(is_coprime(7, 13)))
+show(to_string(9) + " and " + to_string(6) + ": coprime=" + to_string(is_coprime(9, 6)))

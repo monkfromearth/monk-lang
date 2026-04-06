@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-6 complete. 565 tests (414 Go + 151 C runtime). Working end-to-end.**
+**Status: Phases 1-6 complete (all deferred items shipped). 631 tests (468 Go + 163 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -215,9 +215,7 @@ Each directory now has an `INDEX.md` pointing to the right file.
 it takes the 7 split `.c` files. Internal helpers (`monk_malloc`,
 `monk_strdup`, `monk_realloc`, `utf8_strlen`, `utf8_offset`, `monk_to_go_float`
 renamed to `monk_as_c_double`, and `value_to_str` renamed to
-`monk_value_to_cstr`) became non-static and moved behind `internal.h`. The Go
-side tracks the list in `runtimeSources` + `embeddedRuntimeFiles` — those
-two slices are the single point of change when adding a runtime file.
+`monk_value_to_cstr`) became non-static and moved behind `internal.h`. The Go side embeds the entire `runtime/` directory via `embed.FS` — adding a new `.c` file requires only updating `runtime/INDEX.md`; no Go code changes needed.
 
 **Parser edge cases fixed en route:**
 
@@ -334,12 +332,101 @@ Built `editor/vscode/` — a full VS Code extension for Monk v2:
 
 Packaged as `monk-lang-0.1.0.vsix`. Works in VS Code and Cursor.
 
+### Examples and benchmark expansion (2026-04-06)
+
+Added 7 new example programs (13 → 20) and 4 new benchmarks (5 → 9) to showcase what the language can do today and to establish broader performance baselines.
+
+**New examples:**
+- `strings.monk` — split, trim, index_of, substring, to_upper/lower, char iteration, template literals
+- `bitwise.monk` — `&` `|` `^` `~` `<<` `>>`, hex/binary literals, popcount, power-of-2 check
+- `math.monk` — abs, floor/ceil/round, pow, sqrt, log, sin/cos/tan, asin/acos/atan, min/max, distance formula
+- `binary_search.monk` — while loops, integer arithmetic, array indexing
+- `value_semantics.monk` — copy-on-assign for arrays/records, const deep freeze, return-new-data pattern, sort proof
+- `gcd_lcm.monk` — Euclid's algorithm, recursion, functions calling functions, coprimality check
+- `sieve.monk` — Sieve of Eratosthenes, array alloc + mutation, twin prime detection
+
+**New benchmarks (all with C/Go/JS/Python reference implementations + expected.txt):**
+
+| Benchmark | What it measures | Expected checksum |
+|-----------|-----------------|-------------------|
+| `sieve` | Array alloc + index-write in nested loops (primes up to 1M) | 78498 |
+| `ackermann` | Deep recursion stress (A(3,11), millions of recursive calls) | 16381 |
+| `collatz` | While-loop + conditional branching (longest chain, n ≤ 1M) | 837799 |
+| `binary_trees` | Array allocation/iteration stress (pool-based, depth 14) | 1622016 |
+
+**Bugs and limitations surfaced while writing examples:**
+- **Function param deep copy missing.** Codegen passes arrays/records to functions without deep-copying at entry. Calling code's data is mutated through the function's parameter. Spec says function args are copies. Workaround: assign param to a local variable inside the function before mutating.
+- **`abs()` returns float for int args.** Type checker rejects `abs(a*b)` in int-returning functions. Workaround: `let my_abs = (x int) int { if x < 0 { return 0 - x } return x }`.
+- **Hex underscore literals generate invalid C.** Lexer accepts `0xFF_80_00` but codegen passes the literal through to C, which doesn't support underscores. Workaround: don't use underscores in hex literals.
+- **map/filter/reduce not wired.** Spec defines them, runtime has them, but type checker doesn't recognize them as builtins. Can't use higher-order functions in examples.
+- **Default parameter values not implemented.** Parser captures them but type checker rejects calls with fewer args than params.
+- **First-class function values not in codegen.** Returning functions from functions, storing closures — all parse and type-check but codegen emits `monk_none()`. Blocks closures example.
+
+All six logged in ROADMAP.md Phase 6 deferred section.
+
+### Three bug fixes (2026-04-06)
+
+Fixed three bugs surfaced while writing the new examples:
+
+**1. Function param deep copy (value semantics violation).**
+Codegen passed arrays/records to functions without deep-copying. A function mutating `arr[0] = 999` modified the CALLER's data — violating spec rule 3 ("values, not references"). Fix: emit `monk_deep_copy()` for every boxed param at function entry in `gen_func.go`. Scalar params (int/float/bool) skip the copy — they're stack values with nothing to alias. 2 integration tests.
+
+**2. `abs()` forced float return type.**
+The type checker declared `abs` as `(Any) -> Float`, but the spec says `abs(x: number) -> number` — type-preserving. The C runtime already preserves the kind (int in → int out). Fix: changed `abs` declaration to `(Any) -> Any` in `checker.go`, matching `min`/`max`. 2 checker tests.
+
+**3. Underscore numeric literals generated invalid C.**
+Lexer correctly accepts `1_000_000` and `0xFF_80_00` per spec, but codegen passed `e.Value` through to C, which doesn't support underscores in constants. Fix: `strings.ReplaceAll(e.Value, "_", "")` in both boxed (`gen_expr.go`) and unboxed (`unbox.go`) emission paths. 4 integration tests.
+
+Tests: 565 → 575 (424 Go + 151 C runtime). All linters clean.
+
+### Phase 6 deferred items (2026-04-06)
+
+Completed all six items deferred from Phase 6. Previously blocked higher-order patterns, closures, and default arguments.
+
+**1. First-class function values + closures in codegen.**
+
+Rewrote `src/codegen/gen_func.go`. Every anonymous function expression now emits:
+- A hoisted static C function `_monk_func_N(...)` with the actual body
+- A trampoline `_monk_func_N_thunk(MonkFunction *_self, MonkValue *args, int64_t argc)` matching the `MonkFuncPtr` typedef
+- A `monk_make_function(thunk, captures, count)` C expression at the use site
+
+Closures capture via `_self->captures[]`. At function entry, captured variables are loaded as locals. Mutations are written back to `_self->captures[]` before every `return` (explicit or fallback). This implements capture-by-copy with persistent state within a closure instance — matching the spec.
+
+New `src/codegen/capture.go` computes free variables (variables referenced in the body but not declared there or as params). Sibling hoisted-function names are excluded from captures — they're available as MonkValue locals.
+
+`MonkFuncPtr` signature gained a `MonkFunction *self` first parameter (was `(MonkValue *args, int64_t argc)`) so closures can access their capture slot. All trampoline and runtime code updated.
+
+**2. Default parameter values.**
+
+Type checker (`src/types/stmts.go`): validates default expressions, enforces trailing constraint (required params before defaults), computes `MinParams` on the `Type` struct. Arity check (`src/types/exprs.go`): `MinParams ≤ len(args) ≤ len(Params)`.
+
+Codegen: `padDefaults(cName, args)` in `gen_expr.go` fills missing trailing args from the `funcDefaults` map at call site. No runtime cost — defaults emitted inline.
+
+**3. map / filter / reduce wired.**
+
+New `src/runtime/higher_order.c`: C implementations calling through `fn.func_val->fn(fn.func_val, ...)`. Memory ownership: `monk_map` deep-copies via `monk_array` and frees callback results; `monk_filter` borrows from source then deep-copies on output; `monk_reduce` owns accumulator, frees after each step.
+
+Type checker (`src/types/checker.go`): added `map/filter/reduce` as known builtins with typed signatures. `funcExactMatch` updated to treat `KindAny` as a wildcard in both param and return positions — allows `(int)->int` callbacks where `(Any)->Any` is expected.
+
+**4. `abs()` return type, underscore literals, param deep copy** — these three were shipped as part of the "Three bug fixes" session above and are listed there.
+
+**Infrastructure improvements (same session):**
+
+- `pre-completion-checks.md` rewritten to be fully self-discovering: C runtime file list via glob, example count via glob, benchmark expected values read from `expected.txt` per directory. No manual updates when adding files.
+- `src/embed.go` replaced 10 individual `//go:embed` vars with a single `//go:embed runtime` + `embed.FS`. `runtimeSources()` and `extractEmbeddedRuntime()` now derive file lists from the FS. `codegen_test.go` uses `os.ReadDir`. Adding a new `.c` runtime file requires zero changes to Go code.
+- **Void closure bug (CodeRabbit find):** closures with no explicit `return` were silently discarding capture mutations. The fallback save-back was emitted OUTSIDE the inner body block, so captured variables were out of C scope. Moved to inside the block. Regression test added.
+- `higher_order.c` C-level unit tests added to `runtime_test.c` (12 new tests: map/filter/reduce on empty arrays, single elements, and multi-element arrays).
+
+**New examples:** `closures.monk`, `higher_order.monk`, `default_params.monk`.
+
+Tests: 575 → 631 (468 Go + 163 C runtime). All 23 examples pass. All 9 benchmarks match expected. All linters clean.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
 |-------|-------|--------|
 | 6 | Type System (static analysis) | **Complete** ✅ |
-| 6.5 | Type-informed codegen (unboxed ints/floats/arrays) | Not started |
+| 6 | Typed array unboxing + deferred codegen items | Not started |
 | 7 | Module System | Not started |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |

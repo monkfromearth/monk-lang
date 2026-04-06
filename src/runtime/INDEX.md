@@ -16,13 +16,14 @@ no GC, no refcount — pure value semantics via `monk_deep_copy`/`monk_free`.
 | `math.c`         | `abs`, `floor`/`ceil`/`round`, `sqrt`/`pow`/`log`/`log10`/`exp`, `min`/`max`, trig |
 | `builtins.c`     | `typeof`, `is_*`, file I/O, `env_get`, `exit`, `args`          |
 | `error.c`        | `monk_guard_begin_ctx`, `monk_guard_end`, `monk_throw`, `monk_current_error` (setjmp/longjmp) |
+| `higher_order.c` | `monk_map`, `monk_filter`, `monk_reduce` — higher-order array functions |
 | `runtime_test.c` | standalone C test harness                                      |
 
 ## Build
 
-`cc` links all `.c` files for each Monk binary. The Go side
-(`src/main.go`, `src/embed.go`) tracks the list in `runtimeSources` and
-`embeddedRuntimeFiles` — **keep those in sync with the files in this dir**.
+`cc` links all `.c` files for each Monk binary. The Go side embeds the
+entire `runtime/` directory via `embed.FS` — adding a new `.c` file here
+requires only updating this `INDEX.md`. No Go code changes needed.
 
 ## Design
 

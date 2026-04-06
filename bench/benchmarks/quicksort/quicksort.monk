@@ -25,25 +25,25 @@ sp += 1
 
 while sp > 0 {
     sp -= 1
-    let hi = stack[sp] + 0
+    let hi = stack[sp]
     sp -= 1
-    let lo = stack[sp] + 0
+    let lo = stack[sp]
 
     if lo < hi {
-        let pivot = arr[hi] + 0
+        let pivot = arr[hi]
         i = lo
         let j = lo
         while j < hi {
-            if arr[j] + 0 <= pivot {
-                let tmp = arr[i] + 0
-                arr[i] = arr[j] + 0
+            if arr[j] <= pivot {
+                let tmp = arr[i]
+                arr[i] = arr[j]
                 arr[j] = tmp
                 i += 1
             }
             j += 1
         }
-        let tmp = arr[i] + 0
-        arr[i] = arr[hi] + 0
+        let tmp = arr[i]
+        arr[i] = arr[hi]
         arr[hi] = tmp
 
         if i + 1 < hi {

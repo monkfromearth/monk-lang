@@ -24,19 +24,19 @@ while done == false {
     // Copy perm1 to perm
     let i = 0
     while i < N {
-        perm[i] = perm1[i] + 0
+        perm[i] = perm1[i]
         i += 1
     }
 
     // Count flips
     let flips = 0
-    while perm[0] + 0 != 0 {
-        let k = perm[0] + 0
+    while perm[0] != 0 {
+        let k = perm[0]
         let k2 = (k + 1) / 2
         i = 0
         while i < k2 {
-            let tmp = perm[i] + 0
-            perm[i] = perm[k - i] + 0
+            let tmp = perm[i]
+            perm[i] = perm[k - i]
             perm[k - i] = tmp
             i += 1
         }
@@ -60,15 +60,15 @@ while done == false {
             done = true
             found = true
         } else {
-            let perm0 = perm1[0] + 0
+            let perm0 = perm1[0]
             i = 0
             while i < r {
-                perm1[i] = perm1[i + 1] + 0
+                perm1[i] = perm1[i + 1]
                 i += 1
             }
             perm1[r] = perm0
             count[r] = count[r] - 1
-            if count[r] + 0 > 0 {
+            if count[r] > 0 {
                 found = true
             } else {
                 r += 1

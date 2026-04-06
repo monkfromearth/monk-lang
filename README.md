@@ -9,7 +9,7 @@
 A minimalist, readable, and performant programming language for the modern age.
 
 [![Build](https://img.shields.io/badge/build-passing-brightgreen?style=flat)](#status)
-[![Tests](https://img.shields.io/badge/tests-560_passing-brightgreen?style=flat)](#status)
+[![Tests](https://img.shields.io/badge/tests-620_passing-brightgreen?style=flat)](#status)
 [![Phase](https://img.shields.io/badge/phase-6_of_11-blue?style=flat)](#status)
 [![Go](https://img.shields.io/badge/Go-1.26.1+-00ADD8?style=flat&logo=go&logoColor=white)](#install)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat)](#license)
@@ -129,6 +129,27 @@ guard result = divide(10, 0) against error {
 }
 ```
 
+### Type System
+
+Monk has a static type checker. Annotations are optional — the checker infers from first assignment.
+
+```javascript
+let x = 42             // inferred: int
+let name = "monk"      // inferred: string
+let scores int[] = [1, 2, 3]  // typed array — backed by int64_t* in C
+let maybe int? = none  // optional type — int or none
+```
+
+Caught at compile time:
+- Type drift on reassignment (`x = "hi"` when `x` is `int` → error)
+- Cross-type equality (`5 == "5"` → error)
+- Missing record fields, wrong field types
+- Missing return paths in non-`none` functions
+- Arity and argument type mismatches
+- Loop variable mutation (`for i in arr { i = 0 }` → error)
+
+**Typed arrays compile to raw C types.** `int[]` uses `int64_t*` backing, not `MonkValue*`. Element reads/writes are direct pointer access. Scalar variables (`int`, `float`, `bool`) emit as `int64_t`, `double`, `bool` — no union overhead in arithmetic.
+
 ### Value Semantics
 
 Assignment copies. Function args copy. Your data is yours.
@@ -141,7 +162,7 @@ let sorted = bubble_sort(original)
 
 ## Examples
 
-The [`examples/`](examples/) directory has 13 working programs:
+The [`examples/`](examples/) directory has 23 working programs:
 
 | File | What it shows |
 |------|---------------|
@@ -154,10 +175,20 @@ The [`examples/`](examples/) directory has 13 working programs:
 | [`todo_list.monk`](examples/todo_list.monk) | Records, value semantics, data modeling |
 | [`collatz.monk`](examples/collatz.monk) | `while` loops, arrays, the Collatz conjecture |
 | [`sort.monk`](examples/sort.monk) | Bubble sort, value semantics proof |
-| [`types.monk`](examples/types.monk) | Type checker in action — inference, typed arrays, optionals |
+| [`types.monk`](examples/types.monk) | Type annotations, inference, typed arrays, optionals |
 | [`records.monk`](examples/records.monk) | Nested records with structural typing |
 | [`optionals.monk`](examples/optionals.monk) | `T?` semantics, `is_none`, graceful reads |
 | [`guards.monk`](examples/guards.monk) | `guard`/`against`/`throw` scoping |
+| [`closures.monk`](examples/closures.monk) | First-class functions, capture-by-copy |
+| [`higher_order.monk`](examples/higher_order.monk) | `map`, `filter`, `reduce` with typed arrays |
+| [`default_params.monk`](examples/default_params.monk) | Default parameter values |
+| [`value_semantics.monk`](examples/value_semantics.monk) | Assignment copies, function args copy |
+| [`strings.monk`](examples/strings.monk) | String operations |
+| [`math.monk`](examples/math.monk) | Math builtins |
+| [`binary_search.monk`](examples/binary_search.monk) | Binary search with typed arrays |
+| [`bitwise.monk`](examples/bitwise.monk) | Bitwise operators |
+| [`gcd_lcm.monk`](examples/gcd_lcm.monk) | GCD/LCM, number theory |
+| [`sieve.monk`](examples/sieve.monk) | Sieve of Eratosthenes, typed arrays |
 
 ## CLI
 
@@ -185,7 +216,7 @@ The `-o` flag controls output format:
 Monk is a **compiler**, not an interpreter. There is no REPL.
 
 ```
-source.monk  -->  [Go compiler]  -->  generated.c  -->  [cc -O2]  -->  native binary
+source.monk  -->  [Go compiler]  -->  generated.c  -->  [cc -O3 -flto]  -->  native binary
 ```
 
 <table>
@@ -196,18 +227,19 @@ source.monk  -->  [Go compiler]  -->  generated.c  -->  [cc -O2]  -->  native bi
 
 1. **Lexer** — source text to tokens
 2. **Parser** — tokens to AST (29 node types, 13 precedence levels)
-3. **Codegen** — AST to C11 source
-4. **cc/clang** — C source + runtime to native binary
+3. **Type checker** — static analysis, inference, unboxing hints
+4. **Codegen** — AST to C11 source (raw scalars for typed vars)
+5. **cc/clang** — C source + runtime to native binary
 
 </td>
 <td width="50%">
 
-**C runtime** (~830 lines)
+**C runtime** (~1,200 lines across 8 files)
 
-- `MonkValue` tagged union for all types
+- `MonkValue` tagged union for boxed types
+- `int64_t*`/`double*`/`bool*` backing for typed arrays
 - Deep copy for value semantics
 - 40+ builtin functions
-- UTF-8 string handling
 - Error handling via `setjmp`/`longjmp`
 
 </td>
@@ -228,17 +260,42 @@ source.monk  -->  [Go compiler]  -->  generated.c  -->  [cc -O2]  -->  native bi
 
 ## Performance
 
-Benchmarks against C/Go/Python/Node/Bun on Apple M4 Pro (`cc -O3 -flto`, hyperfine, lower is better):
+Benchmarks on Apple M4 Pro (`cc -O3 -flto`, hyperfine, lower is better). 21 benchmarks total.
 
-| Benchmark | Monk | vs C | vs Go | vs Python |
-|---|---:|---:|---:|---:|
-| fibonacci (n=35) | 17.3 ms | **1.0×** | 1.3× faster | 39× faster |
-| mandelbrot (800²×50) | 14.5 ms | **1.0×** | 1.1× faster | 180× faster |
-| leibniz (π, 50M iter) | 28.4 ms | **1.0×** | 1.2× faster | 176× faster |
-| trial_primes (<200k) | 5.9 ms | **1.0×** | **1.0×** | 94× faster |
-| matmul (400² int) | 124 ms | 11.8× | 4.3× slower | 64× faster |
+**At C parity (10 benchmarks):**
 
-**Monk matches C on every benchmark that doesn't use arrays.** The matmul gap is expected — arrays still use tagged `MonkValue` storage. Typed-array unboxing is the next frontier.
+| Benchmark | Monk | vs C |
+|---|---:|---:|
+| fibonacci (n=35) | 17.3 ms | **1.0×** |
+| mandelbrot (800²×50) | 14.5 ms | **1.0×** |
+| leibniz (π, 50M iter) | 28.4 ms | **1.0×** |
+| trial_primes (<200k) | 5.9 ms | **1.0×** |
+| bitcount (int ops) | — | **1.0×** |
+| sqrt_sum (float ops) | — | **1.0×** |
+| closure_invoke | — | **1.0×** |
+
+**Near C (bounds-check overhead, 3 benchmarks):**
+
+| Benchmark | vs C | Root cause |
+|---|---:|---|
+| matmul (400² int) | ~2× | Bounds check per element; typed `int[]` backing store already active |
+| sieve | ~2× | OOB check in hot loop |
+| nbody | ~3× | Mixed typed array + float arithmetic |
+
+**Structural gaps (8 benchmarks):**
+
+| Benchmark | vs C | Root cause |
+|---|---:|---|
+| for_in_sum (10M) | ~22× | `range(10M)` allocates 80 MB — allocation-dominated |
+| binary_trees | ~31× | Value-semantics deep copy on every tree node assignment |
+| levenshtein | ~52× | `substring()` allocates per character |
+| string_concat | ~11× | Immutable strings; concat allocates every time |
+| string_ops | ~95× | `to_upper_case` allocates a full copy per call |
+| record_access | ~25× | String-comparison field dispatch (no compile-time layout) |
+| quicksort | ~6× | Mixed record/array; comparison overhead |
+| functional_chain | ~8× | `map`/`filter`/`reduce` allocate intermediate arrays |
+
+The type system delivers typed array backing stores (`int[]` → `int64_t*`, not `MonkValue*`), unboxed scalar arithmetic, and unboxed for-in loop variables. Records, strings, and value-semantics copies are the remaining performance frontiers.
 
 See [`bench/`](bench/) for the harness and [`spec/PERFORMANCE.md`](spec/PERFORMANCE.md) for methodology.
 
@@ -252,7 +309,7 @@ Three rules resolve every edge case:
 
 ## Status
 
-**0.0.1 — Buniyaad** (2026-04-04). 560 tests passing (409 Go + 151 C runtime).
+**0.0.1 — Buniyaad** (2026-04-04). 620 tests passing (457 Go + 163 C runtime). 21 benchmarks, 23 examples.
 
 | Phase | Status |
 |-------|--------|
@@ -276,12 +333,16 @@ src/                Go compiler (module root)
   embed.go            Embedded runtime (self-contained binary)
   syntax/             Lexer + Parser + AST (195 tests)
   types/              Static type checker (112 tests)
-  codegen/            AST → C code generator + scalar unboxing (63 tests)
-  runtime/            C runtime library (runtime.h, runtime.c, 151 C tests)
+  codegen/            AST → C code generator + unboxing (63 tests)
+    unbox.go            Scalar/typed-array unboxing, storage kind inference
+  runtime/            C runtime library (8 .c files, 163 C tests)
+    runtime.h           Public API (MonkValue + function declarations)
+    internal.h          Shared helpers
+    value.c, arith.c, string.c, container.c, math.c, builtins.c, error.c, higher_order.c
 spec/               Language specification (REFERENCE.md is the source of truth)
 knowledge/          Learning course — monkfromearth.github.io/monk-lang/
-examples/           13 working .monk programs
-bench/              Benchmark suite (Monk vs C/Go/Py/Node/Bun)
+examples/           23 working .monk programs
+bench/              Benchmark suite (21 benchmarks, Monk vs C)
 Makefile            make build/install/test/clean
 ```
 

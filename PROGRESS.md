@@ -525,6 +525,28 @@ At C parity (10/21): fibonacci, leibniz, mandelbrot, collatz, ackermann, trial_p
 
 6-95x C (8/21): for_in_sum, functional_chain, string_concat, closure_invoke, record_access, binary_trees, levenshtein, string_ops — fundamental runtime overhead in strings, records, closures, and value semantics.
 
+**Root cause analysis:**
+
+- **Records 25x C.** Every field access goes through hash-lookup-style dispatch. Zero unboxing. Records are the most common data structure after arrays.
+- **String operations 95x C.** `to_upper_case` allocates a new string every call. UTF-8 indexing + allocation model makes string-heavy code extremely slow.
+- **For-in over typed arrays 22x C.** Each element gets boxed from `int64_t` back to `MonkValue` for the loop body. Creates and destroys a `MonkValue` per element.
+- **Closures 20x C.** Each iteration allocates a closure struct, captures variables, invokes through function pointer — vs C's direct call.
+- **Levenshtein 52x C.** `substring(s, i, i+1)` allocates a new string for every character comparison. Character-level string access is fundamentally expensive.
+- **fannkuch 0.7x C (faster!)** — suspicious, likely compiler generating luckier branch layout. Needs investigation.
+
+**Optimization priority by broadest impact:**
+
+| Optimization | Benchmarks helped | Complexity |
+|---|---|---|
+| Unboxed for-in over typed arrays | for_in_sum (22x→~1x), sieve, matmul | Low — emit raw loop, skip boxing |
+| Record field unboxing | record_access (25x→~1x), nbody | Medium — track record layouts at compile time |
+| Closure inlining (non-escaping) | closure_invoke (20x→~1x), functional_chain | Medium — escape analysis |
+| String char access (return int codepoint) | levenshtein (52x→~5x) | Spec change needed |
+| String operation fast-path (ASCII) | string_ops (95x→~5x) | Medium — fast memcpy path for ASCII |
+| COW arrays | binary_trees (31x→~1x) | Medium — refcount backing store |
+
+**Known papercut:** `int?` returned by array reads forces `+ 0` workaround in user code to unwrap to `int`. Affects quicksort, fannkuch, levenshtein benchmarks.
+
 Tests: 648 → 648 (no new Go tests). All 23 examples pass. All 21 benchmarks match expected. All linters clean.
 
 ### What's next (compiler)

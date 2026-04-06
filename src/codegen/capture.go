@@ -30,6 +30,8 @@ func freeVars(fn *syntax.FuncExpr) []string {
 	return result
 }
 
+// copyLocals returns a shallow copy of the locals map so that declarations in
+// one branch (e.g. then-block) don't bleed into sibling branches (else-block).
 func copyLocals(m map[string]bool) map[string]bool {
 	c := make(map[string]bool, len(m))
 	for k, v := range m {
@@ -46,6 +48,8 @@ func collectRefs(stmts []syntax.Stmt, locals map[string]bool, refs map[string]bo
 	}
 }
 
+// collectRefsStmt walks a single statement, updating locals with any new
+// declarations and refs with any out-of-scope variable references.
 func collectRefsStmt(stmt syntax.Stmt, locals map[string]bool, refs map[string]bool) {
 	switch s := stmt.(type) {
 	case *syntax.VarDeclStmt:
@@ -69,7 +73,8 @@ func collectRefsStmt(stmt syntax.Stmt, locals map[string]bool, refs map[string]b
 		thenLocals := copyLocals(locals)
 		collectRefs(s.Then.Stmts, thenLocals, refs)
 		if s.Else != nil {
-			collectRefsStmt(s.Else, locals, refs)
+			elseLocals := copyLocals(locals)
+			collectRefsStmt(s.Else, elseLocals, refs)
 		}
 	case *syntax.WhileStmt:
 		collectRefsExpr(s.Condition, locals, refs)
@@ -92,6 +97,9 @@ func collectRefsStmt(stmt syntax.Stmt, locals map[string]bool, refs map[string]b
 	}
 }
 
+// collectRefsExpr walks an expression, recording any identifier that is not in
+// locals as a free variable reference. For nested FuncExprs, params are added
+// to a copy of locals so outer captures are correctly identified.
 func collectRefsExpr(expr syntax.Expr, locals map[string]bool, refs map[string]bool) {
 	if expr == nil {
 		return

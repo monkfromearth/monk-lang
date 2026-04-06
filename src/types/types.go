@@ -268,6 +268,9 @@ func funcExactMatch(src, dst *Type) bool {
 			return false
 		}
 	}
+	if src.Return == nil || dst.Return == nil {
+		return src.Return == dst.Return
+	}
 	if src.Return.Kind == KindAny || dst.Return.Kind == KindAny {
 		return true
 	}

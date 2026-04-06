@@ -120,11 +120,20 @@ let first int? = arr[0]
 let second int? = first`)
 }
 
-func TestCheckIndexReadIsOptional(t *testing.T) {
-	// Array index always returns T? (graceful read — may be none).
-	// Assigning it to a non-optional slot must be rejected.
-	expectErr(t, `let xs = [1, 2, 3]
-let first int = xs[0]`, "cannot assign")
+func TestCheckTypedArrayIndexReturnsElem(t *testing.T) {
+	// Typed array (known element type) index returns T, not T?.
+	// OOB panics at runtime (strict), so the result is always the element type.
+	expectOk(t, `let xs = [1, 2, 3]
+let first int = xs[0]`)
+}
+
+func TestCheckTypedArrayIndexAssignable(t *testing.T) {
+	// Typed array element reads can be used in arithmetic and assignments
+	// without workarounds — no more `+ 0` to unwrap int?.
+	expectOk(t, `let arr = [10, 20, 30]
+let x int = arr[0]
+let y = arr[1] + arr[2]
+let z int = y`)
 }
 
 // ─── Const ─────────────────────────────────────────────────────────────────

@@ -282,7 +282,13 @@ func (c *checker) inferIndex(e *syntax.IndexExpr) (*Type, error) {
 	}
 	switch objType.Kind {
 	case KindArray:
-		// Graceful on reads: element or none.
+		// Typed arrays (element is a concrete type, not Any) use strict
+		// OOB semantics (panic), so the result is always the element type.
+		// Untyped arrays (element is Any) use graceful OOB (returns none),
+		// so the result is T?.
+		if objType.Elem != nil && objType.Elem.Kind != KindAny {
+			return objType.Elem, nil
+		}
 		return OptionalOf(objType.Elem), nil
 	case KindStr:
 		return OptionalOf(Str), nil

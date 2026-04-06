@@ -6,6 +6,30 @@ Format: [Semantic Versioning](https://semver.org/). Each minor version gets an U
 
 ---
 
+## Unreleased
+
+### Performance
+- **Typed array backing store** — `int[]`, `float[]`, `bool[]` variables now use `int64_t*` / `double*` / `bool*` backing stores instead of `MonkValue*`. Element reads/writes emit `arr.int_array_val->data[i]` — direct pointer access, no union overhead, half the memory stride. Matmul benchmark: ~100ms → ~30ms (inline) → **~20ms**, **11× C → 3× C → ~2× C**.
+- New `MONK_INT_ARRAY` / `MONK_FLOAT_ARRAY` / `MONK_BOOL_ARRAY` value kinds in `runtime.h`. New structs `MonkIntArray { int64_t *data; int64_t length }` etc. Converter functions `monk_int_array_from()` / `monk_float_array_from()` / `monk_bool_array_from()` — convert from generic `MONK_ARRAY` (consuming it) or deep-copy from same typed kind.
+- All generic runtime functions (`is_array`, `length`, `typeof`, structural mutators, `map`/`filter`/`reduce`) updated to accept and correctly handle typed array kinds.
+- **Typed array inline access** (previous session) — `storeIntArray` / `storeFloatArray` / `storeBoolArray` storage kinds in `unbox.go`. `deriveFuncStorage` uses `isRawScalar` so array parameters don't incorrectly participate in the all-scalar fast path. OOB panics (strict). `T?`-annotated variables preserve graceful path.
+
+### Bug Fixes
+- **Use-after-free in typed array conversion** — `monk_typed_to_generic` and `ho_to_generic` freed the typed backing store after conversion (consuming semantics), but the caller's variable still held the freed pointer. Any array passed to multiple builtins (e.g. `map` then `filter`) crashed. Fixed: converters are now non-consuming.
+- **Memory leak in structural mutators** — `append`, `prepend`, `pop`, `drop`, `take`, `slice`, `map`, `filter`, `reduce` all leaked the intermediate generic array allocated by `monk_typed_to_generic`. Fixed: `free_generic_intermediate()` called before returning.
+- **Index type validation** — `monk_array_get` / `monk_array_set` now validate `index.kind == MONK_INT` before reading the union field, preventing undefined behavior on non-int index values.
+- **Coerce guard** — `coerce()` in `unbox.go` now guards against array→scalar conversion (would read wrong union member).
+
+### Benchmarks
+- **12 new benchmarks** (9 → 21 total): `bitcount`, `for_in_sum`, `sqrt_sum`, `record_access`, `quicksort`, `closure_invoke`, `string_ops`, `string_concat`, `functional_chain`, `levenshtein`, `nbody`, `fannkuch`. Each with C reference implementation and expected.txt.
+- Reveals previously hidden performance gaps: records 25× C, string ops 95× C, closures 20× C, for-in 22× C.
+
+### Tests
+- 9 typed-array correctness tests (`TestTypedArray*`): reads, writes, arithmetic chains, mini matmul, float arrays, OOB panic.
+- 8 backing-store correctness tests (`TestBackingStore*`): int/float literal decls, range decls, element writes, for-in iteration, `show()`, `is_array()`, `length()`.
+
+---
+
 ## 0.0.1 — Buniyaad (2026-04-04)
 
 The foundation. Monk compiles, runs, and produces native binaries.

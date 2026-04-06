@@ -151,7 +151,10 @@ Static analysis pass over the AST, before code generation.
 - [x] `to_int`/`to_float` inline as C casts when arg is already scalar
 
 **Deferred (follow-up work, not a separate phase):**
-- [ ] Typed array unboxing — back `int[]` with `int64_t*`, `float[]` with `double*`. Matmul is the motivating case (12× C today). Requires new runtime variant and ~4-6 hours.
+- [x] Typed array inline access — `int[]`/`float[]`/`bool[]` element reads/writes emit direct `.int_val` struct-field access instead of `monk_array_get`/`monk_array_set`. Matmul: 11× C → 3× C. `storeIntArray` etc. in `unbox.go`.
+- [x] Typed array backing store — back `int[]` with `int64_t*` instead of `MonkValue*`. New `MONK_INT_ARRAY` kind + `MonkIntArray { int64_t* data; int64_t length }` struct in runtime. `monk_int_array_from()` converts/copies. Matmul: 3× C → ~2× C. See `spec/ARCHITECTURE_DECISIONS.md §4A`.
+- [ ] Copy-on-write for arrays — share backing storage on assign, copy only on mutation. Makes `let b = a` O(1) instead of O(n). No spec change needed. See `spec/ARCHITECTURE_DECISIONS.md §4B`.
+- [ ] Bounds-check elision for typed arrays in provably-safe loops (`for i in range(0, arr.length)`). Requires spec clarification that `int[]` OOB is always a panic (strict, not graceful). See `spec/ARCHITECTURE_DECISIONS.md §4C`.
 - [ ] Unboxed for-loop variables over typed iterables
 - [ ] Runtime typeof/is_* inlined for known-type values
 - [x] Default parameter values — arity-range check in type checker; `padDefaults()` fills defaults at call site in codegen.
@@ -160,7 +163,6 @@ Static analysis pass over the AST, before code generation.
 - [x] `abs()` return type — type-preserving (int→int, float→float).
 - [x] Hex/binary/octal underscore literals in codegen — stripped during emission.
 - [x] Function parameter deep copy — `monk_deep_copy` emitted at entry for each boxed param.
-- [ ] Typed array unboxing — back `int[]` with `int64_t*`, `float[]` with `double*`. Matmul is the motivating case (12× C today). Requires new runtime variant and ~4-6 hours.
 
 ---
 

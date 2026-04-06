@@ -421,12 +421,124 @@ Type checker (`src/types/checker.go`): added `map/filter/reduce` as known builti
 
 Tests: 575 → 631 (468 Go + 163 C runtime). All 23 examples pass. All 9 benchmarks match expected. All linters clean.
 
+### Typed array unboxing (2026-04-06)
+
+`int[]`, `float[]`, `bool[]` arrays now get inline element access instead of `monk_array_get` / `monk_array_set` calls. The MonkValue wrapper is preserved (boxing at function boundaries is free), but individual element reads and writes emit direct C struct-field access:
+
+```
+arr[i]     →  ({int64_t _t=i; ...arr.array_val->data[_t].int_val;})
+arr[i] = v →  { int64_t _t=i; if (OOB) panic; arr.array_val->data[_t].int_val=v; }
+```
+
+**Three new storage kinds in `unbox.go`:** `storeIntArray`, `storeFloatArray`, `storeBoolArray`. They share `MonkValue` as the C type (the container is still a `MonkArray*`), but `emitExprTyped` now has an `IndexExpr` case that returns raw scalars for typed arrays.
+
+**Scalar promotion in `emitVarDecl`:** When a variable has no explicit type annotation (e.g. `let aik = A[i*N+k]`), and the RHS emits as a raw scalar, the variable is promoted to that scalar kind. `aik` becomes `int64_t` instead of `MonkValue`. This lets the full arithmetic chain inside matmul stay raw.
+
+**OOB behavior:** Typed array access is STRICT (panics on OOB) rather than graceful (none). This follows the spec's "operating on invalid data = error" rule. Explicitly-annotated optional variables (`let x int? = arr[i]`) preserve the graceful `monk_array_get` path — the scalar promotion only applies to unannotated declarations.
+
+**`deriveFuncStorage` fixed:** the `All` flag now uses `isRawScalar()` instead of `!= storeBoxed`, so functions with `int[]` params don't incorrectly claim to be fully unboxed (their C signature stays `MonkValue`).
+
+**Matmul results (Apple M4 Pro, cc -O3 -flto):**
+
+| Benchmark | Before | After | Speedup | vs C |
+|---|---:|---:|---:|---:|
+| matmul (400×400 int) | ~100 ms | ~30 ms | **3.3×** | ~3× C |
+
+The remaining 3× gap vs C is the `MonkValue[]` element layout (16 bytes vs 8 bytes for raw `int64_t`) — 2× worse cache stride plus bounds checks. Closing to 1× C requires a separate `int64_t*` backing store (future: typed array storage refactor). All other benchmarks unchanged (scalar benchmarks already at C parity).
+
+**9 new correctness tests** in `TestTypedArray*` covering int/float reads, writes, arithmetic chains, the 2×2 matmul micro-kernel, and OOB panic verification.
+
+Tests: 631 → 640 (477 Go + 163 C runtime). All examples pass. All benchmarks match expected. All linters clean.
+
+### Typed array backing store (2026-04-06)
+
+`int[]`, `float[]`, `bool[]` variables now use a tight C backing store — `int64_t*`, `double*`, `bool*` — instead of `MonkValue*`. Every element drops from 16 bytes (tagged union) to 8 bytes (`int64_t`) or less. Cache-line efficiency doubles for the common int case.
+
+**Three new C runtime types in `runtime.h`:** `MonkIntArray { int64_t *data; int64_t length }`, and float/bool variants. Three new `MonkValueKind` values: `MONK_INT_ARRAY`, `MONK_FLOAT_ARRAY`, `MONK_BOOL_ARRAY`. The `MonkValue` union gains three new pointer fields (`int_array_val` etc.). From the Monk language perspective, typed arrays are still `"array"` — `typeof`, `is_array`, `length` all return the same values as for generic arrays.
+
+**Three converter functions:** `monk_int_array_from(v)`, `monk_float_array_from(v)`, `monk_bool_array_from(v)`. Each handles two inputs:
+- `MONK_ARRAY` input: extracts scalar fields from each element, frees the input, returns typed array.
+- Same-typed input: deep-copies the `int64_t*` data, leaves input intact.
+
+Codegen emits `monk_int_array_from(rhs)` at every `int[]` variable declaration. For `let A = range(N)`, `range(N)` returns a generic `MONK_ARRAY`, and `monk_int_array_from` converts and frees it in one shot.
+
+**Codegen changes:**
+- `emitVarDecl`: calls `monk_int_array_from()` / `monk_float_array_from()` / `monk_bool_array_from()` instead of `monk_deep_copy()` for typed array variables.
+- `emitIndexTyped`: switched from `arr.array_val->data[i].int_val` to `arr.int_array_val->data[i]` — direct pointer dereference, no union.
+- `emitAssign` typed write: `arr.int_array_val->data[i] = rhs` instead of `arr.array_val->data[i].int_val = rhs`.
+- `emitFor`: added typed-array iteration paths — boxes each element back to `MonkValue` for the loop body.
+
+**Runtime updates:** All structural mutators (`append`, `prepend`, `pop`, `drop`, `take`, `slice`) and higher-order functions (`map`, `filter`, `reduce`) convert typed arrays to generic `MONK_ARRAY` before operating (using static `monk_typed_to_generic` helper). `monk_array_get` / `monk_array_set` handle typed arrays directly. `monk_is_array`, `monk_length`, `monk_type_name`, `monk_value_to_cstr` all updated for new kinds.
+
+**CodeRabbit finding:** `ho_to_generic` in `higher_order.c` used raw `malloc` (bypassing OOM panic) and leaked the original typed-array backing store after conversion. Fixed: switched to `monk_malloc_internal` and added `free(v.int_array_val->data); free(v.int_array_val)` after each conversion.
+
+**Benchmark results (Apple M4 Pro, cc -O3 -flto):**
+
+| Benchmark | Inline access (prev) | Backing store (now) | vs C |
+|---|---:|---:|---:|
+| matmul (400×400 int) | ~30 ms | **~20 ms** | **~2× C** |
+
+Progression: 100 ms (boxed) → 30 ms (inline access) → 20 ms (backing store). The remaining 2× gap vs C is bounds-check overhead per element access (2 comparisons per read/write). Closing to 1× C requires bounds-check elision for proven-safe loops — see `spec/ARCHITECTURE_DECISIONS.md §4C`.
+
+**8 new correctness tests** in `TestBackingStore*` covering: int literal decl (checks for `monk_int_array_from`), range decl, element write (checks `int_array_val`, no `monk_array_set`), float[] array, for-in iteration, `show()` display, `is_array()`, `length()`.
+
+Tests: 640 → 648 (485 Go + 163 C runtime). All 23 examples pass. All 9 benchmarks match expected. All linters clean.
+
+### Use-after-free fix + memory leak fix (2026-04-06)
+
+**Use-after-free in typed array conversion.** `monk_typed_to_generic` (container.c) and `ho_to_generic` (higher_order.c) had consuming semantics — they freed the typed backing store after boxing elements into a generic array. But the caller's `MonkValue` variable (passed by C value) still held the freed pointer. Any subsequent use of the same array variable (e.g. passing `nums` to both `map` and `filter`) was use-after-free. Crashed the `higher_order.monk` example. Fix: made both converters non-consuming — they copy but don't free the original.
+
+**Memory leak in structural mutators.** The flip side: `monk_append`, `monk_prepend`, `monk_pop`, `monk_drop`, `monk_take`, `monk_slice`, `monk_map`, `monk_filter`, `monk_reduce` all called `monk_typed_to_generic` which allocates a fresh intermediate generic array. That intermediate was never freed after the operation completed — leaked on every call with a typed array input. Fix: track `was_typed` flag, free the intermediate via `free_generic_intermediate()` before returning.
+
+**Deduplication.** `ho_to_generic` was a full copy of `monk_typed_to_generic`. Made `monk_typed_to_generic` non-static, declared it in `internal.h`, removed the duplicate from `higher_order.c`.
+
+**Defensive fixes:**
+- `monk_array_get` / `monk_array_set`: validate `index.kind == MONK_INT` before reading `index.int_val`
+- `coerce()` in `unbox.go`: guard against array→scalar conversion (would be UB if triggered)
+
+### Benchmark suite expansion (2026-04-06)
+
+Expanded from 9 to 21 benchmarks to cover features the original suite was blind to. The old suite only tested scalar int/float arithmetic, int[] element access, and allocation stress — missing strings, records, closures, higher-order functions, for-in loops, and mixed workloads.
+
+**12 new benchmarks (all with C reference + expected.txt):**
+
+| Benchmark | What it tests | Monk vs C |
+|-----------|-------------|-----------|
+| `bitcount` | Bitwise ops (`&`, `>>`) in tight loop | 1.0x |
+| `for_in_sum` | For-in over typed int[] array | 22x (boxing per element) |
+| `sqrt_sum` | Math builtin (sqrt) in hot loop | 1.0x |
+| `record_access` | Record field read/write | 25x (hash lookup per access) |
+| `quicksort` | Array element swap, int arithmetic | 1.1x |
+| `closure_invoke` | Closure creation + invocation per iteration | 20x (struct alloc per closure) |
+| `string_ops` | to_upper/to_lower repeated on fixed string | 95x (alloc per call) |
+| `string_concat` | String building in loop (O(n²) concat) | 11x |
+| `functional_chain` | map/filter/reduce pipeline with closures | 6.5x |
+| `levenshtein` | 2D array + substring per character | 52x (string alloc per char) |
+| `nbody` | Float arrays + sqrt (gravitational sim) | 1.9x |
+| `fannkuch` | Array permutation + reversal | 0.7x (faster than C!) |
+
+**Full scoreboard (21 benchmarks, Apple M4 Pro, cc -O3 -flto):**
+
+At C parity (10/21): fibonacci, leibniz, mandelbrot, collatz, ackermann, trial_primes, bitcount, quicksort, sqrt_sum, fannkuch.
+
+2-3x C (3/21): matmul, sieve, nbody — all typed array bounds-check overhead.
+
+6-95x C (8/21): for_in_sum, functional_chain, string_concat, closure_invoke, record_access, binary_trees, levenshtein, string_ops — fundamental runtime overhead in strings, records, closures, and value semantics.
+
+Tests: 648 → 648 (no new Go tests). All 23 examples pass. All 21 benchmarks match expected. All linters clean.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
 |-------|-------|--------|
 | 6 | Type System (static analysis) | **Complete** ✅ |
-| 6 | Typed array unboxing + deferred codegen items | Not started |
+| 6 | Typed array unboxing (inline access) | **Complete** ✅ |
+| 6 | Typed array backing store (`int64_t*`) | **Complete** ✅ — matmul ~2× C |
+| 6 | Unboxed for-in over typed arrays | Deferred — for_in_sum 22x→~1x |
+| 6 | Bounds-check elision for typed arrays | Deferred — matmul/sieve/nbody to ~1× C |
+| 6 | Record field unboxing | Deferred — record_access 25x→~1x |
+| 6 | Copy-on-write for arrays | Deferred — binary_trees 31x→~1x |
+| 6 | Closure inlining (non-escaping) | Deferred — closure_invoke 20x→~1x |
 | 7 | Module System | Not started |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |

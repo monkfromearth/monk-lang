@@ -222,6 +222,56 @@ These are real problems other compile-to-C languages have hit. Our mitigations:
 - **Escape analysis:** If a value never leaves its scope, skip the heap allocation entirely.
 - **Copy-on-write (COW):** Share backing storage, copy only on mutation. Can be added as an invisible optimization later.
 
+### Performance Optimization Roadmap
+
+The three remaining gaps between Monk and C performance — in order of impact:
+
+#### A. Typed array backing store (closes matmul 3× → ~1× C)
+
+**Current state:** `int[]` is a `MonkValue` whose `array_val->data` is `MonkValue[]` — a 16-byte struct per element (8 bytes tag + 8 bytes value). A 400×400 matrix uses 2.56 MB. C uses 1.28 MB. Every cache line holds half as many numbers.
+
+**The fix:** New C runtime struct `MonkIntArray { int64_t* data; int64_t length; }` (and Float/Bool variants). `int[]` variables are backed by `int64_t*` instead of `MonkValue*`. Element access is `arr->data[i]` — no union, no tag, cache-friendly.
+
+**What changes:**
+- New tagged kind in `MonkValue` union: `int_array_val`, `float_array_val`, `bool_array_val`
+- New allocation helpers in `runtime.c`: `monk_int_array_new(n)`, etc.
+- Codegen emits `MonkValue x = monk_int_array_new(n)` for `int[]` declarations
+- Element access `arr[i]` becomes `arr.int_array_val->data[i]` — same field-inline approach as current inline access, but now on a tighter struct
+- At generic boundaries (passing to `map`, `filter`, `typeof`, builtins that take `MonkValue`), box the element: `monk_int(arr.int_array_val->data[i])`
+
+**Spec impact:** None. `int[]` behaves identically — same type errors, same OOB semantics.
+
+**Effort:** Medium. Touches runtime struct definition, 3-4 codegen paths, and array builtins (`append`, `prepend`, `range`, `slice`).
+
+#### B. Copy-on-write for arrays (closes value semantics overhead)
+
+**Current state:** `let b = a` deep-copies every element. A 10,000-element array costs 160 KB of memcpy. This is spec-correct but wasteful when the copy is never mutated.
+
+**The fix:** Reference-count the backing `data` pointer. On assign, increment refcount — no copy yet. On first mutation (write to element, append, pop), check refcount > 1; if so, copy-then-write. If refcount == 1, write in place.
+
+**What changes:**
+- `MonkArray` grows a `refcount` field: `struct { MonkValue* data; int64_t length; int64_t capacity; int32_t refcount; }`
+- `monk_deep_copy` becomes `monk_array_share` (increment refcount, O(1))
+- `monk_free` decrements refcount; frees only when refcount hits 0
+- Mutation paths (`monk_array_set`, `append`) check-and-copy before writing
+- Generated C assignment uses `monk_array_share` instead of `monk_deep_copy`
+
+**Spec impact:** None. Value semantics are preserved — mutations don't bleed across copies. The spec says "assignment copies"; COW is an invisible optimization.
+
+**Effort:** Medium. Contained to `runtime.c` + `monk_deep_copy`/`monk_free`. Codegen changes minimal.
+
+#### C. Bounds-check elision for typed arrays (micro-optimization)
+
+**Current state:** Every typed-array element access emits an OOB guard: `if (i < 0 || i >= arr.array_val->length) monk_panic(...)`. In a hot inner loop (e.g., matmul), this is 2 branches per access — branch predictor handles it, but it's noise.
+
+**The fix:** Elide the bounds check when the type checker can prove safety. Specifically:
+- `for i in range(0, arr.length)` — `i` is in `[0, length)` by construction; accesses `arr[i]` in the loop body don't need a check
+- Literal index access `arr[0]` when array length is statically known
+
+**What needs spec clarification:** Typed arrays (`int[]`, not `int?[]`) should be defined as **strict** — OOB is always a panic, not `none`. The current `graceful reads` principle applies only to untyped access. This is already implied by the inline access path (which panics on OOB), but the spec should say it explicitly.
+
+**Effort:** Low for the spec clarification. Medium for dataflow analysis to track provably-safe index ranges.
+
 ### 5. Unicode strings
 **Problem:** C's `char*` is bytes, not Unicode.
 **Our approach:** Store strings as UTF-8 byte arrays internally. `length()` iterates UTF-8 sequences to count Unicode scalar values. String indexing is O(n) — acceptable for a first implementation, optimize with cached offsets later if needed.

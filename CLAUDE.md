@@ -69,7 +69,7 @@ Every source directory (`src/syntax/`, `src/codegen/`, `src/runtime/`) has an `I
 - **Update when files move.** If you add a new file, delete a file, or move a function from one file to another, update the dir's `INDEX.md` in the same commit.
 - **Keep it one-line-per-file.** Each row: filename → what it contains. Don't duplicate doc comments.
 - **Keep files small and focused.** If a single file exceeds ~500 lines, consider splitting. One topic per file. Go makes this free — same package, multiple files.
-- **Two sync points for the C runtime.** The list of runtime `.c` files is duplicated in: (1) `src/embed.go` `//go:embed` directives, (2) `runtimeSources`/`embeddedRuntimeFiles` in `src/main.go`, (3) `runtimeTestSources` in `src/codegen/codegen_test.go`. When you add a runtime file, update ALL THREE plus `runtime/INDEX.md`.
+- **Runtime files are auto-discovered.** `src/embed.go` embeds the entire `runtime/` directory; `src/main.go`'s `runtimeSources()` and `src/codegen/codegen_test.go` both auto-discover `.c` files via `os.ReadDir`. Adding a `.c` file to `runtime/` is the only code change needed — just also update `runtime/INDEX.md`.
 
 ## Key Decisions
 
@@ -163,6 +163,8 @@ If working on `knowledge/`:
 - Don't skip position tracking on AST nodes — codegen needs `#line` directives.
 - Don't double-evaluate expressions in generated C — use GCC/clang statement-expressions `({ int64_t _t=expr; ... _t ...; })` or emit a named temp before the expression. A side-effecting RHS like `a / f()` must call `f()` exactly once.
 - When writing benchmark `.monk` code, use `break` and `continue` explicitly. Setting a loop variable to sentinel values (`d = n` to exit) works but runs extra iterations and changes perf by 3-5×.
+- Don't emit generated C code that references a variable AFTER the closing `}` of the block it was declared in. This bites in codegen when adding fallback code (e.g. save-backs, default returns) after a buffered body block — the variable is out of scope at the C level even though it's visible in Go. Rule: any code that needs a variable must be emitted INSIDE the same `{...}` block, before the closing brace.
+- When benchmarking, compile the binary first (`./monk build`), then time the binary directly with `/usr/bin/time -p`. Don't use bash's `time` builtin and don't use `monk run` — compile overhead (~300ms) will dwarf actual runtime for fast programs.
 
 ## Related Repos
 

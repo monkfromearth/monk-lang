@@ -109,6 +109,10 @@ finding: build the verdict table (ACT / SKIP / DISCUSS), present it,
 then implement the ACT items. Add regression tests for every ACT item
 that fixes a real bug.
 
+**If the CLI hangs** (large diffs — >20 files — cause the service to time out
+after several minutes): kill it and use the `coderabbit:code-reviewer` Agent
+instead. Pass the full diff context and the same review protocol applies.
+
 ### 9. Update `INDEX.md` for every touched directory
 If files were added, moved, deleted, or had their public surface
 materially change in `src/syntax/`, `src/codegen/`, `src/runtime/`,
@@ -135,15 +139,16 @@ Checks:
 
 The N counts come from running the commands above — never hardcode them.
 
-## Sync Points for New Runtime Files
+## Adding New Runtime Files
 
-When adding a `.c` file to `src/runtime/`:
-1. The C runtime test (step 5) picks it up via glob — no change needed there.
-2. Manually update ALL of these:
-   - `src/embed.go` — add `//go:embed runtime/<file>.c` + `var embedded<Name>C []byte`
-   - `src/main.go` — add to `runtimeSources` slice and `embeddedRuntimeFiles` map
-   - `src/codegen/codegen_test.go` — add to `runtimeTestSources` slice
-   - `src/runtime/INDEX.md` — add one-line entry
+Runtime `.c` files are auto-discovered — no manual sync required:
+- `src/embed.go` embeds the entire `runtime/` directory via `//go:embed runtime`
+- `src/main.go`'s `runtimeSources()` uses `embeddedRuntime.ReadDir("runtime")` to list files
+- `src/codegen/codegen_test.go` uses `os.ReadDir` for the same
+- Step 5's glob test also auto-picks up new files
+
+When adding a `.c` file to `src/runtime/`, the only required change is:
+- Add a one-line entry to `src/runtime/INDEX.md`
 
 ## Exceptions
 

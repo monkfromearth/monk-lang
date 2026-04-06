@@ -14,6 +14,12 @@ Format: [Semantic Versioning](https://semver.org/). Each minor version gets an U
 - All generic runtime functions (`is_array`, `length`, `typeof`, structural mutators, `map`/`filter`/`reduce`) updated to accept and correctly handle typed array kinds.
 - **Typed array inline access** (previous session) — `storeIntArray` / `storeFloatArray` / `storeBoolArray` storage kinds in `unbox.go`. `deriveFuncStorage` uses `isRawScalar` so array parameters don't incorrectly participate in the all-scalar fast path. OOB panics (strict). `T?`-annotated variables preserve graceful path.
 
+### Language
+- **Typed array index returns `T`, not `T?`** — array element reads on typed arrays (`int[]`, `float[]`, `bool[]`, `string[]`) now return the element type directly. OOB panics (strict), so the result is always the element type. Removes the `+ 0` workaround in user code. Untyped arrays (element type `Any`) still return `Any?`.
+
+### Performance (continued)
+- **Unboxed for-in over typed arrays** — for-in loops over `int[]`/`float[]`/`bool[]` now emit raw scalar loop variables (`int64_t`/`double`/`bool`) instead of boxing each element into `MonkValue`. The loop body operates on raw C types — no `monk_int()`/`monk_free()` per element.
+
 ### Bug Fixes
 - **Use-after-free in typed array conversion** — `monk_typed_to_generic` and `ho_to_generic` freed the typed backing store after conversion (consuming semantics), but the caller's variable still held the freed pointer. Any array passed to multiple builtins (e.g. `map` then `filter`) crashed. Fixed: converters are now non-consuming.
 - **Memory leak in structural mutators** — `append`, `prepend`, `pop`, `drop`, `take`, `slice`, `map`, `filter`, `reduce` all leaked the intermediate generic array allocated by `monk_typed_to_generic`. Fixed: `free_generic_intermediate()` called before returning.

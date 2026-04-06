@@ -545,9 +545,30 @@ At C parity (10/21): fibonacci, leibniz, mandelbrot, collatz, ackermann, trial_p
 | String operation fast-path (ASCII) | string_ops (95x→~5x) | Medium — fast memcpy path for ASCII |
 | COW arrays | binary_trees (31x→~1x) | Medium — refcount backing store |
 
-**Known papercut:** `int?` returned by array reads forces `+ 0` workaround in user code to unwrap to `int`. Affects quicksort, fannkuch, levenshtein benchmarks.
-
 Tests: 648 → 648 (no new Go tests). All 23 examples pass. All 21 benchmarks match expected. All linters clean.
+
+### Typed array index returns T, not T? (2026-04-06)
+
+Array element reads on typed arrays (`int[]`, `float[]`, `bool[]`, `string[]`) now return the element type directly instead of wrapping in Optional. Typed arrays use strict OOB semantics (panic), so the result is always the element type — never `none`. Untyped arrays (element type `Any`) still return `Any?` for graceful reads.
+
+This removes the `+ 0` workaround that was needed in quicksort, fannkuch, and other array-heavy code to unwrap `int?` to `int`. Type checker change only — `inferIndex` in `exprs.go` checks whether `objType.Elem.Kind != KindAny` to decide between strict (T) and graceful (T?) return.
+
+### Unboxed for-in over typed arrays (2026-04-06)
+
+For-in loops over `int[]`/`float[]`/`bool[]` now emit raw scalar loop variables. Previously, each element was boxed back into `MonkValue` via `monk_int()` — now the loop variable is `int64_t`/`double`/`bool` directly.
+
+Generated C for `for x in arr` where `arr` is `int[]`:
+```c
+int64_t _len = (_iter.kind == MONK_INT_ARRAY) ? _iter.int_array_val->length : _iter.array_val->length;
+for (int64_t _i = 0; _i < _len; _i++) {
+    int64_t mk_x = (_iter.kind == MONK_INT_ARRAY) ? _iter.int_array_val->data[_i] : _iter.array_val->data[_i].int_val;
+    // body operates on raw int64_t — += etc. use C arithmetic directly
+}
+```
+
+Handles both `MONK_INT_ARRAY` (typed backing store) and `MONK_ARRAY` (generic) at runtime via a single branch per element. No conversion or allocation at loop setup. The loop body's arithmetic stays fully unboxed via the existing scalar assignment fast path.
+
+Note: the `for_in_sum` benchmark (10M elements) didn't improve because its bottleneck is `range(10M)` allocation (80MB), not iteration overhead. Real programs iterating over existing arrays will benefit.
 
 ### What's next (compiler)
 
@@ -556,7 +577,8 @@ Tests: 648 → 648 (no new Go tests). All 23 examples pass. All 21 benchmarks ma
 | 6 | Type System (static analysis) | **Complete** ✅ |
 | 6 | Typed array unboxing (inline access) | **Complete** ✅ |
 | 6 | Typed array backing store (`int64_t*`) | **Complete** ✅ — matmul ~2× C |
-| 6 | Unboxed for-in over typed arrays | Deferred — for_in_sum 22x→~1x |
+| 6 | Unboxed for-in over typed arrays | **Complete** ✅ — raw scalar loop variable |
+| 6 | Typed array index returns T not T? | **Complete** ✅ — removes + 0 workaround |
 | 6 | Bounds-check elision for typed arrays | Deferred — matmul/sieve/nbody to ~1× C |
 | 6 | Record field unboxing | Deferred — record_access 25x→~1x |
 | 6 | Copy-on-write for arrays | Deferred — binary_trees 31x→~1x |

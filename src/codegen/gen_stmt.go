@@ -64,17 +64,59 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 			store = storageFor(t)
 		}
 	}
-	g.storage[name] = store
 
-	if store == storeBoxed {
-		// Classic path — one MonkValue per variable, deep-copied at init.
+	// ── Typed-array backing-store path ──────────────────────────────────
+	// int[]/float[]/bool[] variables use a typed backing store (int64_t* /
+	// double* / bool*) instead of MonkValue*. monk_int_array_from() handles
+	// both conversion from generic MONK_ARRAY (e.g. range(N)) and deep-copy
+	// from an existing typed array. It frees the MONK_ARRAY temporary after
+	// conversion, so no separate deep_copy is needed.
+	if isArrayStorage(store) {
+		g.storage[name] = store
 		value := g.emitExpr(s.Value)
-		g.emitLine("    MonkValue %s = monk_deep_copy(%s);\n", name, value)
+		convFn := arrayConvFunc(store)
+		g.emitLine("    MonkValue %s = %s(%s);\n", name, convFn, value)
 		return
 	}
 
-	// Unboxed path — emit a raw C scalar. The initializer is an expression
-	// whose type we know; coerce to match the variable's storage.
+	// ── Boxed path with scalar-promotion probe ───────────────────────────
+	// When the declared type is boxed, try emitting the RHS typed ONLY when
+	// the variable has NO explicit type annotation (s.Type == nil).
+	//
+	// Rationale: `let aik = A[i*N+k]` has no annotation — the inferred type
+	// is int? but the user just wants an int. Promoting to int64_t (which
+	// panics on OOB) is safe because they're going to use it in arithmetic
+	// anyway (none in arithmetic → runtime panic regardless).
+	//
+	// `let tenth int? = nums[10]` has an explicit int? annotation — the user
+	// expects graceful OOB (spec: reading missing data returns none). We
+	// preserve that by staying on the classic monk_array_get path.
+	if store == storeBoxed {
+		var rhsCode string
+		if s.Type == nil {
+			var rhsStore storageKind
+			rhsCode, rhsStore = g.emitExprTyped(s.Value)
+			if isRawScalar(rhsStore) {
+				store = rhsStore
+				g.storage[name] = store
+				g.emitLine("    %s %s = %s;\n", cTypeName(store), name, rhsCode)
+				return
+			}
+			// emitExprTyped fell through to emitExpr — rhsCode is already a
+			// boxed MonkValue expression; reuse it below.
+		} else {
+			// Explicit type annotation: always use classic boxed path so that
+			// graceful array OOB (→ none) and other spec-mandated behaviours
+			// are preserved exactly.
+			rhsCode = g.emitExpr(s.Value)
+		}
+		g.storage[name] = storeBoxed
+		g.emitLine("    MonkValue %s = monk_deep_copy(%s);\n", name, rhsCode)
+		return
+	}
+
+	// ── Pure scalar unboxed path ─────────────────────────────────────────
+	g.storage[name] = store
 	rhsCode, rhsStore := g.emitExprTyped(s.Value)
 	init := coerce(rhsCode, rhsStore, store)
 	g.emitLine("    %s %s = %s;\n", cTypeName(store), name, init)
@@ -124,6 +166,32 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 				}
 			}
 			return
+		}
+	}
+
+	// ── Typed array element write fast path ─────────────────────────────
+	// When the target is arr[i] where arr is a typed int[]/float[]/bool[],
+	// emit a direct element write into the backing store instead of monk_array_set.
+	// Backing-store path: arr.int_array_val->data[i] = rhs (no struct overhead).
+	// Only for plain = (not +=, -= etc.) and only for direct ident targets.
+	if s.Op == syntax.Equal {
+		if indexTarget, ok := s.Target.(*syntax.IndexExpr); ok {
+			if identObj, ok2 := indexTarget.Object.(*syntax.IdentExpr); ok2 {
+				objName := mangleName(identObj.Name)
+				objSt := g.varStorage(objName)
+				elemSt := elemStorageFor(objSt)
+				if elemSt != storeBoxed {
+					ptrField := arrayPtrField(objSt)
+					idxCode, idxKind := g.emitExprTyped(indexTarget.Index)
+					idxC := coerce(idxCode, idxKind, storeInt)
+					rhsCode, rhsSt := g.emitExprTyped(s.Value)
+					elemCode := coerce(rhsCode, rhsSt, elemSt)
+					tidx := g.newTemp()
+					g.emitLine("    { int64_t %s = %s; if (%s < 0 || %s >= %s.%s->length) monk_panic(\"index out of bounds\"); %s.%s->data[%s] = %s; }\n",
+						tidx, idxC, tidx, tidx, objName, ptrField, objName, ptrField, tidx, elemCode)
+					return
+				}
+			}
 		}
 	}
 
@@ -307,6 +375,7 @@ func (g *generator) emitFor(s *syntax.ForStmt) {
 
 	g.emitLine("    {\n")
 	g.emitLine("        MonkValue _iter = %s;\n", iter)
+	// Generic MONK_ARRAY path
 	g.emitLine("        if (_iter.kind == MONK_ARRAY) {\n")
 	g.emitLine("            for (int64_t _i = 0; _i < _iter.array_val->length; _i++) {\n")
 	g.emitLine("                MonkValue %s = monk_deep_copy(_iter.array_val->data[_i]);\n", varName)
@@ -319,6 +388,41 @@ func (g *generator) emitFor(s *syntax.ForStmt) {
 	g.restoreStorage(arrSnap)
 	g.emitLine("                }\n")
 	g.emitLine("                monk_free(%s);\n", varName)
+	g.emitLine("            }\n")
+	// Typed backing-store array paths: iterate raw scalars, box each into MonkValue
+	// so the loop body always sees a MonkValue (consistent with MONK_ARRAY path).
+	g.emitLine("        } else if (_iter.kind == MONK_INT_ARRAY) {\n")
+	g.emitLine("            for (int64_t _i = 0; _i < _iter.int_array_val->length; _i++) {\n")
+	g.emitLine("                MonkValue %s = monk_int(_iter.int_array_val->data[_i]);\n", varName)
+	g.emitLine("                {\n")
+	intArrSnap := g.saveStorage()
+	for _, stmt := range s.Body.Stmts {
+		g.emitStmt(stmt)
+	}
+	g.restoreStorage(intArrSnap)
+	g.emitLine("                }\n")
+	g.emitLine("            }\n")
+	g.emitLine("        } else if (_iter.kind == MONK_FLOAT_ARRAY) {\n")
+	g.emitLine("            for (int64_t _i = 0; _i < _iter.float_array_val->length; _i++) {\n")
+	g.emitLine("                MonkValue %s = monk_float(_iter.float_array_val->data[_i]);\n", varName)
+	g.emitLine("                {\n")
+	floatArrSnap := g.saveStorage()
+	for _, stmt := range s.Body.Stmts {
+		g.emitStmt(stmt)
+	}
+	g.restoreStorage(floatArrSnap)
+	g.emitLine("                }\n")
+	g.emitLine("            }\n")
+	g.emitLine("        } else if (_iter.kind == MONK_BOOL_ARRAY) {\n")
+	g.emitLine("            for (int64_t _i = 0; _i < _iter.bool_array_val->length; _i++) {\n")
+	g.emitLine("                MonkValue %s = monk_bool(_iter.bool_array_val->data[_i]);\n", varName)
+	g.emitLine("                {\n")
+	boolArrSnap := g.saveStorage()
+	for _, stmt := range s.Body.Stmts {
+		g.emitStmt(stmt)
+	}
+	g.restoreStorage(boolArrSnap)
+	g.emitLine("                }\n")
 	g.emitLine("            }\n")
 	g.emitLine("        } else if (_iter.kind == MONK_STRING) {\n")
 	g.emitLine("            for (int64_t _i = 0; _iter.str_val[_i]; ) {\n")

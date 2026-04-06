@@ -837,6 +837,20 @@ show(to_string(add(5, 7)))`)
 	}
 }
 
+// Regression: emitCallTyped must call padDefaults before emitUnboxedCall,
+// otherwise omitting a trailing default arg in a typed context (e.g. the RHS
+// of a typed let) generates a C call with too few arguments.
+func TestCodegenDefaultParamTypedCallSite(t *testing.T) {
+	out, _ := runMonkTyped(t, `let add = (a int, b int = 100) int {
+    return a + b
+}
+let result = add(5)
+show(to_string(result))`)
+	if out != "105" {
+		t.Errorf("expected '105', got %q", out)
+	}
+}
+
 // Regression: void closures (no explicit return) must still persist mutations
 // to captured variables through the fallback return path.
 func TestCodegenVoidClosureSavesCaptures(t *testing.T) {
@@ -880,5 +894,257 @@ let total = reduce(nums, (acc int, x int) { return acc + x }, 0)
 show(to_string(total))`)
 	if out != "15" {
 		t.Errorf("expected '15', got %q", out)
+	}
+}
+
+// === TYPED ARRAY UNBOXING ===
+// All tests use runMonkTyped so the type checker feeds Info to codegen and
+// the typed-array fast path activates.
+
+// Int array literal: element reads return unboxed int64_t.
+func TestTypedArrayIntRead(t *testing.T) {
+	out, src := runMonkTyped(t, `let arr int[] = [10, 20, 30]
+let x = arr[1]
+show(to_string(x))`)
+	if out != "20" {
+		t.Errorf("want '20', got %q", out)
+	}
+	// Fast path: direct .int_val access, no monk_array_get.
+	if strings.Contains(src, "monk_array_get") {
+		t.Errorf("expected no monk_array_get for typed int[], generated:\n%s", src)
+	}
+}
+
+// Range-initialized int array: element read stays scalar.
+func TestTypedArrayRangeRead(t *testing.T) {
+	out, _ := runMonkTyped(t, `let arr = range(5)
+let x = arr[3]
+show(to_string(x))`)
+	if out != "3" {
+		t.Errorf("want '3', got %q", out)
+	}
+}
+
+// Typed array element write via plain assignment.
+func TestTypedArrayWrite(t *testing.T) {
+	out, src := runMonkTyped(t, `let arr = range(5)
+arr[2] = 99
+show(to_string(arr[2]))`)
+	if out != "99" {
+		t.Errorf("want '99', got %q", out)
+	}
+	// Fast path: direct element write, no monk_array_set.
+	if strings.Contains(src, "monk_array_set") {
+		t.Errorf("expected no monk_array_set for typed int[], generated:\n%s", src)
+	}
+}
+
+// Typed array arithmetic: read → scalar → raw C arithmetic.
+func TestTypedArrayArith(t *testing.T) {
+	out, src := runMonkTyped(t, `let arr = range(5)
+let x = arr[1] + arr[3]
+show(to_string(x))`)
+	if out != "4" {
+		t.Errorf("want '4', got %q", out)
+	}
+	// Should NOT call monk_add — both operands are unboxed ints.
+	if strings.Contains(src, "monk_add(") {
+		t.Errorf("expected raw + not monk_add, generated:\n%s", src)
+	}
+}
+
+// Typed array element participates in unboxed multiplication chain.
+func TestTypedArrayMulChain(t *testing.T) {
+	out, _ := runMonkTyped(t, `let arr int[] = [2, 3, 5]
+let result = arr[0] * arr[1] + arr[2]
+show(to_string(result))`)
+	if out != "11" {
+		t.Errorf("want '11', got %q", out)
+	}
+}
+
+// Typed array element used as loop accumulator.
+func TestTypedArrayAccumulate(t *testing.T) {
+	out, _ := runMonkTyped(t, `let arr = range(5)
+let i = 0
+let sum = 0
+while i < 5 {
+    sum = sum + arr[i]
+    i += 1
+}
+show(to_string(sum))`)
+	if out != "10" {
+		t.Errorf("want '10', got %q", out)
+	}
+}
+
+// Mini matmul (2×2) correctness: the canonical performance target.
+func TestTypedArrayMatmul2x2(t *testing.T) {
+	out, _ := runMonkTyped(t, `let N = 2
+let A int[] = [1, 2, 3, 4]
+let B int[] = [5, 6, 7, 8]
+let C int[] = [0, 0, 0, 0]
+let i = 0
+while i < N {
+    let k = 0
+    while k < N {
+        let aik = A[i * N + k]
+        let j = 0
+        while j < N {
+            C[i * N + j] = C[i * N + j] + aik * B[k * N + j]
+            j += 1
+        }
+        k += 1
+    }
+    i += 1
+}
+let sum = C[0] + C[1] + C[2] + C[3]
+show(to_string(sum))`)
+	// [1,2,3,4] * [5,6,7,8] = [[19,22],[43,50]], sum = 134
+	if out != "134" {
+		t.Errorf("want '134', got %q", out)
+	}
+}
+
+// Float array: element reads return unboxed double.
+func TestTypedArrayFloatRead(t *testing.T) {
+	out, _ := runMonkTyped(t, `let arr float[] = [1.5, 2.5, 3.5]
+let x = arr[0] + arr[2]
+show(to_string(x))`)
+	if out != "5" {
+		t.Errorf("want '5', got %q", out)
+	}
+}
+
+// OOB on typed array panics (strict, not graceful none).
+func TestTypedArrayOOBPanics(t *testing.T) {
+	prog, err := syntax.Parse(`let arr = range(3)
+let x = arr[10]
+show(to_string(x))`)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	info, err := types.Check(prog)
+	if err != nil {
+		t.Fatalf("type check: %v", err)
+	}
+	cSource := GenerateWithTypes(prog, "test.monk", info)
+	dir := t.TempDir()
+	runtimeDir, _ := filepath.Abs("../runtime")
+	cFile := filepath.Join(dir, "test.c")
+	binFile := filepath.Join(dir, "test")
+	if err := os.WriteFile(cFile, []byte(cSource), 0644); err != nil {
+		t.Fatalf("write c: %v", err)
+	}
+	ccArgs := append([]string{"-std=c11", "-I" + runtimeDir, cFile},
+		runtimeArgs(runtimeDir)...)
+	ccArgs = append(ccArgs, "-lm", "-o", binFile)
+	if out, err := exec.Command("cc", ccArgs...).CombinedOutput(); err != nil {
+		t.Fatalf("cc failed: %v\n%s\n\nC source:\n%s", err, out, cSource)
+	}
+	out, err := exec.Command(binFile).CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected non-zero exit on OOB, but got: %s", out)
+	}
+	if !strings.Contains(string(out), "index out of bounds") {
+		t.Errorf("expected 'index out of bounds' in output, got: %s", out)
+	}
+}
+
+// ── Backing-store tests (int64_t* / double* / bool* instead of MonkValue*) ──
+
+// Verify int[] literal uses monk_int_array_from in the generated C.
+func TestBackingStoreIntLiteralDecl(t *testing.T) {
+	_, src := runMonkTyped(t, `let arr int[] = [10, 20, 30]
+let x = arr[1]
+show(to_string(x))`)
+	if !strings.Contains(src, "monk_int_array_from") {
+		t.Errorf("expected monk_int_array_from for int[] decl, generated:\n%s", src)
+	}
+	// Must NOT fall back to the generic MonkArray field (.array_val->).
+	if strings.Contains(src, ".array_val->") {
+		t.Errorf("expected no .array_val-> for typed int[], generated:\n%s", src)
+	}
+}
+
+// Verify range()-initialized int[] uses monk_int_array_from.
+func TestBackingStoreRangeDecl(t *testing.T) {
+	out, src := runMonkTyped(t, `let arr = range(4)
+show(to_string(arr[2]))`)
+	if out != "2" {
+		t.Errorf("want '2', got %q", out)
+	}
+	if !strings.Contains(src, "monk_int_array_from") {
+		t.Errorf("expected monk_int_array_from for range-init int[], generated:\n%s", src)
+	}
+}
+
+// Verify element write uses int_array_val path.
+func TestBackingStoreWrite(t *testing.T) {
+	out, src := runMonkTyped(t, `let arr = range(4)
+arr[1] = 42
+show(to_string(arr[1]))`)
+	if out != "42" {
+		t.Errorf("want '42', got %q", out)
+	}
+	if !strings.Contains(src, "int_array_val") {
+		t.Errorf("expected int_array_val in generated C, got:\n%s", src)
+	}
+	if strings.Contains(src, "monk_array_set") {
+		t.Errorf("expected no monk_array_set for typed int[], generated:\n%s", src)
+	}
+}
+
+// Verify float[] uses float_array_val and monk_float_array_from.
+func TestBackingStoreFloat(t *testing.T) {
+	out, src := runMonkTyped(t, `let arr float[] = [1.0, 2.0, 4.0]
+arr[1] = 3.0
+let x = arr[0] + arr[1] + arr[2]
+show(to_string(x))`)
+	if out != "8" {
+		t.Errorf("want '8', got %q", out)
+	}
+	if !strings.Contains(src, "monk_float_array_from") {
+		t.Errorf("expected monk_float_array_from for float[], generated:\n%s", src)
+	}
+}
+
+// Verify for-in over int[] boxes each element into MonkValue.
+func TestBackingStoreForIn(t *testing.T) {
+	out, _ := runMonkTyped(t, `let arr int[] = [1, 2, 3, 4]
+let total = 0
+for x in arr {
+    total = total + x
+}
+show(to_string(total))`)
+	if out != "10" {
+		t.Errorf("want '10', got %q", out)
+	}
+}
+
+// Verify show(arr) on a typed int[] displays correctly.
+func TestBackingStoreShow(t *testing.T) {
+	out, _ := runMonkTyped(t, `let arr int[] = [7, 8, 9]
+show(arr)`)
+	if out != "[7, 8, 9]" {
+		t.Errorf("want '[7, 8, 9]', got %q", out)
+	}
+}
+
+// Verify is_array returns true for a typed int[].
+func TestBackingStoreIsArray(t *testing.T) {
+	out, _ := runMonkTyped(t, `let arr int[] = [1, 2]
+show(to_string(is_array(arr)))`)
+	if out != "true" {
+		t.Errorf("want 'true', got %q", out)
+	}
+}
+
+// Verify length() works on typed arrays.
+func TestBackingStoreLength(t *testing.T) {
+	out, _ := runMonkTyped(t, `let arr int[] = [5, 6, 7, 8, 9]
+show(to_string(length(arr)))`)
+	if out != "5" {
+		t.Errorf("want '5', got %q", out)
 	}
 }

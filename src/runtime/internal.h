@@ -31,4 +31,8 @@ double monk_as_c_double(MonkValue v);
 
 char *monk_value_to_cstr(MonkValue v);
 
+/* --- Typed-array to generic conversion (non-consuming) --- */
+
+MonkValue monk_typed_to_generic(MonkValue v);
+
 #endif /* MONK_INTERNAL_H */

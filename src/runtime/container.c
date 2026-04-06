@@ -13,24 +13,98 @@
 
 /* --- Array --- */
 
+/* Convert a typed array to a generic MONK_ARRAY (non-consuming).
+ * The caller retains ownership of the original typed array.
+ * Used by structural mutators (append, prepend, etc.) so they don't need
+ * to handle each typed kind individually.
+ * Declared in internal.h — shared with higher_order.c. */
+MonkValue monk_typed_to_generic(MonkValue v) {
+    if (v.kind == MONK_INT_ARRAY) {
+        int64_t len = v.int_array_val->length;
+        MonkValue *data = monk_malloc_internal(sizeof(MonkValue) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) data[i] = monk_int(v.int_array_val->data[i]);
+        MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
+        arr->data = data; arr->length = len;
+        return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
+    }
+    if (v.kind == MONK_FLOAT_ARRAY) {
+        int64_t len = v.float_array_val->length;
+        MonkValue *data = monk_malloc_internal(sizeof(MonkValue) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) data[i] = monk_float(v.float_array_val->data[i]);
+        MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
+        arr->data = data; arr->length = len;
+        return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
+    }
+    if (v.kind == MONK_BOOL_ARRAY) {
+        int64_t len = v.bool_array_val->length;
+        MonkValue *data = monk_malloc_internal(sizeof(MonkValue) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) data[i] = monk_bool(v.bool_array_val->data[i]);
+        MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
+        arr->data = data; arr->length = len;
+        return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
+    }
+    return v; /* already generic */
+}
+
+/* Free a generic MONK_ARRAY that was created by monk_typed_to_generic.
+ * Frees the MonkValue elements, the data pointer, and the MonkArray struct. */
+static void free_generic_intermediate(MonkValue arr) {
+    if (arr.kind != MONK_ARRAY || !arr.array_val) return;
+    for (int64_t i = 0; i < arr.array_val->length; i++)
+        monk_free(arr.array_val->data[i]);
+    free(arr.array_val->data);
+    free(arr.array_val);
+}
+
 MonkValue monk_array_get(MonkValue arr, MonkValue index) {
     /* Design decision: out-of-bounds read returns none (graceful on reads) */
-    if (arr.kind != MONK_ARRAY) monk_panic("cannot index non-array");
+    if (index.kind != MONK_INT) monk_panic("array index must be an integer");
     int64_t idx = index.int_val;
+    if (arr.kind == MONK_INT_ARRAY) {
+        if (idx < 0 || idx >= arr.int_array_val->length) return monk_none();
+        return monk_int(arr.int_array_val->data[idx]);
+    }
+    if (arr.kind == MONK_FLOAT_ARRAY) {
+        if (idx < 0 || idx >= arr.float_array_val->length) return monk_none();
+        return monk_float(arr.float_array_val->data[idx]);
+    }
+    if (arr.kind == MONK_BOOL_ARRAY) {
+        if (idx < 0 || idx >= arr.bool_array_val->length) return monk_none();
+        return monk_bool(arr.bool_array_val->data[idx]);
+    }
+    if (arr.kind != MONK_ARRAY) monk_panic("cannot index non-array");
     if (idx < 0 || idx >= arr.array_val->length) return monk_none();
     return monk_deep_copy(arr.array_val->data[idx]);
 }
 
 void monk_array_set(MonkValue *arr, MonkValue index, MonkValue value) {
     /* Design decision: out-of-bounds write is an error (strict on operations) */
-    if (arr->kind != MONK_ARRAY) monk_panic("cannot index-assign non-array");
+    if (index.kind != MONK_INT) monk_panic("array index must be an integer");
     int64_t idx = index.int_val;
+    if (arr->kind == MONK_INT_ARRAY) {
+        if (idx < 0 || idx >= arr->int_array_val->length) monk_panic("array index out of bounds");
+        arr->int_array_val->data[idx] = value.int_val;
+        return;
+    }
+    if (arr->kind == MONK_FLOAT_ARRAY) {
+        if (idx < 0 || idx >= arr->float_array_val->length) monk_panic("array index out of bounds");
+        arr->float_array_val->data[idx] = (value.kind == MONK_INT) ? (double)value.int_val : value.float_val;
+        return;
+    }
+    if (arr->kind == MONK_BOOL_ARRAY) {
+        if (idx < 0 || idx >= arr->bool_array_val->length) monk_panic("array index out of bounds");
+        arr->bool_array_val->data[idx] = value.bool_val;
+        return;
+    }
+    if (arr->kind != MONK_ARRAY) monk_panic("cannot index-assign non-array");
     if (idx < 0 || idx >= arr->array_val->length) monk_panic("array index out of bounds");
     monk_free(arr->array_val->data[idx]);
     arr->array_val->data[idx] = monk_deep_copy(value);
 }
 
 MonkValue monk_append(MonkValue arr, MonkValue elem) {
+    int was_typed = (arr.kind != MONK_ARRAY);
+    arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("append: expected array");
     int64_t new_len = arr.array_val->length + 1;
     MonkValue *new_data = monk_malloc_internal(sizeof(MonkValue) * new_len);
@@ -40,10 +114,13 @@ MonkValue monk_append(MonkValue arr, MonkValue elem) {
     MonkArray *new_arr = monk_malloc_internal(sizeof(MonkArray));
     new_arr->data = new_data;
     new_arr->length = new_len;
+    if (was_typed) free_generic_intermediate(arr);
     return (MonkValue){.kind = MONK_ARRAY, .array_val = new_arr};
 }
 
 MonkValue monk_prepend(MonkValue arr, MonkValue elem) {
+    int was_typed = (arr.kind != MONK_ARRAY);
+    arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("prepend: expected array");
     int64_t new_len = arr.array_val->length + 1;
     MonkValue *new_data = monk_malloc_internal(sizeof(MonkValue) * new_len);
@@ -53,43 +130,72 @@ MonkValue monk_prepend(MonkValue arr, MonkValue elem) {
     MonkArray *new_arr = monk_malloc_internal(sizeof(MonkArray));
     new_arr->data = new_data;
     new_arr->length = new_len;
+    if (was_typed) free_generic_intermediate(arr);
     return (MonkValue){.kind = MONK_ARRAY, .array_val = new_arr};
 }
 
 MonkValue monk_pop(MonkValue arr) {
+    int was_typed = (arr.kind != MONK_ARRAY);
+    arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("pop: expected array");
     /* Design decision: pop([]) returns [] (graceful) */
-    if (arr.array_val->length == 0) return monk_array(NULL, 0);
-    return monk_array(arr.array_val->data, arr.array_val->length - 1);
+    MonkValue result;
+    if (arr.array_val->length == 0) {
+        result = monk_array(NULL, 0);
+    } else {
+        result = monk_array(arr.array_val->data, arr.array_val->length - 1);
+    }
+    if (was_typed) free_generic_intermediate(arr);
+    return result;
 }
 
 MonkValue monk_drop(MonkValue arr, MonkValue n_val) {
+    int was_typed = (arr.kind != MONK_ARRAY);
+    arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("drop: expected array");
     int64_t n = n_val.int_val;
     /* Design decision: clamps (graceful) */
-    if (n >= arr.array_val->length) return monk_array(NULL, 0);
-    if (n < 0) n = 0;
-    return monk_array(arr.array_val->data + n, arr.array_val->length - n);
+    MonkValue result;
+    if (n >= arr.array_val->length) {
+        result = monk_array(NULL, 0);
+    } else {
+        if (n < 0) n = 0;
+        result = monk_array(arr.array_val->data + n, arr.array_val->length - n);
+    }
+    if (was_typed) free_generic_intermediate(arr);
+    return result;
 }
 
 MonkValue monk_take(MonkValue arr, MonkValue n_val) {
+    int was_typed = (arr.kind != MONK_ARRAY);
+    arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("take: expected array");
     int64_t n = n_val.int_val;
     /* Design decision: clamps (graceful) */
     if (n >= arr.array_val->length) n = arr.array_val->length;
     if (n < 0) n = 0;
-    return monk_array(arr.array_val->data, n);
+    MonkValue result = monk_array(arr.array_val->data, n);
+    if (was_typed) free_generic_intermediate(arr);
+    return result;
 }
 
 MonkValue monk_slice(MonkValue arr, MonkValue start_v, MonkValue end_v) {
+    int was_typed = (arr.kind != MONK_ARRAY);
+    arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("slice: expected array");
     int64_t start = start_v.int_val;
     int64_t end = end_v.int_val;
     /* Design decision: indices clamp (graceful) */
     if (start < 0) start = 0;
     if (end > arr.array_val->length) end = arr.array_val->length;
-    if (start >= end) return monk_array(NULL, 0);
-    return monk_array(arr.array_val->data + start, end - start);
+    MonkValue result;
+    if (start >= end) {
+        result = monk_array(NULL, 0);
+    } else {
+        result = monk_array(arr.array_val->data + start, end - start);
+    }
+    if (was_typed) free_generic_intermediate(arr);
+    return result;
 }
 
 MonkValue monk_range(MonkValue n_val) {

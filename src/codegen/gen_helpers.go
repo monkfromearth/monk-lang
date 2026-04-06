@@ -102,4 +102,7 @@ var builtinMap = map[string]string{
 	"file_exists":   "monk_file_exists",
 	"env_get":       "monk_env_get",
 	"exit":          "monk_exit",
+	"map":           "monk_map",
+	"filter":        "monk_filter",
+	"reduce":        "monk_reduce",
 }

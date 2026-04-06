@@ -116,6 +116,28 @@ MonkValue monk_record(MonkRecordField *fields, int64_t length) {
     return (MonkValue){.kind = MONK_RECORD, .record_val = rec};
 }
 
+MonkValue monk_make_function(MonkFuncPtr fn, MonkValue *captures, int64_t capture_count) {
+    MonkFunction *f = monk_malloc_internal(sizeof(MonkFunction));
+    f->fn = fn;
+    f->capture_count = capture_count;
+    if (capture_count > 0 && captures) {
+        f->captures = monk_malloc_internal(sizeof(MonkValue) * capture_count);
+        for (int64_t i = 0; i < capture_count; i++) {
+            f->captures[i] = monk_deep_copy(captures[i]);
+        }
+    } else {
+        f->captures = NULL;
+    }
+    return (MonkValue){.kind = MONK_FUNCTION, .func_val = f};
+}
+
+MonkValue monk_call(MonkValue fn, MonkValue *args, int64_t argc) {
+    if (fn.kind != MONK_FUNCTION || !fn.func_val || !fn.func_val->fn) {
+        monk_panic("cannot call non-function value");
+    }
+    return fn.func_val->fn(fn.func_val, args, argc);
+}
+
 /* --- Deep copy (value semantics) --- */
 
 MonkValue monk_deep_copy_heap(MonkValue v) {

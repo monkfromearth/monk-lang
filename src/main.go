@@ -22,6 +22,21 @@ import (
 	"github.com/monkfromearth/monk-lang/types"
 )
 
+// runtimeSources returns the .c files that make up the runtime library
+// (everything in runtime/ except runtime_test.c). Derived from the embedded
+// FS — adding a new .c file to runtime/ is the only change needed.
+func runtimeSources() []string {
+	entries, _ := embeddedRuntime.ReadDir("runtime")
+	var srcs []string
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasSuffix(name, ".c") && name != "runtime_test.c" {
+			srcs = append(srcs, name)
+		}
+	}
+	return srcs
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -134,7 +149,7 @@ func cmdBuild(args []string) {
 	runtimeDir := findRuntime()
 
 	ccArgs := []string{"-std=c11", "-O3", "-flto", "-I" + runtimeDir, cFile}
-	for _, src := range runtimeSources {
+	for _, src := range runtimeSources() {
 		ccArgs = append(ccArgs, filepath.Join(runtimeDir, src))
 	}
 	ccArgs = append(ccArgs, "-lm", "-o", outputFile)
@@ -193,7 +208,7 @@ func cmdRun(args []string) int {
 	runtimeDir := findRuntime()
 
 	ccArgs := []string{"-std=c11", "-O3", "-flto", "-I" + runtimeDir, cFile}
-	for _, src := range runtimeSources {
+	for _, src := range runtimeSources() {
 		ccArgs = append(ccArgs, filepath.Join(runtimeDir, src))
 	}
 	ccArgs = append(ccArgs, "-lm", "-o", binFile)
@@ -284,9 +299,9 @@ func findRuntime() string {
 	return extractEmbeddedRuntime()
 }
 
-// extractEmbeddedRuntime writes the embedded runtime.h and runtime.c to a
-// cache directory so cc can find them. Files are only written if missing or
-// if the binary is newer than the cached files.
+// extractEmbeddedRuntime extracts all runtime files (*.h and *.c, excluding
+// runtime_test.c) to ~/.cache/monk/runtime/ and returns that path.
+// Files are only written if missing or if content differs.
 func extractEmbeddedRuntime() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -298,41 +313,23 @@ func extractEmbeddedRuntime() string {
 		fatal("monk: cannot create cache directory: %s", err)
 	}
 
-	for _, f := range embeddedRuntimeFiles {
-		writeIfChanged(filepath.Join(cacheDir, f.name), f.content)
+	entries, err := embeddedRuntime.ReadDir("runtime")
+	if err != nil {
+		fatal("monk: cannot read embedded runtime: %s", err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || name == "runtime_test.c" {
+			continue
+		}
+		content, err := embeddedRuntime.ReadFile("runtime/" + name)
+		if err != nil {
+			fatal("monk: cannot read embedded %s: %s", name, err)
+		}
+		writeIfChanged(filepath.Join(cacheDir, name), content)
 	}
 
 	return cacheDir
-}
-
-// embeddedRuntimeSourceFiles returns the list of .c files that make up the
-// runtime (matches the files in runtime/). Keep in sync with embed.go and
-// with the runtimeSources slice used at compile time.
-var runtimeSources = []string{
-	"value.c",
-	"arith.c",
-	"string.c",
-	"container.c",
-	"math.c",
-	"builtins.c",
-	"error.c",
-}
-
-// embeddedRuntimeFiles pairs each embedded runtime file with its on-disk
-// name under ~/.cache/monk/runtime/.
-var embeddedRuntimeFiles = []struct {
-	name    string
-	content []byte
-}{
-	{"runtime.h", embeddedRuntimeH},
-	{"internal.h", embeddedInternalH},
-	{"value.c", embeddedValueC},
-	{"arith.c", embeddedArithC},
-	{"string.c", embeddedStringC},
-	{"container.c", embeddedContainerC},
-	{"math.c", embeddedMathC},
-	{"builtins.c", embeddedBuiltinsC},
-	{"error.c", embeddedErrorC},
 }
 
 // writeIfChanged writes content to path only if the file is missing or differs.

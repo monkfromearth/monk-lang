@@ -10,11 +10,16 @@ import (
 // vs. runtime tagged-union dispatch.
 //
 // Types: maps each expression node to its computed type. Every Expr walked
-//        by inferExpr ends up here.
+//
+//	by inferExpr ends up here.
+//
 // Decls: maps each VarDeclStmt to its declared type (the annotation if
-//        present, otherwise the first-assignment-inferred type).
+//
+//	present, otherwise the first-assignment-inferred type).
+//
 // Funcs: maps each FuncExpr to its full signature. Codegen uses this to
-//        generate unboxed function signatures when params/return are scalar.
+//
+//	generate unboxed function signatures when params/return are scalar.
 type Info struct {
 	Types map[syntax.Expr]*Type
 	Decls map[*syntax.VarDeclStmt]*Type
@@ -127,16 +132,23 @@ func (c *checker) declareBuiltins() {
 	c.scope.declare("slice", FuncType([]*Type{anyArr, Int, Int}, anyArr), true)
 	c.scope.declare("range", FuncType([]*Type{Int}, ArrayOf(Int)), true)
 
-	// Math — accept numeric, return numeric. Use Any until union types land.
+	// Math — accept numeric, return float (most math genuinely returns float).
 	for _, name := range []string{
-		"abs", "floor", "ceil", "round", "sqrt", "log", "log10", "exp",
+		"floor", "ceil", "round", "sqrt", "log", "log10", "exp",
 		"sin", "cos", "tan", "asin", "acos", "atan",
 	} {
 		c.scope.declare(name, FuncType([]*Type{Any}, Float), true)
 	}
 	c.scope.declare("pow", FuncType([]*Type{Any, Any}, Float), true)
+	// abs/min/max preserve the input type — return Any so int→int, float→float.
+	c.scope.declare("abs", FuncType([]*Type{Any}, Any), true)
 	c.scope.declare("min", FuncType([]*Type{Any, Any}, Any), true)
 	c.scope.declare("max", FuncType([]*Type{Any, Any}, Any), true)
+
+	// Higher-order array functions
+	c.scope.declare("map", FuncType([]*Type{ArrayOf(Any), FuncType([]*Type{Any}, Any)}, ArrayOf(Any)), true)
+	c.scope.declare("filter", FuncType([]*Type{ArrayOf(Any), FuncType([]*Type{Any}, Bool)}, ArrayOf(Any)), true)
+	c.scope.declare("reduce", FuncType([]*Type{ArrayOf(Any), FuncType([]*Type{Any, Any}, Any), Any}, Any), true)
 
 	// File / env
 	c.scope.declare("file_read", FuncType([]*Type{Str}, Str), true)

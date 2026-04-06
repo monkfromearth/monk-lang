@@ -1,0 +1,12 @@
+// Benchmark: Ackermann function A(3, N).
+// Deep recursion stress test — no arrays, pure function calls.
+// A(3,11) = 16381, makes ~millions of recursive calls.
+// Output: a single integer (A(3,11)).
+
+let ack = (m int, n int) int {
+    if m == 0 { return n + 1 }
+    if n == 0 { return ack(m - 1, 1) }
+    return ack(m - 1, ack(m, n - 1))
+}
+
+show(to_string(ack(3, 11)))

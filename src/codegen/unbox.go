@@ -28,6 +28,7 @@ package codegen
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/monkfromearth/monk-lang/syntax"
 	"github.com/monkfromearth/monk-lang/types"
@@ -160,11 +161,12 @@ func (g *generator) emitExprTyped(expr syntax.Expr) (string, storageKind) {
 
 	switch e := expr.(type) {
 	case *syntax.NumberExpr:
-		// Raw numeric literals stay raw.
+		// Raw numeric literals stay raw. Strip underscores for C.
+		lit := strings.ReplaceAll(e.Value, "_", "")
 		if e.IsInt {
-			return e.Value, storeInt
+			return lit, storeInt
 		}
-		return e.Value, storeFloat
+		return lit, storeFloat
 	case *syntax.BoolExpr:
 		if e.Value {
 			return "true", storeBool
@@ -338,4 +340,3 @@ func (g *generator) emitUnaryTyped(e *syntax.UnaryExpr) (string, storageKind) {
 	}
 	return g.emitExpr(e), storeBoxed
 }
-

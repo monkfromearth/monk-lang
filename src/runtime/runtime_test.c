@@ -403,6 +403,73 @@ void test_edge_cases(void) {
     ASSERT_BOOL(monk_equal(monk_bool(true), monk_bool(false)), false);
 }
 
+/* ── Higher-order function tests ───────────────────────────────────────── */
+
+static MonkValue cb_double(MonkFunction *self, MonkValue *args, int64_t argc) {
+    (void)self; (void)argc;
+    return monk_int(args[0].int_val * 2);
+}
+static MonkValue cb_is_even(MonkFunction *self, MonkValue *args, int64_t argc) {
+    (void)self; (void)argc;
+    return monk_bool(args[0].int_val % 2 == 0);
+}
+static MonkValue cb_add(MonkFunction *self, MonkValue *args, int64_t argc) {
+    (void)self; (void)argc;
+    return monk_int(args[0].int_val + args[1].int_val);
+}
+
+void test_higher_order(void) {
+    MonkValue fn_double = monk_make_function(cb_double, NULL, 0);
+    MonkValue fn_even   = monk_make_function(cb_is_even, NULL, 0);
+    MonkValue fn_add    = monk_make_function(cb_add, NULL, 0);
+
+    /* map: double each element */
+    MonkValue arr = monk_array((MonkValue[]){monk_int(1), monk_int(2), monk_int(3)}, 3);
+    MonkValue mapped = monk_map(arr, fn_double);
+    ASSERT(mapped.kind == MONK_ARRAY, "map returns array");
+    ASSERT(mapped.array_val->length == 3, "map preserves length");
+    ASSERT_INT(mapped.array_val->data[0], 2);
+    ASSERT_INT(mapped.array_val->data[1], 4);
+    ASSERT_INT(mapped.array_val->data[2], 6);
+    monk_free(mapped);
+
+    /* map: empty array */
+    MonkValue empty = monk_array(NULL, 0);
+    MonkValue mapped_empty = monk_map(empty, fn_double);
+    ASSERT(mapped_empty.array_val->length == 0, "map empty array");
+    monk_free(mapped_empty);
+
+    /* filter: keep even elements */
+    MonkValue filtered = monk_filter(arr, fn_even);
+    ASSERT(filtered.kind == MONK_ARRAY, "filter returns array");
+    ASSERT(filtered.array_val->length == 1, "filter keeps 1 of 3");
+    ASSERT_INT(filtered.array_val->data[0], 2);
+    monk_free(filtered);
+
+    /* filter: none pass */
+    MonkValue odds = monk_array((MonkValue[]){monk_int(1), monk_int(3), monk_int(5)}, 3);
+    MonkValue no_evens = monk_filter(odds, fn_even);
+    ASSERT(no_evens.array_val->length == 0, "filter returns empty when none pass");
+    monk_free(no_evens);
+    monk_free(odds);
+
+    /* reduce: sum */
+    MonkValue sum = monk_reduce(arr, fn_add, monk_int(0));
+    ASSERT_INT(sum, 6);
+    monk_free(sum);
+
+    /* reduce: empty array returns initial */
+    MonkValue sum_empty = monk_reduce(empty, fn_add, monk_int(42));
+    ASSERT_INT(sum_empty, 42);
+    monk_free(sum_empty);
+    monk_free(empty);
+
+    monk_free(arr);
+    monk_free(fn_double);
+    monk_free(fn_even);
+    monk_free(fn_add);
+}
+
 int main(void) {
     test_constructors();
     test_truthiness();
@@ -421,6 +488,7 @@ int main(void) {
     test_array_set();
     test_record_set();
     test_edge_cases();
+    test_higher_order();
 
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return tests_passed == tests_run ? 0 : 1;

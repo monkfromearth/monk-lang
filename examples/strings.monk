@@ -1,0 +1,55 @@
+// String operations and iteration.
+// Monk strings are Unicode, double-quoted. Template literals use backticks.
+
+// ─── Basic operations ──────────────────────────────────────────────────────
+
+let greeting = "  Hello, World!  "
+show("original:  [" + greeting + "]")
+show("trimmed:   [" + trim(greeting) + "]")
+show("length:    " + to_string(length(trim(greeting))))
+show("upper:     " + to_upper_case("monk lang"))
+show("lower:     " + to_lower_case("MONK LANG"))
+
+// ─── Searching ─────────────────────────────────────────────────────────────
+
+let sentence = "the quick brown fox jumps over the lazy dog"
+show("index of 'fox': " + to_string(index_of(sentence, "fox")))    // 16
+show("index of 'cat': " + to_string(index_of(sentence, "cat")))    // -1
+
+// ─── Splitting and joining ─────────────────────────────────────────────────
+
+let csv = "apple,banana,cherry,date"
+let fruits = split(csv, ",")
+show("fruits: " + to_string(fruits))
+show("count:  " + to_string(length(fruits)))
+
+// ─── Substrings ────────────────────────────────────────────────────────────
+
+let text = "Hello, Monk!"
+show("sub(0,5):  " + substring(text, 0, 5))    // "Hello"
+show("sub(7,11): " + substring(text, 7, 11))   // "Monk"
+
+// ─── Character iteration ──────────────────────────────────────────────────
+
+let word = "Monk"
+let chars = []
+for ch in word {
+    chars = append(chars, ch)
+}
+show("chars: " + to_string(chars))   // ["M", "o", "n", "k"]
+
+// ─── String indexing ───────────────────────────────────────────────────────
+
+show("first char: " + text[0])       // "H"
+show("last char:  " + text[11])      // "!"
+
+// ─── Template literals (backtick strings) ──────────────────────────────────
+
+let name = "Doc"
+let message = `Hello, ` + name + `! Welcome to Monk.`
+show(message)
+
+let multiline = `Line one
+Line two
+Line three`
+show(multiline)

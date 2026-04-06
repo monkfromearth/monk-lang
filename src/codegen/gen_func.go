@@ -88,6 +88,8 @@ func (g *generator) emitTrampoline(cName string, paramCount int, sig funcStorage
 	g.funcs.WriteString("}\n\n")
 }
 
+// emitFuncExpr handles an anonymous function literal by allocating a fresh
+// C name and delegating to emitFuncValueNamed.
 func (g *generator) emitFuncExpr(e *syntax.FuncExpr) string {
 	// Anonymous function — allocate a fresh cName.
 	g.funcCount++

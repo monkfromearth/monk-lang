@@ -1,0 +1,229 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Monk's Type Model" lessonNumber="6.2" section="Phase 6">
+
+    <LessonHeader lessonNumber="6.2" title="Monk's Type Model" description="Nine kinds, one optional flag, and one compatibility function. The whole type system in three parts.">
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="go">go</TagBadge>
+        <TagBadge variant="default">12 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The core idea -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A type is just a description of what a value can be.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The checker needs to reason about values without running the program. To do that, it works with <em>types</em> -- compact descriptions that say "this variable holds an integer" or "this function takes two floats and returns a bool."
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk's type representation is intentionally small. The entire type model lives in a single Go struct with two fields. Everything else -- arrays, records, functions, optionals -- is expressed through those two fields.
+        </p>
+    </section>
+
+    <!-- The nine kinds -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Nine kinds cover every Monk value.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The first field is <code class="bg-stone-100 px-1 rounded text-xs">Kind</code> -- an enum with nine values, one for each category of Monk value:
+        </p>
+
+        <Code code={`type Kind int
+
+const (
+    KindAny    Kind = iota  // unknown / flows-through-anything
+    KindInt                  // 64-bit integer
+    KindFloat                // 64-bit float
+    KindStr                  // string
+    KindBool                 // boolean
+    KindNone                 // the none value
+    KindArray                // array (with element type)
+    KindRecord               // record (with field types)
+    KindFunc                 // function (with param and return types)
+)`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            <code class="bg-stone-100 px-1 rounded text-xs">KindAny</code> is the escape hatch. When the checker can't determine a type statically -- for example, the return type of a builtin that works on both arrays and strings -- it uses <code class="bg-stone-100 px-1 rounded text-xs">KindAny</code>. Any value is assignable to <code class="bg-stone-100 px-1 rounded text-xs">Any</code>, and <code class="bg-stone-100 px-1 rounded text-xs">Any</code> is assignable to anything. It's a deliberate release valve, not an oversight.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Why not more kinds?</strong> Monk's design goal is a type system that non-experts can understand and use. Nine kinds is enough to catch real bugs without requiring type annotations everywhere. More expressiveness would mean more annotation burden.</p>
+        </InsightBox>
+    </section>
+
+    <!-- The optional flag -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Optional is orthogonal to kind.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Every type in Monk can be made optional by appending <code class="bg-stone-100 px-1 rounded text-xs">?</code>. An optional type accepts either the base type or <code class="bg-stone-100 px-1 rounded text-xs">none</code>. This is represented as a single boolean flag, separate from the kind:
+        </p>
+
+        <Code code={`type Type struct {
+    Kind     Kind
+    Optional bool
+    // ... element/field/param types for compound kinds
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            This means <code class="bg-stone-100 px-1 rounded text-xs">int?</code> is represented as <code class="bg-stone-100 px-1 rounded text-xs">Kind: KindInt, Optional: true</code>. You don't need a separate <code class="bg-stone-100 px-1 rounded text-xs">KindOptionalInt</code> variant for each base type. The orthogonal flag means you get <code class="bg-stone-100 px-1 rounded text-xs">T?</code> for any T -- including <code class="bg-stone-100 px-1 rounded text-xs">string[]?</code> or <code class="bg-stone-100 px-1 rounded text-xs">(int) -> bool?</code>.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In Monk source code, you write the <code class="bg-stone-100 px-1 rounded text-xs">?</code> suffix after the type name:
+        </p>
+
+        <Code code={`let name string? = none        // ok -- none is valid for string?
+let age  int?   = 42           // ok -- int is valid for int?
+
+let count int   = none         // error: none is not assignable to int`} lang="javascript" />
+    </section>
+
+    <!-- AssignableTo -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">AssignableTo: one function encodes all compatibility rules.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The checker's core question is always the same: "can this value go here?" A string can't go in an int slot. A <code class="bg-stone-100 px-1 rounded text-xs">none</code> can go in an <code class="bg-stone-100 px-1 rounded text-xs">int?</code> slot but not an <code class="bg-stone-100 px-1 rounded text-xs">int</code> slot. An int can go in a float slot because Monk allows numeric widening.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            All of these rules live in one function: <code class="bg-stone-100 px-1 rounded text-xs">AssignableTo(src, dst Type) bool</code>. The rules it encodes:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Identity.</strong> <code class="bg-stone-100 px-1 rounded text-xs">int</code> → <code class="bg-stone-100 px-1 rounded text-xs">int</code>. Same kind, same optional flag -- always assignable.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Any wildcard.</strong> <code class="bg-stone-100 px-1 rounded text-xs">Any</code> → anything, anything → <code class="bg-stone-100 px-1 rounded text-xs">Any</code>. The escape hatch for builtins and unresolvable types.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Numeric widening.</strong> <code class="bg-stone-100 px-1 rounded text-xs">int</code> → <code class="bg-stone-100 px-1 rounded text-xs">float</code>. An integer is always valid where a float is expected. The reverse is not true -- no implicit narrowing.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>Optional acceptance.</strong> <code class="bg-stone-100 px-1 rounded text-xs">none</code> → <code class="bg-stone-100 px-1 rounded text-xs">T?</code>, and <code class="bg-stone-100 px-1 rounded text-xs">T</code> → <code class="bg-stone-100 px-1 rounded text-xs">T?</code>. The optional destination accepts both its base type and none.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">5</span></div>
+                <p class="text-sm"><strong>Structural records.</strong> A record literal is assignable to a record type if it has exactly the right fields with the right types. Structural, not nominal -- the type name doesn't matter, the shape does.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">6</span></div>
+                <p class="text-sm"><strong>Element-wise arrays.</strong> <code class="bg-stone-100 px-1 rounded text-xs">int[]</code> → <code class="bg-stone-100 px-1 rounded text-xs">int[]</code> only. The element type must match (or be assignable to) the destination element type.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">7</span></div>
+                <p class="text-sm"><strong>Exact function signatures.</strong> <code class="bg-stone-100 px-1 rounded text-xs">(int) -> bool</code> → <code class="bg-stone-100 px-1 rounded text-xs">(int) -> bool</code>. Param count, param types, and return type must all match exactly.</p>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm">Centralizing these rules in one function means they apply consistently everywhere -- variable declarations, assignments, function arguments, array literals, record fields. The checker calls <code class="bg-stone-100 px-1 rounded text-xs">AssignableTo</code> in dozens of places, but the rules live in one.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Type annotations in source -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">How types appear in source code.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk uses space-separated type annotations, not colon syntax. This was a deliberate parser design choice -- colons would be ambiguous with record literals.
+        </p>
+
+        <Code code={`// Variables
+let x int = 42
+let name string = "Alice"
+let scores float[] = [1.0, 2.5, 3.7]
+let user User = { name: "Bob", age: 30 }
+
+// Optional variables
+let maybe int? = none
+
+// Functions -- types on params, return after arrow
+let add = (a int, b int) int {
+    return a + b
+}
+
+// Function-typed parameters
+let apply = (f (int) -> int, n int) int {
+    return f(n)
+}
+
+// Custom type definitions
+type Point { x float, y float }
+type ID = int    // type alias`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            When there's no annotation, the checker infers the type from the first assignment. The inferred type is then enforced on every subsequent assignment -- you get the benefits of inference without losing the safety of a declared type.
+        </p>
+    </section>
+
+    <!-- Forward references -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Forward references and hoisting.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk programs often use functions before they're defined. A recursive function calls itself. Two functions call each other. This is normal -- and the checker handles it.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Before running the main checking pass, the checker does a first scan over the AST and records all function declarations and their type signatures. This pre-population of the scope means functions can call each other in any order without the checker complaining about an "undeclared" identifier.
+        </p>
+
+        <Code code={`// Works fine -- isEven calls isOdd which is defined below
+let isEven = (n int) bool {
+    if n == 0 { return true }
+    return isOdd(n - 1)
+}
+
+let isOdd = (n int) bool {
+    if n == 0 { return false }
+    return isEven(n - 1)
+}`} lang="javascript" />
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">1</span></div>
+                <p class="text-sm">Nine kinds (Any, Int, Float, Str, Bool, None, Array, Record, Func) cover every Monk value.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">2</span></div>
+                <p class="text-sm">Optional is an orthogonal boolean flag. <code class="bg-stone-100 px-1 rounded text-xs">int?</code> = KindInt + Optional:true. Works for any T.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">3</span></div>
+                <p class="text-sm"><code class="bg-stone-100 px-1 rounded text-xs">AssignableTo</code> encodes all compatibility in one function: identity, Any, numeric widening, optional, structural records, array elements, exact function signatures.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">4</span></div>
+                <p class="text-sm">Type inference fixes a variable's type on first assignment. No annotation required, but the type is then enforced.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-6-types/why-types"
+        prevLabel="Prev: Why Add a Type System?"
+        nextHref="/phase-6-types/building-the-checker"
+        nextLabel="Next: Building the Checker"
+    />
+
+</LessonLayout>

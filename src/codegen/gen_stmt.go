@@ -8,6 +8,9 @@ import (
 
 // Statement emission. Each emit* method writes directly into g.body.
 
+// emitStmt dispatches to the appropriate emitter for each statement kind.
+// Unrecognized nodes emit a C comment so the build still succeeds while
+// making the gap visible.
 func (g *generator) emitStmt(stmt syntax.Stmt) {
 	switch s := stmt.(type) {
 	case *syntax.VarDeclStmt:
@@ -195,6 +198,46 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 		}
 	}
 
+	// ── Typed record field write fast path ──────────────────────────────────
+	// When target is rec.field where rec is a plain ident with a statically
+	// known record type, emit a direct index write instead of monk_record_set.
+	// For scalar fields: no free/copy needed (no heap allocation).
+	// For boxed fields: free + copy using index (still avoids the strcmp loop).
+	// Only for plain = (not +=, -= etc.) to match the typed-array fast path.
+	if s.Op == syntax.Equal && g.info != nil {
+		if propTarget, ok := s.Target.(*syntax.PropertyExpr); ok {
+			if identObj, ok2 := propTarget.Object.(*syntax.IdentExpr); ok2 {
+				objName := mangleName(identObj.Name)
+				if objType, ok3 := g.info.Types[propTarget.Object]; ok3 && objType != nil {
+					idx, fieldSt := recordField(objType, propTarget.Property)
+					if idx >= 0 {
+						rhsCode, rhsSt := g.emitExprTyped(s.Value)
+						switch fieldSt {
+						case storeInt:
+							rhs := coerce(rhsCode, rhsSt, storeInt)
+							g.emitLine("    %s.record_val->fields[%d].value = monk_int(%s);\n", objName, idx, rhs)
+							return
+						case storeFloat:
+							rhs := coerce(rhsCode, rhsSt, storeFloat)
+							g.emitLine("    %s.record_val->fields[%d].value = monk_float(%s);\n", objName, idx, rhs)
+							return
+						case storeBool:
+							rhs := coerce(rhsCode, rhsSt, storeBool)
+							g.emitLine("    %s.record_val->fields[%d].value = monk_bool(%s);\n", objName, idx, rhs)
+							return
+						default:
+							// Boxed field (string, record, array): free old, copy new.
+							rhs := coerce(rhsCode, rhsSt, storeBoxed)
+							tmp := g.newTemp()
+							g.emitLine("    { MonkValue %s = monk_deep_copy(%s); monk_free(%s.record_val->fields[%d].value); %s.record_val->fields[%d].value = %s; }\n",
+								tmp, rhs, objName, idx, objName, idx, tmp)
+							return
+						}
+					}
+				}
+			}
+		}
+	}
 	value := g.emitExpr(s.Value)
 
 	switch target := s.Target.(type) {
@@ -359,6 +402,9 @@ func (g *generator) emitIfInline(s *syntax.IfStmt) {
 	g.emitLine("    }\n")
 }
 
+// emitWhile emits a C `while` loop. The storage snapshot is taken before the
+// body and restored after so that variables declared inside the loop don't
+// pollute the outer storage map.
 func (g *generator) emitWhile(s *syntax.WhileStmt) {
 	g.emitLine("    while (%s) {\n", g.emitCondition(s.Condition))
 	snap := g.saveStorage()
@@ -511,6 +557,9 @@ func (g *generator) emitFor(s *syntax.ForStmt) {
 	g.emitLine("    }\n")
 }
 
+// emitReturn saves captured variables back to _self->captures (via
+// emitCaptureSaveBack) then emits the C return. For unboxed functions the
+// return value is coerced to the declared raw scalar type.
 func (g *generator) emitReturn(s *syntax.ReturnStmt) {
 	// Save captured variables back to _self->captures before returning.
 	g.emitCaptureSaveBack()
@@ -541,6 +590,10 @@ func (g *generator) emitCaptureSaveBack() {
 	}
 }
 
+// emitGuard emits the setjmp-based guard construct. The guarded expression runs
+// inside monk_guard_begin's if-branch; on throw the else-branch runs with the
+// error value bound to errName. The guard variable is pre-initialised to none
+// so it has a safe default even if the against block doesn't assign it.
 func (g *generator) emitGuard(s *syntax.GuardStmt) {
 	varName := mangleName(s.VarName)
 	errName := mangleName(s.ErrorName)

@@ -1,0 +1,224 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Why Add a Type System?" lessonNumber="6.1" section="Phase 6">
+
+    <LessonHeader lessonNumber="6.1" title="Why Add a Type System?" description="What goes wrong without types. What Monk's checker catches before your program ever runs.">
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="default">10 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The analogy -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A spell checker that understands meaning.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A spell checker catches typos. A grammar checker catches structural mistakes. A type checker is one level up from both: it catches mistakes in the meaning of your program.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            "Add this number to that string" is syntactically valid Monk. The lexer and parser accept it without complaint. But it doesn't mean anything. A type checker rejects it before the program runs -- turning a crash you'd discover at 2am into a compile error you discover immediately.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk's type checker runs between the parser and the code generator. Every program that passes the checker is guaranteed to not fail from type errors. That guarantee is worth more than any runtime check.
+        </p>
+    </section>
+
+    <!-- What breaks without types -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What breaks without a checker.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Before Phase 6, Monk compiled and ran anything that parsed. Here are some programs that would have compiled, only to crash or silently misbehave at runtime:
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Type mismatch on reassignment:</p>
+        <Code code={`let count = 0
+count = "hello"    // was int, now string -- silent drift`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">Missing return on a non-none function:</p>
+        <Code code={`let double = (n int) int {
+    if n > 0 {
+        return n * 2
+    }
+    // if n <= 0, falls off the end -- undefined behavior in C
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">Wrong shape record:</p>
+        <Code code={`type Point { x int, y int }
+let p Point = { x: 1 }    // missing y -- runtime access to uninitialized memory`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">Meaningless equality:</p>
+        <Code code={`if 5 == "5" {    // always false, but no error -- silent logic bug
+    show("equal")
+}`} lang="javascript" />
+
+        <InsightBox>
+            <p class="text-sm">Each of these programs parses cleanly. The mistake is in the semantics -- the meaning -- not the syntax. That's exactly the class of errors a type checker is designed to catch.</p>
+        </InsightBox>
+    </section>
+
+    <!-- What the checker actually catches -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What Monk's checker catches.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk's checker enforces a specific set of rules. Each one prevents a real class of bug:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Type inference and reassignment consistency.</p>
+                    <p class="text-monk-muted text-sm">The first assignment to a variable fixes its type. Reassigning a different type is a compile error. No silent drift.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Array element homogeneity.</p>
+                    <p class="text-monk-muted text-sm"><code class="bg-stone-100 px-1 rounded text-xs">int[]</code> only holds ints. Assigning a string to an index, or appending the wrong type -- compile error. Homogeneous arrays are enforceable.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Record shape enforcement.</p>
+                    <p class="text-monk-muted text-sm">Missing fields, extra fields, wrong-type fields on a typed record literal -- all caught. The struct you build matches the type you declared.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">4</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">All-paths return.</p>
+                    <p class="text-monk-muted text-sm">Every function declared to return a non-none type must return on every control flow path. Falling off the end of a function is a compile error.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">5</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Cross-type equality.</p>
+                    <p class="text-monk-muted text-sm"><code class="bg-stone-100 px-1 rounded text-xs">5 == "5"</code> is a type error. So is comparing arrays, records, or functions with <code class="bg-stone-100 px-1 rounded text-xs">==</code>. Monk has no deep-equality semantics -- and the checker enforces that.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">6</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Function arity and argument types.</p>
+                    <p class="text-monk-muted text-sm">Wrong number of arguments, wrong type for a parameter -- caught at the call site. Including functions passed as arguments to higher-order functions.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- What the checker doesn't catch -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What it intentionally doesn't catch.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk's checker is not trying to prove your program correct. It's trying to eliminate a specific, high-value class of bugs. Some things are deliberately left to runtime:
+        </p>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-stone-500 font-bold text-xs">–</span>
+                </div>
+                <p class="text-sm"><strong>Out-of-bounds array access.</strong> The checker doesn't track the length of arrays, so <code class="bg-stone-100 px-1 rounded text-xs">arr[100]</code> when the array has 3 elements is a runtime panic, not a compile error.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-stone-500 font-bold text-xs">–</span>
+                </div>
+                <p class="text-sm"><strong>None access.</strong> Reading a property from a <code class="bg-stone-100 px-1 rounded text-xs">none</code> value, or accessing an optional without checking it -- runtime error. The checker knows a value is optional, but doesn't enforce unwrapping.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-stone-500 font-bold text-xs">–</span>
+                </div>
+                <p class="text-sm"><strong>Builtins with flexible return types.</strong> Functions like <code class="bg-stone-100 px-1 rounded text-xs">length</code> work on both arrays and strings -- the checker types these as <code class="bg-stone-100 px-1 rounded text-xs">Any</code> in slots where it can't express union types, so they flow through without complaint.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            These are known limits, not oversights. A more powerful type system could close them -- but that's a future phase. The current checker catches the bugs that matter most without requiring a PhD to understand its rules.
+        </p>
+    </section>
+
+    <!-- Where it runs -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Where the checker fits in the pipeline.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The checker is a new pass inserted between the parser and the code generator. The pipeline is now four stages:
+        </p>
+
+        <Code code={`Source text
+    ↓ Lexer     (tokens)
+    ↓ Parser    (AST)
+    ↓ Checker   (typed AST + error or ok)
+    ↓ Codegen   (C source)`} lang="text" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            If the checker finds an error, it prints a message with line and column, and compilation stops. No C is generated. No binary is produced. The error is specific and actionable:
+        </p>
+
+        <Code code={`error: hello.monk:3:9: cannot assign string to int variable 'count'`} lang="text" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            All three commands -- <code class="bg-stone-100 px-1 rounded text-xs">monk build</code>, <code class="bg-stone-100 px-1 rounded text-xs">monk run</code>, and <code class="bg-stone-100 px-1 rounded text-xs">monk check</code> -- run the checker. You can't accidentally bypass it.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">1</span></div>
+                <p class="text-sm">Type errors are compile errors in Monk. They surface immediately, with a location, not at runtime after deployment.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">2</span></div>
+                <p class="text-sm">The checker runs after the parser, before codegen. All three commands run it -- there's no way to skip it.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">3</span></div>
+                <p class="text-sm">The checker catches inference drift, missing returns, wrong-shape records, array violations, cross-type equality, and call mismatches.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">4</span></div>
+                <p class="text-sm">The checker's type information is also used by the code generator -- it's the foundation for scalar unboxing (lesson 6.4).</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-5-cli/references"
+        prevLabel="Prev: References"
+        nextHref="/phase-6-types/monks-type-model"
+        nextLabel="Next: Monk's Type Model"
+    />
+
+</LessonLayout>

@@ -1,0 +1,58 @@
+// Benchmark: Levenshtein edit distance using flat 2D array.
+// Tests: 2D array indexing, string character access (via substring),
+// string comparison, allocation per character access.
+// Output: accumulated edit distance across rounds.
+
+let s1 = ""
+let s2 = ""
+let i = 0
+while i < 20 {
+    s1 = s1 + "abcde"
+    s2 = s2 + "aXcYe"
+    i += 1
+}
+
+let len1 = length(s1)
+let len2 = length(s2)
+let W = len2 + 1
+
+let total = 0
+let round = 0
+while round < 50 {
+    let dp = range((len1 + 1) * W)
+
+    i = 0
+    while i <= len1 {
+        dp[i * W] = i
+        i += 1
+    }
+    let j = 0
+    while j <= len2 {
+        dp[j] = j
+        j += 1
+    }
+
+    i = 1
+    while i <= len1 {
+        j = 1
+        while j <= len2 {
+            let cost = 0
+            if substring(s1, i - 1, i) != substring(s2, j - 1, j) {
+                cost = 1
+            }
+            let del_cost = dp[(i - 1) * W + j] + 1
+            let ins_cost = dp[i * W + (j - 1)] + 1
+            let sub_cost = dp[(i - 1) * W + (j - 1)] + cost
+
+            let min_val = del_cost
+            if ins_cost < min_val { min_val = ins_cost }
+            if sub_cost < min_val { min_val = sub_cost }
+            dp[i * W + j] = min_val
+            j += 1
+        }
+        i += 1
+    }
+    total = total + dp[len1 * W + len2]
+    round += 1
+}
+show(to_string(total))

@@ -7,6 +7,7 @@ All guidelines are organized in `.claude/rules/`:
 - @.claude/rules/persona.md — Conversation style, behavior, concision
 - @.claude/rules/code-review-workflow.md — How to process external review feedback
 - @.claude/rules/pre-completion-checks.md — **MANDATORY** check battery before declaring work done
+- @.claude/rules/comments-with-examples.md — Every non-trivial code change MUST have an inline comment explaining what it does, with concrete examples showing pass/fail or before/after behavior.
 
 Ground-up rewrite of [Monk Lang](https://github.com/monkfromearth/monk-lang). Same language, new implementation.
 The v1 (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](https://github.com/monkfromearth/monk-lang-v1).

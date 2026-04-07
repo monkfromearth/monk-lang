@@ -44,6 +44,7 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 	exportFnStorage := make(map[string]map[string]funcStorage)
 	exportVarStorage := make(map[string]map[string]storageKind)
 	exportFuncHasCapture := make(map[string]map[string]bool)
+	exportFuncDefaults := make(map[string]map[string][]syntax.Expr)
 
 	// Global function counter shared across all modules to avoid name collisions.
 	globalFuncCount := 0
@@ -127,6 +128,11 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 					if exportFuncHasCapture[depPath][cFuncName] {
 						g.funcHasCapture[cFuncName] = true
 					}
+					// Propagate default parameter expressions so padDefaults can fill omitted
+					// trailing args at call sites in the importing module.
+					if defs, ok := exportFuncDefaults[depPath][cFuncName]; ok {
+						g.funcDefaults[cFuncName] = defs
+					}
 				}
 				// Wire variable imports so IdentExpr resolves to the foreign C name.
 				if cName, ok := exportCNames[depPath][imp.orig]; ok {
@@ -161,6 +167,7 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 		fnStorageMap := make(map[string]funcStorage)
 		varStorageMap := make(map[string]storageKind)
 		hasCapture := make(map[string]bool)
+		funcDefaultsMap := make(map[string][]syntax.Expr)
 		for exportName := range mod.Exports {
 			// Re-export check: if this name was imported (in importMap),
 			// propagate the original C name instead of generating a new one.
@@ -184,6 +191,11 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 				if g.funcHasCapture[cFuncName] {
 					hasCapture[cFuncName] = true
 				}
+				// Propagate default param expressions so importers can pad omitted args.
+				// e.g. greet("world") omits suffix → padDefaults fills it with "!"
+				if defs, ok := g.funcDefaults[cFuncName]; ok {
+					funcDefaultsMap[cFuncName] = defs
+				}
 			}
 		}
 		exportCNames[modPath] = cNames
@@ -191,6 +203,7 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 		exportFnStorage[modPath] = fnStorageMap
 		exportVarStorage[modPath] = varStorageMap
 		exportFuncHasCapture[modPath] = hasCapture
+		exportFuncDefaults[modPath] = funcDefaultsMap
 	}
 
 	// Assemble the single .c file.
@@ -247,4 +260,3 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 
 	return out.String()
 }
-

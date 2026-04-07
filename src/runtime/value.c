@@ -229,6 +229,9 @@ MonkValue monk_deep_copy_heap(MonkValue v) {
     case MONK_STRING:
         return monk_string(v.str_val);
     case MONK_ARRAY: {
+        /* COW share: bumps refcount, no element copy. Safe because
+         * monk_array_ensure_unique deep-copies all elements before any
+         * mutation (monk_array_set always calls ensure_unique first). */
         return monk_array_share(v);
     }
     case MONK_INT_ARRAY: {

@@ -160,6 +160,8 @@ Static analysis pass over the AST, before code generation.
 - [x] Record field unboxing — `rec.field` reads/writes emit `obj.record_val->fields[N].value` (index-based, no strcmp). Scalar fields extract `.int_val`/`.float_val`/`.bool_val` directly. record_access: 25× C → ~1× C.
 - [x] String concat assignment fast path — `s = s + rhs` / `s += rhs` emits `monk_string_append_in_place(&s, rhs)` instead of allocating a whole replacement string. string_concat: ~43.6 ms → ~6.5 ms in targeted run.
 - [x] Runtime `typeof`/`is_*` inlined for pure known-type values — identifiers/literals with non-optional static types emit constants; calls/indexes keep runtime evaluation.
+- [x] Non-escaping closure stack frames — direct-call-only function variables skip `monk_make_function`/`monk_call`; escaped function values still use heap closures. closure_invoke: ~22.9 ms → ~1.4 ms in targeted run.
+- [x] Fresh-result copy elision — boxed `let` bindings move newly-owned literals/builtin results directly instead of `monk_deep_copy`ing them again. Identifier copies still deep-copy/share for value semantics. string_ops: ~100.2 ms → ~80.8 ms in targeted run.
 - [x] Default parameter values — arity-range check in type checker; `padDefaults()` fills defaults at call site in codegen.
 - [x] First-class function values in codegen — closures, trampolines, `monk_make_function`, capture-by-copy with save-back.
 - [x] Higher-order builtins wired into type checker — `map`, `filter`, `reduce` recognized as builtins; `funcExactMatch` accepts `Any` wildcard for callbacks.

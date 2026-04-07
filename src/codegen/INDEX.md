@@ -19,7 +19,8 @@ as static C functions, everything else goes into the body of `main()`.
 | `gen_helpers.go`  | `mangledName`, `cString`, `compoundToArith`, `builtinMap`  |
 | `unbox.go`        | scalar unboxing core (`storageKind`, boxing/coercion, typed calls, raw scalar binary/unary emission) |
 | `gen_access.go`   | typed-array element access and typed-record field access fast paths |
-| `gen_optimize.go` | typed optimization helpers: COW uniqueness tracking, string-append assignment detection, known-type builtin inlining |
+| `gen_optimize.go` | typed optimization helpers: COW uniqueness tracking, string-append assignment detection, known-type builtin inlining, string length fusion, fresh-result copy elision |
+| `gen_escape.go`   | conservative escape analysis for stack-allocated direct-call-only closures |
 | `capture.go`      | `freeVars` — free variable analysis for closure captures   |
 | `gen_bounds.go`   | static bounds analysis for bounds-check elision (`constVals`, `arrayLens`, `varBounds`, `isBoundedSafe`) |
 

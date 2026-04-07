@@ -406,6 +406,63 @@ show(to_string(is_number(arr[10])))`)
 	}
 }
 
+func TestCodegenLengthOfCaseConversionFusesForKnownStrings(t *testing.T) {
+	out, src := runMonkTyped(t, `let base = "the Quick Brown fox"
+let total = length(to_upper_case(base)) + length(to_lower_case(base))
+show(to_string(total))`)
+	if out != "38" {
+		t.Fatalf("output = %q, want fused case-conversion lengths", out)
+	}
+	for _, call := range []string{"monk_to_upper_case", "monk_to_lower_case"} {
+		if strings.Contains(src, call) {
+			t.Fatalf("expected length(case_conversion(string)) to avoid %s allocation, got:\n%s", call, src)
+		}
+	}
+	if got := strings.Count(src, "monk_length"); got != 2 {
+		t.Fatalf("expected two length calls over original string, got %d:\n%s", got, src)
+	}
+}
+
+func TestCodegenLengthCaseFusionPreservesEffects(t *testing.T) {
+	out, src := runMonkTyped(t, `let touch = () string {
+    show("called")
+    return "AbC"
+}
+show(to_string(length(to_upper_case(touch()))))`)
+	if out != "called\n3" {
+		t.Fatalf("output = %q, want call side effect and length", out)
+	}
+	if !strings.Contains(src, "monk_to_upper_case") {
+		t.Fatalf("expected effectful case conversion to stay on runtime path, got:\n%s", src)
+	}
+}
+
+func TestCodegenFreshBuiltinVarDeclAvoidsDeepCopy(t *testing.T) {
+	out, src := runMonkTyped(t, `let base = "AbC"
+let upper = to_upper_case(base)
+show(upper)`)
+	if out != "ABC" {
+		t.Fatalf("output = %q, want upper-case value", out)
+	}
+	if strings.Contains(src, "monk_deep_copy(monk_to_upper_case") {
+		t.Fatalf("expected fresh builtin result to move into let binding without deep copy, got:\n%s", src)
+	}
+}
+
+func TestCodegenIdentifierVarDeclStillCopies(t *testing.T) {
+	out, src := runMonkTyped(t, `let a = "hi"
+let b = a
+b += "!"
+show(a)
+show(b)`)
+	if out != "hi\nhi!" {
+		t.Fatalf("output = %q, want copied string binding", out)
+	}
+	if !strings.Contains(src, "monk_deep_copy(mk_a)") {
+		t.Fatalf("expected identifier binding to keep deep copy for value semantics, got:\n%s", src)
+	}
+}
+
 func TestGenerateModulesTypedArrayInitializesUniquenessTracking(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{
@@ -668,12 +725,12 @@ let a = 100
 let b = a / get_divisor(5)
 show(to_string(b))`)
 	// The call must appear exactly once in the generated expression.
-	// Three occurrences expected: definition `static int64_t _monk_func_1(...)`,
-	// the thunk `_monk_func_1(...)`, and the single call `_monk_func_1(5)`.
-	// Four would mean the expression was evaluated twice.
+	// Two occurrences expected after stack-direct function calls: definition
+	// `static int64_t _monk_func_1(...)` and the single call `_monk_func_1(5)`.
+	// Three or more would mean a thunk or duplicated expression came back.
 	callCount := strings.Count(src, "_monk_func_1(")
-	if callCount != 3 {
-		t.Errorf("expected 3 occurrences (1 def + 1 thunk + 1 call), got %d\n%s", callCount, src)
+	if callCount != 2 {
+		t.Errorf("expected 2 occurrences (1 def + 1 call), got %d\n%s", callCount, src)
 	}
 }
 
@@ -993,6 +1050,59 @@ inc()
 inc()`)
 	if out != "1\n2\n3" {
 		t.Errorf("expected '1\\n2\\n3', got %q", out)
+	}
+}
+
+func TestCodegenNonEscapingClosureUsesStackFrame(t *testing.T) {
+	out, src := runMonkTyped(t, `let total = 0
+let i = 0
+while i < 3 {
+    let adder = (x int) int { return x + i }
+    total += adder(10)
+    i += 1
+}
+show(to_string(total))`)
+	if out != "33" {
+		t.Fatalf("expected '33', got %q", out)
+	}
+	if strings.Contains(src, "mk_adder = monk_make_function") || strings.Contains(src, "MonkValue mk_adder = monk_make_function") {
+		t.Fatalf("expected non-escaping closure to avoid heap function allocation, got:\n%s", src)
+	}
+	if strings.Contains(src, "monk_call(mk_adder") {
+		t.Fatalf("expected direct stack-closure call instead of monk_call, got:\n%s", src)
+	}
+	if !strings.Contains(src, "MonkFunction _closure_self_") {
+		t.Fatalf("expected generated C stack closure frame, got:\n%s", src)
+	}
+}
+
+func TestCodegenEscapingClosureStaysHeapAllocated(t *testing.T) {
+	out, src := runMonkTyped(t, `let callbacks = []
+let i = 7
+let adder = (x int) int { return x + i }
+callbacks = append(callbacks, adder)
+show(to_string(adder(5)))`)
+	if out != "12" {
+		t.Fatalf("expected '12', got %q", out)
+	}
+	if !strings.Contains(src, "monk_make_function") {
+		t.Fatalf("expected escaping closure to stay heap allocated, got:\n%s", src)
+	}
+}
+
+func TestCodegenDirectOnlyBoxedParamFunctionReturnsBoxed(t *testing.T) {
+	out, src := runMonkTyped(t, `let first_or_target = (arr array, target int) int {
+    if length(arr) > 0 { return target }
+    return 0
+}
+let values = [1, 2, 3]
+let idx = first_or_target(values, 9)
+show(to_string(idx))`)
+	if out != "9" {
+		t.Fatalf("expected '9', got %q", out)
+	}
+	if !strings.Contains(src, "int64_t mk_idx = (_monk_func_1(") || !strings.Contains(src, ")).int_val") {
+		t.Fatalf("expected boxed-return function call to be unboxed at the call site, got:\n%s", src)
 	}
 }
 

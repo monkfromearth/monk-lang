@@ -12,6 +12,7 @@
 //   - unbox.go        — scalar-unboxing path (raw int64_t/double/bool codegen)
 //   - gen_access.go   — typed-array and record-field access fast paths
 //   - gen_optimize.go — small typed optimization detectors (COW, string append, known-type builtins)
+//   - gen_escape.go   — conservative escape analysis for stack-allocated closures
 //   - gen_bounds.go   — static bounds analysis for bounds-check elision on typed arrays
 //   - capture.go      — free-variable analysis for closure capture
 package codegen
@@ -41,20 +42,22 @@ func Generate(prog *syntax.Program, filename string) string {
 // through so scalar variables can be emitted unboxed.
 func GenerateWithTypes(prog *syntax.Program, filename string, info *types.Info) string {
 	g := &generator{
-		filename:       filename,
-		funcCount:      0,
-		tmpCount:       0,
-		funcNames:      make(map[string]string),
-		funcDefaults:   make(map[string][]syntax.Expr),
-		funcHasCapture: make(map[string]bool),
-		info:           info,
-		storage:        make(map[string]storageKind),
-		arrayUnique:    make(map[string]bool),
-		fnStorage:      make(map[string]funcStorage),
+		filename:        filename,
+		funcCount:       0,
+		tmpCount:        0,
+		funcNames:       make(map[string]string),
+		funcDefaults:    make(map[string][]syntax.Expr),
+		funcHasCapture:  make(map[string]bool),
+		info:            info,
+		storage:         make(map[string]storageKind),
+		arrayUnique:     make(map[string]bool),
+		fnStorage:       make(map[string]funcStorage),
+		stackFuncValues: make(map[*syntax.VarDeclStmt]stackFuncInfo),
 	}
 	if info != nil {
 		g.initBounds()
 	}
+	g.stackFuncDecls, g.stackFuncCalls = analyzeStackFuncDecls(prog)
 	return g.generate(prog)
 }
 
@@ -74,6 +77,9 @@ type generator struct {
 	fnStorage       map[string]funcStorage // per-Monk-function storage decision (Monk name → params/ret)
 	retStorage      storageKind            // expected return storage of the current function body
 	currentCaptures []string               // capture variable names for the function being emitted (empty = no closure)
+	stackFuncDecls  map[*syntax.VarDeclStmt]bool
+	stackFuncCalls  map[*syntax.CallExpr]*syntax.VarDeclStmt
+	stackFuncValues map[*syntax.VarDeclStmt]stackFuncInfo
 	// Bounds-check elision — populated only when info != nil.
 	constVals map[string]int64    // compile-time constant variable values (e.g. let N = 400)
 	arrayLens map[string]int64    // statically known lengths of typed array variables

@@ -920,6 +920,92 @@ array COW sharing (intentional; mutation barriers preserve value semantics).
 **Tests added:** module typed-array generation, typed-array reassignment COW
 tracking, and scope-shadowed COW uniqueness restore.
 
+### Closure escape analysis, direct-call slice (2026-04-08)
+
+Added a conservative escape analysis for function literals assigned to local
+variables. If the variable is only used as a direct callee in its lexical
+lifetime, codegen now hoists the function but skips `monk_make_function` and
+`monk_call`:
+
+- Capturing closures emit a stack `MonkValue captures[]` snapshot plus a stack
+  `MonkFunction` frame and call the hoisted function directly with `&self`
+- Non-capturing direct-only helpers skip the unused function-value wrapper too
+- Any value use still stays on the heap path: storing in arrays/records,
+  passing as an argument, returning, nested-function capture, reassignment, or
+  other non-callee references all keep `monk_make_function`
+
+This is a broad closure optimization, not a benchmark-name special case. It
+preserves "closures capture by copy" by deep-copying stack captures at the
+function declaration point, mirroring `monk_make_function`.
+
+**Targeted benchmark:** prebuilt `closure_invoke` binary, `hyperfine -N
+--warmup 10 --runs 50`, before compiler from commit `1b994e7`, after current
+working tree:
+
+| Benchmark | Before | After | C ref | Result |
+|-----------|--------|-------|-------|--------|
+| `closure_invoke` | 22.9 ms ± 2.6 | 1.4 ms ± 0.1 | 1.4 ms ± 0.2 | ~16.6× faster; startup-noise floor / C-parity |
+
+**Tests added:** `TestCodegenNonEscapingClosureUsesStackFrame` and
+`TestCodegenEscapingClosureStaysHeapAllocated`. Updated the older RHS-once
+test to expect no thunk for direct-only helpers.
+
+### Fresh-result copy elision and string length fusion (2026-04-08)
+
+Added a conservative boxed `let` move path for expressions that definitely
+produce a newly-owned value. Examples: literals, array/record literals,
+arithmetic/comparison results, indexed/property reads that already return
+copies, and known fresh builtins such as `to_upper_case`, `to_lower_case`,
+`substring`, `trim`, `append`, `slice`, `map`, and `filter`.
+
+Identifier bindings still deep-copy/share as before:
+
+- `let upper = to_upper_case(base)` now emits `MonkValue upper =
+  monk_to_upper_case(base)` instead of immediately deep-copying the fresh
+  return value
+- `let b = a` still emits `monk_deep_copy(a)`, so string append and COW array
+  mutation preserve value semantics
+
+Also added a small algebraic fusion for `length(to_upper_case(s))` /
+`length(to_lower_case(s))` when `s` is a pure, statically known, non-optional
+string. Effectful calls stay on the runtime path.
+
+**Targeted benchmark:** prebuilt `string_ops` binary, `hyperfine -N --warmup 5
+--runs 20`, before compiler from commit `1b994e7`, after current working tree:
+
+| Benchmark | Before | After | C ref | Result |
+|-----------|--------|-------|-------|--------|
+| `string_ops` | 100.2 ms ± 2.0 | 80.8 ms ± 2.3 | 1.4 ms ± 0.4 | ~1.24× faster; still allocation-dominated |
+
+This is not a full string-view/string-builder implementation. The benchmark
+still allocates one uppercase and one lowercase string per iteration; this pass
+only removes the duplicate copy after a fresh return value.
+
+**Tests added:** `TestCodegenLengthOfCaseConversionFusesForKnownStrings`,
+`TestCodegenLengthCaseFusionPreservesEffects`,
+`TestCodegenFreshBuiltinVarDeclAvoidsDeepCopy`, and
+`TestCodegenIdentifierVarDeclStillCopies`.
+
+### Performance optimization backlog (2026-04-08)
+
+Current ranked backlog from the Phase 6 performance discussion:
+
+| Optimization | Status |
+|--------------|--------|
+| Copy-on-write arrays | Complete — generic + typed arrays share backing storage and detach on mutation |
+| String builder / views | Partial — concat assignment fast path shipped; remaining string work is views/fusion/cached access |
+| `restrict` function extraction | Deferred — proven for matmul/nbody, but invasive and easy to overfit |
+| Closure escape analysis | Partial — direct-call-only closures stack-allocated; broader escape/lifetime analysis remains |
+| Stream fusion for `map`/`filter`/`reduce` | Deferred — likely needs lazy/fused pipeline lowering |
+| Arena allocator | Deferred — depends on escape/lifetime analysis |
+| Inline `typeof` / `is_*` for known types | Complete — pure known-type values inline to constants |
+| Copy elision / move analysis | Partial — fresh-result `let` bindings move directly; last-use move analysis still deferred |
+| String cached offsets / ropes | Deferred — improves repeated UTF-8 indexing/slicing, adds runtime complexity |
+| PGO experiment | Later — not ideal as default build flow |
+| `monk run` binary cache | Later — compiler-throughput optimization, not runtime |
+| Incremental multi-module compilation | Later — compile-time optimization if single-C-file flow becomes a bottleneck |
+| LLVM / Cranelift backend | Long-term — larger backend strategy, not a Phase 6 patch |
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
@@ -928,8 +1014,9 @@ tracking, and scope-shadowed COW uniqueness restore.
 | 6 | `restrict` function extraction | Deferred — matmul/nbody 1.8×→~1×, invasive codegen |
 | 6 | Copy-on-write for arrays | **Complete** ✅ — generic + typed arrays, hidden refcount + write barrier |
 | 6 | Runtime `typeof`/`is_*` inlining | **Complete** ✅ — pure known-type args only; effectful/unknown args stay runtime |
-| 6 | Closure escape analysis | Deferred — closure_invoke 17×→~1×, 2-3 sessions |
+| 6 | Closure escape analysis | Partial ✅ — direct-call-only closures stack-allocated; escaped function values stay heap |
 | 6 | String views / builder | Partial — string_concat fast path complete; string_ops/levenshtein still need views/cached strings |
+| 6 | Copy elision / move analysis | Partial ✅ — fresh-result `let` bindings skip duplicate deep copy; last-use analysis deferred |
 | 6 | Stream fusion (lazy map/filter/reduce) | Deferred — functional_chain 4×→~1×, 3+ sessions |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |

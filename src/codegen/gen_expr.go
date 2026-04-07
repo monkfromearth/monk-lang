@@ -215,6 +215,18 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 	// emitExpr always returns MonkValue for compatibility with the classic
 	// emission paths.
 	if ident, ok := e.Callee.(*syntax.IdentExpr); ok {
+		if code, store, ok := g.emitStackFuncCall(e); ok {
+			if store != storeBoxed {
+				return boxExpr(code, store)
+			}
+			return code
+		}
+		if code, store, ok := g.emitLengthCaseFusion(e); ok {
+			if store != storeBoxed {
+				return boxExpr(code, store)
+			}
+			return code
+		}
 		// User-defined function — pad defaults, then decide call form.
 		if cName, ok := g.funcNames[ident.Name]; ok {
 			fullArgs := g.padDefaults(cName, e.Args)

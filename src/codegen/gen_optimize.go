@@ -41,6 +41,37 @@ func isFreshArrayExpr(expr syntax.Expr) bool {
 	return false
 }
 
+// isFreshValueExpr reports whether an expression returns a newly-owned value
+// that a `let` binding can take directly instead of deep-copying again.
+// Pass: `let s = to_upper_case(base)` owns the returned string.
+// Fail: `let b = a` is not fresh and must copy/share to preserve value semantics.
+func isFreshValueExpr(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.NumberExpr, *syntax.StringExpr, *syntax.TemplateExpr,
+		*syntax.BoolExpr, *syntax.NoneExpr, *syntax.ArrayExpr, *syntax.RecordExpr:
+		return true
+	case *syntax.BinaryExpr, *syntax.UnaryExpr, *syntax.IndexExpr, *syntax.PropertyExpr:
+		return true
+	case *syntax.CallExpr:
+		callee, ok := e.Callee.(*syntax.IdentExpr)
+		if !ok {
+			return false
+		}
+		switch callee.Name {
+		case "to_string", "to_int", "to_float", "length", "substring", "index_of",
+			"split", "trim", "to_upper_case", "to_lower_case",
+			"append", "prepend", "pop", "drop", "take", "slice", "range", "fill",
+			"abs", "floor", "ceil", "round", "sqrt", "pow", "log", "log10", "exp",
+			"min", "max", "sin", "cos", "tan", "asin", "acos", "atan",
+			"typeof", "is_number", "is_string", "is_boolean", "is_array",
+			"is_record", "is_function", "is_none", "file_read", "file_write",
+			"file_exists", "env_get", "map", "filter":
+			return true
+		}
+	}
+	return false
+}
+
 // markArrayUniquenessFromExpr records whether a typed-array variable is proven
 // to be unshared after initialization. Fresh arrays can skip the COW barrier in
 // hot writes; identifier copies mark both variables maybe-shared.
@@ -138,6 +169,33 @@ func (g *generator) emitKnownTypeBuiltin(e *syntax.CallExpr) (string, storageKin
 		return boolLiteral(t.Kind == types.KindNone), storeBool, true
 	}
 	return "", storeBoxed, false
+}
+
+func (g *generator) emitLengthCaseFusion(e *syntax.CallExpr) (string, storageKind, bool) {
+	if g.info == nil || len(e.Args) != 1 {
+		return "", storeBoxed, false
+	}
+	ident, ok := e.Callee.(*syntax.IdentExpr)
+	if !ok || ident.Name != "length" {
+		return "", storeBoxed, false
+	}
+	inner, ok := e.Args[0].(*syntax.CallExpr)
+	if !ok || len(inner.Args) != 1 || !isKnownTypePureExpr(inner.Args[0]) {
+		return "", storeBoxed, false
+	}
+	innerCallee, ok := inner.Callee.(*syntax.IdentExpr)
+	if !ok || (innerCallee.Name != "to_upper_case" && innerCallee.Name != "to_lower_case") {
+		return "", storeBoxed, false
+	}
+	argType := g.info.Types[inner.Args[0]]
+	if argType == nil || argType.Kind != types.KindStr || argType.Optional {
+		return "", storeBoxed, false
+	}
+	// ASCII case conversion preserves UTF-8 character count because it only
+	// changes single-byte ASCII letters and passes non-ASCII bytes through.
+	// Pass: `length(to_upper_case(s string))` -> `length(s)`.
+	// Fail: `length(to_upper_case(f()))` must still call f() exactly once.
+	return fmt.Sprintf("(monk_length(%s).int_val)", g.emitExpr(inner.Args[0])), storeInt, true
 }
 
 func boolLiteral(v bool) string {

@@ -69,23 +69,25 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 		info := modInfo.Info[modPath]
 
 		g := &generator{
-			filename:       modPath,
-			funcCount:      globalFuncCount,
-			tmpCount:       0,
-			funcNames:      make(map[string]string),
-			funcDefaults:   make(map[string][]syntax.Expr),
-			funcHasCapture: make(map[string]bool),
-			info:           info,
-			storage:        make(map[string]storageKind),
-			arrayUnique:    make(map[string]bool),
-			fnStorage:      make(map[string]funcStorage),
-			modulePrefix:   modPrefix,
-			importMap:      make(map[string]string),
-			moduleInit:     !isEntry, // non-entry modules split vars into static globals + init body
+			filename:        modPath,
+			funcCount:       globalFuncCount,
+			tmpCount:        0,
+			funcNames:       make(map[string]string),
+			funcDefaults:    make(map[string][]syntax.Expr),
+			funcHasCapture:  make(map[string]bool),
+			info:            info,
+			storage:         make(map[string]storageKind),
+			arrayUnique:     make(map[string]bool),
+			fnStorage:       make(map[string]funcStorage),
+			stackFuncValues: make(map[*syntax.VarDeclStmt]stackFuncInfo),
+			modulePrefix:    modPrefix,
+			importMap:       make(map[string]string),
+			moduleInit:      !isEntry, // non-entry modules split vars into static globals + init body
 		}
 		if info != nil {
 			g.initBounds()
 		}
+		g.stackFuncDecls, g.stackFuncCalls = analyzeStackFuncDecls(mod.AST)
 
 		// Wire up imports from already-generated dependencies.
 		for _, stmt := range mod.AST.Stmts {

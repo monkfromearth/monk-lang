@@ -301,6 +301,14 @@ func (g *generator) emitCallTyped(e *syntax.CallExpr) (string, storageKind) {
 		return code, store
 	}
 
+	if code, store, ok := g.emitLengthCaseFusion(e); ok {
+		return code, store
+	}
+
+	if code, store, ok := g.emitStackFuncCall(e); ok {
+		return code, store
+	}
+
 	cName, ok := g.funcNames[ident.Name]
 	if !ok {
 		return g.emitExpr(e), storeBoxed

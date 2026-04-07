@@ -14,6 +14,9 @@ This rule encodes the propagation chain.
 ```
 spec/REFERENCE.md           ← update first (spec-first development)
     ↓
+spec/QUICK_REFERENCE.md     ← update syntax tables, module section, builtin tables
+spec/C_RUNTIME.md           ← update if runtime API, structs, or typed-array kinds changed
+    ↓
 src/ (implementation)       ← update second
     ↓
 src/**/*_test.go            ← update/add tests in the same commit

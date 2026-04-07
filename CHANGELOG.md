@@ -21,6 +21,9 @@ Format: [Semantic Versioning](https://semver.org/). Each minor version gets an U
 - **Unboxed for-in over typed arrays** — for-in loops over `int[]`/`float[]`/`bool[]` now emit raw scalar loop variables (`int64_t`/`double`/`bool`) instead of boxing each element into `MonkValue`. The loop body operates on raw C types — no `monk_int()`/`monk_free()` per element.
 
 ### Bug Fixes
+- **Typed array reassignment leaked memory and caused UB** — `emitAssign` fast path used `store != storeBoxed` which passed for typed-array storage. `arr = append(arr, x)` emitted a raw struct copy, leaking old backing store and reading wrong union member. Fixed: guard uses `isRawScalar(store)`.
+- **`emitBinaryTyped` didn't exclude typed-array operands** — bail-out checked `storeBoxed` only, not array storage kinds. Would emit raw C arithmetic on MonkValue structs. Fixed: guard uses `!isRawScalar(ls) || !isRawScalar(rs)`.
+- **`was_typed` flag too broad in container/higher_order** — `arr.kind != MONK_ARRAY` matched non-array kinds (MONK_STRING, etc.). Tightened to explicit typed-array kind check in all 8 occurrences.
 - **Use-after-free in typed array conversion** — `monk_typed_to_generic` and `ho_to_generic` freed the typed backing store after conversion (consuming semantics), but the caller's variable still held the freed pointer. Any array passed to multiple builtins (e.g. `map` then `filter`) crashed. Fixed: converters are now non-consuming.
 - **Memory leak in structural mutators** — `append`, `prepend`, `pop`, `drop`, `take`, `slice`, `map`, `filter`, `reduce` all leaked the intermediate generic array allocated by `monk_typed_to_generic`. Fixed: `free_generic_intermediate()` called before returning.
 - **Index type validation** — `monk_array_get` / `monk_array_set` now validate `index.kind == MONK_INT` before reading the union field, preventing undefined behavior on non-int index values.
@@ -41,6 +44,10 @@ Format: [Semantic Versioning](https://semver.org/). Each minor version gets an U
 ### Bug Fixes (continued)
 - **Closure else-branch scope leak** — `collectRefsStmt` was passing the raw `locals` map to the else-branch instead of a copy. Variables declared in the else leaked into the outer scope after the if, potentially masking outer-scope closure captures. Fixed: else-branch now uses `copyLocals(locals)` like the then-branch.
 - **`funcExactMatch` nil panic** — accessing `src.Return.Kind` or `dst.Return.Kind` before checking for nil panicked on `none`-returning function types. Added nil guard using `Equal(src.Return, dst.Return)` for nil-equality semantics.
+
+### Performance (continued)
+- **Bounds-check elision for typed arrays** — typed array element reads and writes inside simple `while i < N` loops now skip the runtime `i < 0 || i >= length` check when statically provable. Three data sources combined at codegen time: compile-time constants (`let N int = 400`), array lengths from `range(N)`, and per-loop-variable inclusive `[lo, hi]` bounds from `while i < N`. `isBoundedSafe()` proves the access and emits `data[i]` directly. Benchmark: `matmul` **~2× C → ~1.08× C** (parity); `sieve` **~1.4× C → ~1.28× C**.
+- 4 new elision tests: read elision (checks no `monk_panic` in generated C), write elision, correctness (sum 0..99), negative case (loop bound > array length).
 
 ---
 

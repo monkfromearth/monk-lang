@@ -43,6 +43,8 @@ func isFreshArrayExpr(expr syntax.Expr) bool {
 
 // isFreshValueExpr reports whether an expression returns a newly-owned value
 // that a `let` binding can take directly instead of deep-copying again.
+// Only consulted in the boxed MonkValue path of emitVarDecl (store == storeBoxed).
+// Scalar-promoted paths and typed-array paths never reach this check.
 // Pass: `let s = to_upper_case(base)` owns the returned string.
 // Fail: `let b = a` is not fresh and must copy/share to preserve value semantics.
 func isFreshValueExpr(expr syntax.Expr) bool {
@@ -193,6 +195,9 @@ func (g *generator) emitLengthCaseFusion(e *syntax.CallExpr) (string, storageKin
 	}
 	// ASCII case conversion preserves UTF-8 character count because it only
 	// changes single-byte ASCII letters and passes non-ASCII bytes through.
+	// WARNING: this fusion assumes ASCII-only case mapping. If the runtime ever
+	// supports locale-aware conversion (e.g. ß→SS), length can change and this
+	// optimization must be gated on a locale check or removed entirely.
 	// Pass: `length(to_upper_case(s string))` -> `length(s)`.
 	// Fail: `length(to_upper_case(f()))` must still call f() exactly once.
 	return fmt.Sprintf("(monk_length(%s).int_val)", g.emitExpr(inner.Args[0])), storeInt, true

@@ -57,6 +57,12 @@ void monk_free_generic_intermediate(MonkValue arr) {
     free(arr.array_val);
 }
 
+/* COW write barrier for generic MONK_ARRAY. Detaches shared backing storage
+ * by deep-copying all elements into a fresh array with refcount 1.
+ * Safety invariant: elements are deep-copied here, so sharing via
+ * monk_array_share (which only bumps refcount) is safe — no element aliasing
+ * can leak through as long as detach always runs before any element mutation.
+ * Currently file-internal; expose in runtime.h if future mutators need it. */
 static void monk_array_ensure_unique(MonkValue *v) {
     if (v->kind != MONK_ARRAY || !v->array_val) return;
     if (v->array_val->refcount <= 1) return;

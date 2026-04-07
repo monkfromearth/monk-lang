@@ -15,7 +15,7 @@ import (
 func (g *generator) emitStmt(stmt syntax.Stmt) {
 	switch s := stmt.(type) {
 	case *syntax.VarDeclStmt:
-		g.emitVarDecl(s)
+		g.emitVarDecl(s, g.moduleInit)
 	case *syntax.AssignStmt:
 		g.emitAssign(s)
 	case *syntax.ExprStmt:
@@ -55,7 +55,7 @@ func (g *generator) emitStmt(stmt syntax.Stmt) {
 	}
 }
 
-func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
+func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 	// Function declarations: hoist the C function, track the name mapping,
 	// and emit a MonkValue wrapper so the function can be used as a value.
 	if fnExpr, isFn := s.Value.(*syntax.FuncExpr); isFn {
@@ -67,7 +67,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 		// emitFuncValueNamed uses the pre-allocated cName (doesn't increment funcCount again).
 		funcVal := g.emitFuncValueNamed(cFuncName, fnExpr)
 		name := g.mangledName(s.Name)
-		if g.moduleInit {
+		if forModule {
 			// Module mode: declare as static global, assign in init body.
 			// static MonkValue mk_m0_add; (at file scope)
 			// mk_m0_add = monk_make_function(...); (in init body)
@@ -86,7 +86,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 	// Strategy: temporarily capture the normal emitVarDecl output, then
 	// split "TYPE name = expr;" into "static TYPE name;" (global) +
 	// "name = expr;" (init body).
-	if g.moduleInit {
+	if forModule {
 		g.emitModuleVarDecl(s)
 		return
 	}
@@ -228,24 +228,17 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 //
 // ASSUMPTION: all C type tokens emitted by emitVarDecl are single words
 // (MonkValue, int64_t, double, bool). Multi-word types (e.g. "unsigned long")
-// would confuse the parts[0]/parts[1] split. If that ever changes, replace
-// this text-parsing approach with a forModule bool parameter to emitVarDecl.
+// would confuse the parts[0]/parts[1] split. If that ever happens, the panic
+// guard below fires with a clear message rather than emitting corrupt C.
 //
-// NOTE: moduleInit is toggled off/on as a stateful side-effect to make
-// emitVarDecl take the normal (non-module) path. This is safe because
-// emitVarDecl is synchronous and non-reentrant. If emitVarDecl ever spawns
-// recursive calls (e.g. for default parameter init), replace the toggle with
-// a forModule bool argument to avoid mid-recursion state corruption.
-// TODO: refactor emitVarDecl to accept forModule bool instead of using g.moduleInit.
 func (g *generator) emitModuleVarDecl(s *syntax.VarDeclStmt) {
 	// Save the real body, swap in a temp buffer.
 	saved := g.body
 	g.body = strings.Builder{}
 
-	// Disable moduleInit temporarily so emitVarDecl takes the normal path.
-	g.moduleInit = false
-	g.emitVarDecl(s)
-	g.moduleInit = true
+	// Call emitVarDecl with forModule=false so it takes the normal (non-module)
+	// path — we handle the global/init split ourselves below.
+	g.emitVarDecl(s, false)
 
 	output := g.body.String()
 	g.body = saved

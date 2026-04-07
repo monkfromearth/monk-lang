@@ -287,7 +287,7 @@ Static global:    static int64_t mk_m0_x;    (file scope)
 Init body:            mk_m0_x = 42;          (inside _mod_0_init)
 ```
 
-`emitModuleVarDecl` handles this split: it runs `emitVarDecl` into a temp buffer, text-parses `"TYPE name = expr;"` lines, emits the declaration to `g.globals`, and the assignment to `g.body`.
+`emitModuleVarDecl` handles this split: it calls `emitVarDecl(s, false)` into a temp buffer (the `false` takes the normal non-module path), text-parses `"TYPE name = expr;"` lines, emits the declaration to `g.globals`, and the assignment to `g.body`.
 
 **Assembly order of the single `.c` output:**
 

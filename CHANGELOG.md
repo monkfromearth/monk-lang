@@ -8,6 +8,14 @@ Format: [Semantic Versioning](https://semver.org/). Each minor version gets an U
 
 ## Unreleased
 
+### Code quality (Phase 7 hardening)
+- **Path resolution consolidated** — `resolveDepPath` (types) and `resolveModPath` (codegen) deleted; both call sites now use `module.ResolvePath` as the single canonical implementation.
+- **`emitVarDecl` forModule bool refactor** — replaced stateful `g.moduleInit` toggle in `emitModuleVarDecl` with an explicit `forModule bool` parameter. `g.moduleInit` is now read-only during emission; the toggle that was unsafe under recursive calls is gone.
+- **`emitModuleVarDecl` panic guard** — added early panic if a C type name ever contains a space, with a message pointing at the proper fix. Documents the single-token assumption that makes the text-parsing strategy safe.
+- **`mangledName()` invariant comment** — documents the entry-module/prefix/importMap contract so future maintainers can't silently corrupt symbol names.
+- **`gen_stmt.go` file split** — 844-line file split into `gen_stmt.go` (480 lines, declarations + assignments) and `gen_flow.go` (374 lines, control flow). Per file-organization rule: one topic per file.
+- **WALKTHROUGH.md Phase 7 section** — added generator struct module fields, "How multi-module codegen works" section (name mangling table, init-once pattern, variable split, .c assembly order).
+
 ### Module System (Phase 7)
 - **Multi-file compilation** — `use`/`export` statements now resolve, type-check, and compile across multiple `.monk` files into a single `.c` output.
 - All four import forms: `use X from`, `use { X, Y } from`, `use * from`, `use X as Y from`.

@@ -797,6 +797,23 @@ Multi-file compilation via `use`/`export`. All modules compile into a single `.c
 
 **Tests:** 13 unit tests (`src/module/module_test.go`), 23 integration tests (12 `TestRunModule*`, 5 `TestCheckModule*`, 1 `TestBuildModule*`, plus module-aware existing tests). All 23 examples pass. All 21 benchmarks match expected.
 
+### Phase 7 — Hardening (2026-04-07)
+
+Senior review + file-organization cleanup applied after Phase 7 landed.
+
+**Code quality:**
+- **Path resolution consolidated** — `resolveDepPath` (types) and `resolveModPath` (codegen) deleted. Single canonical `module.ResolvePath` used everywhere. Three copies → one.
+- **`emitVarDecl` forModule bool refactor** — removed stateful `g.moduleInit` toggle in `emitModuleVarDecl`. Now passes `forModule bool` as an explicit parameter. `g.moduleInit` is set once at generator construction, never mutated mid-call. Safe under recursion.
+- **`emitModuleVarDecl` panic guard** — panics on multi-word C type names (e.g. `unsigned long`) with a clear message. Documents the single-token assumption that makes text-parsing safe.
+- **`mangledName()` invariant comment** — documents entry-module/prefix/importMap contract.
+
+**File organization:**
+- `gen_stmt.go` split: 844 lines → `gen_stmt.go` (480, declarations + assignments) + `gen_flow.go` (374, control flow). Triggered by file-organization rule at ~500 line soft limit.
+
+**Documentation:**
+- WALKTHROUGH.md: added generator struct module fields (`modulePrefix`, `importMap`, `moduleInit`, `globals`), new "How multi-module codegen works" section with name mangling table, init-once pattern, variable split, and `.c` assembly order diagram.
+- Knowledge site Phase 7 lessons audited — all four accurate, no fixes needed.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |

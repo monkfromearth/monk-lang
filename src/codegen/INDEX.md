@@ -1,6 +1,7 @@
 # `src/codegen/` — AST → C emitter
 
 Entry: `Generate(prog, filename)` or `GenerateWithTypes(prog, filename, info)`.
+Multi-module: `GenerateModules(graph, modInfo)` — single `.c` from a module graph.
 
 The generator walks the AST twice: functions get **hoisted** above `main()`
 as static C functions, everything else goes into the body of `main()`.
@@ -10,10 +11,12 @@ as static C functions, everything else goes into the body of `main()`.
 | File              | Contains                                                   |
 | ----------------- | ---------------------------------------------------------- |
 | `gen.go`          | `Generate` / `GenerateWithTypes` entry, `generator` struct, driver loop |
-| `gen_stmt.go`     | statement emission (var decl, assign, control flow, guard) |
+| `gen_stmt.go`     | statement emission: `emitStmt` dispatcher, `emitVarDecl`, `emitModuleVarDecl`, `emitAssign` |
+| `gen_flow.go`     | control-flow emission: `emitIf`, `emitWhile`, `emitFor`, `emitReturn`, `emitGuard`, `emitCondition` |
 | `gen_expr.go`     | expression emission (**boxed** MonkValue path)             |
 | `gen_func.go`     | function hoisting, trampolines, closures, capture save-back |
-| `gen_helpers.go`  | `mangleName`, `cString`, `compoundToArith`, `builtinMap`   |
+| `gen_module.go`   | `GenerateModules` — multi-module → single `.c`, init functions, module-prefixed names |
+| `gen_helpers.go`  | `mangledName`, `cString`, `compoundToArith`, `builtinMap`  |
 | `unbox.go`        | scalar and typed-array unboxing (`int64_t`/`double`/`bool`, `storeIntArray` etc.) |
 | `capture.go`      | `freeVars` — free variable analysis for closure captures   |
 | `gen_bounds.go`   | static bounds analysis for bounds-check elision (`constVals`, `arrayLens`, `varBounds`, `isBoundedSafe`) |
@@ -34,7 +37,7 @@ as static C functions, everything else goes into the body of `main()`.
    which converts from generic `MONK_ARRAY` (e.g. `range(N)`) or deep-copies an
    existing typed array. Previous "inline access" path with `.array_val->data[i].int_val`
    replaced by this approach — halves element memory stride.
-4. **Counter-loop path** (`emitFor` in `gen_stmt.go`) — `for x in range(N)` is
+4. **Counter-loop path** (`emitFor` in `gen_flow.go`) — `for x in range(N)` is
    detected before emission and compiled as `for(int64_t x=0; x<N; x++)`. No
    allocation, no runtime call. The loop variable is `storeInt`.
 5. **Specialized allocation** (`emitVarDecl` in `gen_stmt.go`) — `fill(N, val)` on

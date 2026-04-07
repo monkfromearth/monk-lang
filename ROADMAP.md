@@ -168,15 +168,17 @@ Static analysis pass over the AST, before code generation.
 
 ---
 
-## Phase 7: Module System
+## Phase 7: Module System ✅
 
-- [ ] `use X from "./path"` — resolve and load .monk files
-- [ ] Named imports, wildcard imports
-- [ ] `export` declarations
-- [ ] Import with alias (`use X as Y`)
-- [ ] Module scope isolation
-- [ ] Circular import detection (compile error)
-- [ ] Compile multi-file programs to a single .c file (or multiple linked .o files)
+- [x] `use X from "./path"` — resolve and load .monk files
+- [x] Named imports, wildcard imports
+- [x] `export` declarations
+- [x] Import with alias (`use X as Y`)
+- [x] Module scope isolation
+- [x] Circular import detection (compile error)
+- [x] Compile multi-file programs to a single .c file
+
+**Status:** 25 module tests (13 unit + 12 integration). `src/module/`, `src/types/checker.go`, `src/codegen/gen_module.go`
 
 ---
 

@@ -1,0 +1,10 @@
+// Math utilities module — demonstrates export of functions and constants.
+
+let add = (a int, b int) int { return a + b }
+export add
+
+let mul = (a int, b int) int { return a * b }
+export mul
+
+const PI = 3
+export PI

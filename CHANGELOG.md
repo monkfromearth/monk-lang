@@ -8,6 +8,26 @@ Format: [Semantic Versioning](https://semver.org/). Each minor version gets an U
 
 ## Unreleased
 
+### Code quality (Phase 7 hardening)
+- **Path resolution consolidated** — `resolveDepPath` (types) and `resolveModPath` (codegen) deleted; both call sites now use `module.ResolvePath` as the single canonical implementation.
+- **`emitVarDecl` forModule bool refactor** — replaced stateful `g.moduleInit` toggle in `emitModuleVarDecl` with an explicit `forModule bool` parameter. `g.moduleInit` is now read-only during emission; the toggle that was unsafe under recursive calls is gone.
+- **`emitModuleVarDecl` panic guard** — added early panic if a C type name ever contains a space, with a message pointing at the proper fix. Documents the single-token assumption that makes the text-parsing strategy safe.
+- **`mangledName()` invariant comment** — documents the entry-module/prefix/importMap contract so future maintainers can't silently corrupt symbol names.
+- **`gen_stmt.go` file split** — 844-line file split into `gen_stmt.go` (480 lines, declarations + assignments) and `gen_flow.go` (374 lines, control flow). Per file-organization rule: one topic per file.
+- **WALKTHROUGH.md Phase 7 section** — added generator struct module fields, "How multi-module codegen works" section (name mangling table, init-once pattern, variable split, .c assembly order).
+
+### Module System (Phase 7)
+- **Multi-file compilation** — `use`/`export` statements now resolve, type-check, and compile across multiple `.monk` files into a single `.c` output.
+- All four import forms: `use X from`, `use { X, Y } from`, `use * from`, `use X as Y from`.
+- `export let`, `export const`, `export type`, and bare `export name` — all work, including inline export declarations.
+- **Module-level code runs once** — non-entry modules become C init functions with `static int _initialized` once-guards.
+- **Circular import detection** — DFS gray-node cycle detection at module resolution time.
+- **Cross-module type exports** — `type Point = { x: int, y: int }` exported from one module and used as a type annotation in another.
+- **Re-exports** — import from A, re-export for B. The original C name is propagated, not duplicated.
+- **Cross-module unboxed calls** — scalar storage kinds (`int64_t`/`double`/`bool`) propagated across module boundaries for zero-overhead function calls.
+- New `src/module/` package: resolver, dependency graph, topological sort.
+- 25 new tests (13 unit + 12 integration) covering: basic/destructured/star/alias imports, diamond dependencies, init-once, re-exports, type exports, parent directory imports, inline exports, error cases (circular, missing export, non-relative path).
+
 ### Performance
 - **Typed array backing store** — `int[]`, `float[]`, `bool[]` variables now use `int64_t*` / `double*` / `bool*` backing stores instead of `MonkValue*`. Element reads/writes emit `arr.int_array_val->data[i]` — direct pointer access, no union overhead, half the memory stride. Matmul benchmark: ~100ms → ~30ms (inline) → **~20ms**, **11× C → 3× C → ~2× C**.
 - New `MONK_INT_ARRAY` / `MONK_FLOAT_ARRAY` / `MONK_BOOL_ARRAY` value kinds in `runtime.h`. New structs `MonkIntArray { int64_t *data; int64_t length }` etc. Converter functions `monk_int_array_from()` / `monk_float_array_from()` / `monk_bool_array_from()` — convert from generic `MONK_ARRAY` (consuming it) or deep-copy from same typed kind.

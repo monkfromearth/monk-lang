@@ -139,6 +139,8 @@ let mid = slice(nums, 1, 4) // [2, 3, 4]
 
 **Homogeneous:** all elements must be the same type.
 
+**Typed arrays** (`int[]`, `float[]`, `bool[]`) use a raw C backing store — element reads return `T` directly (not `T?`). Out-of-bounds panics. Untyped arrays (`any[]`) return `T?` on reads (graceful). Typed arrays benchmark at ~2× C vs ~12× C for untyped — prefer typed annotations in hot paths.
+
 ## Records
 
 ```monk
@@ -214,14 +216,22 @@ let msg = `Hello, ${name}!`  // "Hello, World!"
 
 Backtick strings. `${expr}` for interpolation. Supports multiline.
 
-## Module System (planned)
+## Module System
 
 ```monk
-use math from "./math"
-use {sin, cos} from "./trig"
-use utils as U from "./utils"
-export my_function
+// Import forms
+use math from "./math"               // single named import (no braces)
+use { sin, cos } from "./trig"       // named imports
+use * from "./utils"                 // import everything
+use long_name as ln from "./lib"     // aliased import
+
+// Export forms
+export let PI = 3.14159              // inline export
+export type Point = { x int, y int } // type export
+export helper                        // bare export (declared elsewhere)
 ```
+
+Modules run once. Circular imports are a compile error. Re-exports work.
 
 ## Comments
 
@@ -283,7 +293,11 @@ export my_function
 | `drop` | `(arr, n) -> array` | Remove first n (new array) |
 | `take` | `(arr, n) -> array` | First n elements (new array) |
 | `slice` | `(arr, start, end) -> array` | Subarray (indices clamp) |
-| `range` | `(n) -> int[]` | [0, 1, ..., n-1] |
+| `range` | `(n) -> int[]` | `[0, 1, ..., n-1]` |
+| `fill` | `(n, value) -> T[]` | Array of n copies. `fill(3, 0)` → `[0,0,0]`. `fill(0, x)` → `[]` |
+| `map` | `(arr, fn) -> array` | Transform each element. `map([1,2], (x int) int { return x*2 })` → `[2,4]` |
+| `filter` | `(arr, fn) -> array` | Keep matching elements. `filter([1,2,3], (x int) bool { return x>1 })` → `[2,3]` |
+| `reduce` | `(arr, fn, initial) -> any` | Fold. `reduce([], fn, x)` returns `x` (initial) |
 
 ### Type Checking
 

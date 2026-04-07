@@ -9,7 +9,9 @@
 
 The runtime is ~1,000 lines of C11, split across 7 `.c` files and 2 headers (`runtime.h` public API, `internal.h` shared helpers). Every Monk program links all of them. The codegen emits calls to these functions — Monk `+` becomes `monk_add()`, Monk `show` becomes `monk_show()`, etc.
 
-**Unboxed fast path (Phase 6).** When the type checker proves a variable is `int`/`float`/`bool`, codegen stores it as a raw `int64_t`/`double`/`bool` and emits raw C arithmetic that skips the runtime entirely. The runtime is only called at boxing boundaries (show, to_string, etc.) and for heap types (strings, arrays, records).
+**Scalar unboxed fast path (Phase 6).** When the type checker proves a variable is `int`/`float`/`bool`, codegen stores it as a raw `int64_t`/`double`/`bool` and emits raw C arithmetic — skipping the runtime entirely. The runtime is only called at boxing boundaries (`show`, `to_string`, etc.) and for heap types.
+
+**Typed array fast path (Phase 6.5).** `int[]`, `float[]`, `bool[]` variables use `int64_t*`/`double*`/`bool*` backing stores (`MONK_INT_ARRAY`, `MONK_FLOAT_ARRAY`, `MONK_BOOL_ARRAY`). Element access emits direct pointer arithmetic. OOB panics. Typed arrays benchmark at ~2× C; generic arrays at ~12× C.
 
 **Design rules enforced here:**
 - Value semantics via `monk_deep_copy()` on every assignment
@@ -27,26 +29,32 @@ Every value in Monk is a `MonkValue`. Primitives are inline. Heap types are poin
 
 ```c
 typedef enum {
-    MONK_INT,       // int64_t
-    MONK_FLOAT,     // double
-    MONK_STRING,    // char* (heap-allocated, null-terminated)
-    MONK_BOOL,      // bool
-    MONK_NONE,      // no payload
-    MONK_ARRAY,     // MonkArray*
-    MONK_RECORD,    // MonkRecord*
-    MONK_FUNCTION   // MonkFunction*
+    MONK_INT,        // int64_t
+    MONK_FLOAT,      // double
+    MONK_STRING,     // char* (heap-allocated, null-terminated)
+    MONK_BOOL,       // bool
+    MONK_NONE,       // no payload
+    MONK_ARRAY,      // MonkArray* — generic tagged-union elements
+    MONK_RECORD,     // MonkRecord*
+    MONK_FUNCTION,   // MonkFunction*
+    MONK_INT_ARRAY,  // MonkIntArray*  — int64_t* backing store (Phase 6.5)
+    MONK_FLOAT_ARRAY,// MonkFloatArray* — double* backing store
+    MONK_BOOL_ARRAY  // MonkBoolArray*  — bool* backing store
 } MonkValueKind;
 
 struct MonkValue {
     MonkValueKind kind;
     union {
-        int64_t      int_val;
-        double       float_val;
-        char        *str_val;
-        bool         bool_val;
-        MonkArray   *array_val;
-        MonkRecord  *record_val;
-        MonkFunction *func_val;
+        int64_t          int_val;
+        double           float_val;
+        char            *str_val;
+        bool             bool_val;
+        MonkArray       *array_val;
+        MonkRecord      *record_val;
+        MonkFunction    *func_val;
+        MonkIntArray    *int_array_val;   /* heap int64_t* elements */
+        MonkFloatArray  *float_array_val; /* heap double* elements */
+        MonkBoolArray   *bool_array_val;  /* heap bool* elements */
     };
 };
 ```
@@ -54,9 +62,26 @@ struct MonkValue {
 ### Heap Structs
 
 ```c
+// Generic array — elements are MonkValue (tagged union, any type)
 struct MonkArray {
     MonkValue *data;       // heap array of MonkValues
     int64_t    length;
+};
+
+// Typed array backing stores — raw element types, no union overhead
+// Created by monk_int_array_from() / monk_float_array_from() / monk_bool_array_from()
+// when codegen assigns to an int[] / float[] / bool[] variable.
+struct MonkIntArray {
+    int64_t *data;
+    int64_t  length;
+};
+struct MonkFloatArray {
+    double  *data;
+    int64_t  length;
+};
+struct MonkBoolArray {
+    bool    *data;
+    int64_t  length;
 };
 
 struct MonkRecordField {
@@ -206,7 +231,7 @@ All array functions return **new arrays** (value semantics). The original is nev
 
 | Function | Monk builtin | Notes |
 |----------|-------------|-------|
-| `monk_array_get(arr, idx)` | `arr[i]` | Out-of-bounds returns `none` |
+| `monk_array_get(arr, idx)` | `arr[i]` | Out-of-bounds returns `none` (generic array) |
 | `monk_array_set(*arr, idx, val)` | `arr[i] = val` | Out-of-bounds is a **runtime error** |
 | `monk_append(arr, elem)` | `append(arr, elem)` | New array with elem at end |
 | `monk_prepend(arr, elem)` | `prepend(arr, elem)` | New array with elem at start |
@@ -215,6 +240,31 @@ All array functions return **new arrays** (value semantics). The original is nev
 | `monk_take(arr, n)` | `take(arr, n)` | Keep first n elements. Clamps. |
 | `monk_slice(arr, start, end)` | `slice(arr, start, end)` | Subarray. Indices clamped. |
 | `monk_range(n)` | `range(n)` | `[0, 1, ..., n-1]`. `range(0)` returns `[]`. |
+| `monk_fill(n, value)` | `fill(n, value)` | Array of n deep copies. `fill(0, x)` returns `[]`. |
+| `monk_map(arr, fn)` | `map(arr, fn)` | New array: `fn(elem)` for each element |
+| `monk_filter(arr, fn)` | `filter(arr, fn)` | New array: elements where `fn(elem)` is truthy |
+| `monk_reduce(arr, fn, initial)` | `reduce(arr, fn, initial)` | Fold left. Returns `initial` on empty array. |
+
+### Typed Array Converters
+
+Convert a generic `MONK_ARRAY` (or same-kind typed array) into a typed
+backing-store array. Consumes the input (taking ownership) or deep-copies
+if the input is already the same typed kind.
+
+| Function | Purpose |
+|----------|---------|
+| `monk_int_array_from(v)` | → `MONK_INT_ARRAY` with `int64_t*` backing |
+| `monk_float_array_from(v)` | → `MONK_FLOAT_ARRAY` with `double*` backing |
+| `monk_bool_array_from(v)` | → `MONK_BOOL_ARRAY` with `bool*` backing |
+
+Codegen calls these at assignment boundaries when the declared type is
+`int[]`, `float[]`, or `bool[]`. Generated element access emits direct
+pointer arithmetic (`arr.int_array_val->data[i]`) — no tagged-union
+dispatch. Out-of-bounds panics (strict write model applies to typed arrays).
+
+**Why it matters:** typed arrays hit ~2× C on `matmul` vs ~12× C for
+the generic `MONK_ARRAY`. The entire array index hot path avoids the
+union overhead.
 
 ---
 

@@ -1,0 +1,170 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Why a Module System?" lessonNumber="7.1" section="Phase 7">
+
+    <LessonHeader lessonNumber="7.1" title="Why a Module System?" description="What breaks when every program is one file. What a module system gives you.">
+        <TagBadge variant="concepts">concepts</TagBadge>
+        <TagBadge variant="default">8 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The problem -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Every real program outgrows one file.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Before Phase 7, every Monk program was a single file. The compiler had one job: turn that file into a binary. Simple. But simple only scales to toy programs.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The moment you want to reuse a function across two programs, you copy-paste it. Now you have two copies. They drift. Bugs get fixed in one place, not the other. The codebase becomes a liability.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A module system solves this by making files the unit of reuse. You write a function once, export it, and any file that needs it can import it by name. The compiler resolves the dependency, checks the types across the boundary, and links everything into a single binary.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm">A module system is not just an organizational tool. It's a <strong>compilation boundary</strong> — a place where the compiler can verify that two pieces of code agree on the contract between them before combining them.</p>
+        </InsightBox>
+    </section>
+
+    <!-- What Monk's module system does -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What Monk's module system actually does.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk modules are just <code class="bg-stone-100 px-1 rounded text-xs">.monk</code> files. There is no special module declaration, no package keyword, no manifest file. A file becomes a module when another file imports from it.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The module system has three jobs:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-orange-600 font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Discover all dependencies.</p>
+                    <p class="text-monk-muted text-sm">Starting from the entry file, recursively find every file that is imported. Stop when all imports have been resolved. The result is a dependency graph.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-orange-600 font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Detect cycles.</p>
+                    <p class="text-monk-muted text-sm">If <code class="bg-stone-100 px-1 rounded text-xs">a.monk</code> imports <code class="bg-stone-100 px-1 rounded text-xs">b.monk</code> which imports <code class="bg-stone-100 px-1 rounded text-xs">a.monk</code>, there is no valid compilation order. Monk rejects circular imports at compile time with a clear error message.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-orange-600 font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Produce a topological ordering.</p>
+                    <p class="text-monk-muted text-sm">Order the modules so every dependency comes before the files that depend on it. This ordering lets type-checking and code generation proceed in one left-to-right pass with no backtracking.</p>
+                </div>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Everything compiles to a <strong>single C file</strong>. There is no separate compilation, no object files, no linker step for modules. The module system resolves dependencies at the Monk level; the C compiler sees one translation unit.
+        </p>
+    </section>
+
+    <!-- The updated pipeline -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The updated pipeline.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Before Phase 7, the pipeline was linear: one file in, one binary out.
+        </p>
+
+        <Code code={`source.monk → parse → type-check → codegen → binary`} lang="text" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            After Phase 7, the pipeline forks based on whether the entry file has imports:
+        </p>
+
+        <Code code={`// No imports — single-file path (unchanged):
+source.monk → parse → type-check → codegen → binary
+
+// Has imports — multi-module path:
+entry.monk
+  → module.Build()       // DFS: resolve all files, detect cycles, topological sort
+  → types.CheckModules() // check each module in dependency order
+  → codegen.GenerateModules() // emit all modules as one C file
+  → binary`} lang="text" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            The single-file path is completely unchanged. Existing programs compile identically. The module path only activates when the entry file contains a <code class="bg-stone-100 px-1 rounded text-xs">use</code> statement.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm">The output is always one C file. Module boundaries exist at the Monk level for type-checking and namespace isolation -- at the C level, everything is a flat list of function definitions.</p>
+        </InsightBox>
+    </section>
+
+    <!-- What module-level code does -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Module-level code runs once.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Any statement at the top level of a module (not inside a function) is initialization code. It runs when the program starts, in dependency order. If two files import the same module, its initialization code still runs only once.
+        </p>
+
+        <Code code={`// utils.monk
+let BASE_URL = "https://api.example.com"
+export BASE_URL
+
+// main.monk
+use BASE_URL from "./utils"
+show(BASE_URL)   // "https://api.example.com"`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            This works because the dependency graph guarantees <code class="bg-stone-100 px-1 rounded text-xs">utils.monk</code>'s initialization code is emitted before <code class="bg-stone-100 px-1 rounded text-xs">main.monk</code>'s, and each module appears exactly once in the topological order.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">1</span></div>
+                <p class="text-sm">Monk modules are just files. No special syntax beyond <code class="bg-stone-100 px-1 rounded text-xs">use</code> and <code class="bg-stone-100 px-1 rounded text-xs">export</code>.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">2</span></div>
+                <p class="text-sm">Circular imports are a compile error. The module resolver detects them at graph-build time, before any type-checking.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">3</span></div>
+                <p class="text-sm">All modules compile to one C file. Module isolation is a Monk-level abstraction, not a linker-level one.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">4</span></div>
+                <p class="text-sm">The single-file path is unchanged. Existing programs are unaffected.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-6-types/references"
+        prevLabel="Prev: References"
+        nextHref="/phase-7-modules/monks-module-syntax"
+        nextLabel="Next: Monk's Module Syntax"
+    />
+
+</LessonLayout>

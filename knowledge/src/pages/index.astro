@@ -27,9 +27,9 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                 </div>
             </div>
             <div class="flex items-center gap-4 text-sm text-monk-muted">
-                <span>7 units</span>
+                <span>8 units</span>
                 <span class="text-monk-border">|</span>
-                <span>31 lessons</span>
+                <span>35 lessons</span>
             </div>
         </div>
     </header>
@@ -324,7 +324,33 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                 </div>
             </div>
 
-            <!-- Units 7-11: Coming Up -->
+            <!-- Unit 7: Module System -->
+            <div class="mb-10">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="tag text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Phase 7</span>
+                    <span class="text-monk-muted text-sm">Multi-file programs</span>
+                </div>
+
+                <div class="unit-card bg-white rounded-2xl border border-monk-border overflow-hidden">
+                    <div class="p-6 border-b border-monk-border bg-gradient-to-r from-orange-50 to-white">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h3 class="font-bold text-xl">Unit 7 — The Module System</h3>
+                                <p class="text-monk-muted mt-1">Split programs across files. use/export syntax, dependency graphs, cycle detection, topological ordering.</p>
+                            </div>
+                            <span class="tag text-orange-600 bg-white px-2 py-0.5 rounded-full border border-orange-200">4 lessons</span>
+                        </div>
+                    </div>
+                    <div class="divide-y divide-monk-border">
+                        <a href={base + "/phase-7-modules/why-modules"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0"><span class="text-orange-600 font-semibold text-sm">7.1</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Why a Module System?</h4><p class="text-monk-muted text-xs mt-0.5">What breaks when every program is one file. The updated compilation pipeline.</p></div><TagBadge variant="concepts">concepts</TagBadge></a>
+                        <a href={base + "/phase-7-modules/monks-module-syntax"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0"><span class="text-orange-600 font-semibold text-sm">7.2</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Monk's Module Syntax</h4><p class="text-monk-muted text-xs mt-0.5">The four import forms. export. How names cross file boundaries.</p></div><TagBadge variant="monk">monk</TagBadge></a>
+                        <a href={base + "/phase-7-modules/building-the-resolver"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0"><span class="text-orange-600 font-semibold text-sm">7.3</span></div><div class="flex-1"><h4 class="font-semibold text-sm">Building the Resolver</h4><p class="text-monk-muted text-xs mt-0.5">DFS, the Graph struct, cycle detection, export validation. How src/module/ works.</p></div><div class="flex gap-1.5"><TagBadge variant="build">build</TagBadge><TagBadge variant="go">go</TagBadge></div></a>
+                        <a href={base + "/phase-7-modules/references"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer"><div class="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0"><span class="text-orange-600 font-semibold text-sm">7.4</span></div><div class="flex-1"><h4 class="font-semibold text-sm">References & Further Reading</h4><p class="text-monk-muted text-xs mt-0.5">Module systems, topological sort, DFS cycle detection.</p></div><TagBadge variant="links">links</TagBadge></a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Units 8-11: Coming Up -->
             <div class="mb-10">
                 <div class="flex items-center gap-2 mb-4">
                     <span class="tag text-monk-muted bg-stone-100 px-2 py-0.5 rounded-full">Coming Up</span>
@@ -334,16 +360,11 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                 <div class="grid gap-4">
                     <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
                         <div class="flex items-center gap-4">
-                            <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">7</span></div>
-                            <div class="flex-1"><h3 class="font-bold">Module System</h3><p class="text-monk-muted text-sm">Multi-file programs. use/export, scope isolation, dependency resolution.</p></div>
-                        </div>
-                    </div>
-                    <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
-                        <div class="flex items-center gap-4">
                             <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">8</span></div>
                             <div class="flex-1"><h3 class="font-bold">C FFI</h3><p class="text-monk-muted text-sm">Calling C from Monk. Linking external libraries.</p></div>
                         </div>
                     </div>
+
                     <div class="unit-card locked bg-white rounded-2xl border border-monk-border p-6">
                         <div class="flex items-center gap-4">
                             <div class="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><span class="text-monk-locked font-bold">9</span></div>

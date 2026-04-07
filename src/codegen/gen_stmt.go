@@ -14,7 +14,7 @@ import (
 func (g *generator) emitStmt(stmt syntax.Stmt) {
 	switch s := stmt.(type) {
 	case *syntax.VarDeclStmt:
-		g.emitVarDecl(s)
+		g.emitVarDecl(s, g.moduleInit)
 	case *syntax.AssignStmt:
 		g.emitAssign(s)
 	case *syntax.ExprStmt:
@@ -37,27 +37,67 @@ func (g *generator) emitStmt(stmt syntax.Stmt) {
 		for _, inner := range s.Stmts {
 			g.emitStmt(inner)
 		}
+	case *syntax.ExportStmt:
+		// Export is a visibility marker for the module system.
+		// Bare "export name" (ExprStmt(IdentExpr)) emits nothing — the name
+		// was already declared. Otherwise emit the inner declaration.
+		if es, ok := s.Stmt.(*syntax.ExprStmt); ok {
+			if _, ok := es.Expr.(*syntax.IdentExpr); ok {
+				return // export-by-name, no code to emit
+			}
+		}
+		g.emitStmt(s.Stmt)
+	case *syntax.UseStmt:
+		// Imports resolved at generator construction time — nothing to emit.
+	case *syntax.TypeDeclStmt:
+		// Type declarations are compile-time only — no C code to emit.
 	default:
 		g.emitLine("    /* TODO: unhandled statement %T */\n", stmt)
 	}
 }
 
-func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
+// emitVarDeclLine emits a single C variable declaration. In module mode it splits
+// the declaration into a file-scope static global + an init-body assignment:
+//
+//	forModule=false: "    TYPE name = expr;\n"  → g.body  (stack-local)
+//	forModule=true:  "static TYPE name;\n"       → g.globals (file scope)
+//	                 "    name = expr;\n"         → g.body    (init assignment)
+//
+// This replaces the text-parsing approach in the old emitModuleVarDecl.
+func (g *generator) emitVarDeclLine(name, typeName, expr string, forModule bool) {
+	if forModule {
+		fmt.Fprintf(&g.globals, "static %s %s;\n", typeName, name)
+		g.emitLine("    %s = %s;\n", name, expr)
+	} else {
+		g.emitLine("    %s %s = %s;\n", typeName, name, expr)
+	}
+}
+
+func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 	// Function declarations: hoist the C function, track the name mapping,
 	// and emit a MonkValue wrapper so the function can be used as a value.
 	if fnExpr, isFn := s.Value.(*syntax.FuncExpr); isFn {
 		// Pre-register the function name so recursive self-references inside
 		// the body can find it during hoisting.
 		g.funcCount++
-		cFuncName := fmt.Sprintf("_monk_func_%d", g.funcCount)
+		cFuncName := fmt.Sprintf("_monk_%sfunc_%d", g.modulePrefix, g.funcCount)
 		g.funcNames[s.Name] = cFuncName
 		// emitFuncValueNamed uses the pre-allocated cName (doesn't increment funcCount again).
 		funcVal := g.emitFuncValueNamed(cFuncName, fnExpr)
-		g.emitLine("    MonkValue %s = %s;\n", mangleName(s.Name), funcVal)
+		name := g.mangledName(s.Name)
+		if forModule {
+			// Module mode: declare as static global, assign in init body.
+			// static MonkValue mk_m0_add; (at file scope)
+			// mk_m0_add = monk_make_function(...); (in init body)
+			fmt.Fprintf(&g.globals, "static MonkValue %s;\n", name)
+			g.emitLine("    %s = %s;\n", name, funcVal)
+		} else {
+			g.emitLine("    MonkValue %s = %s;\n", name, funcVal)
+		}
 		return
 	}
 
-	name := mangleName(s.Name)
+	name := g.mangledName(s.Name)
 
 	// Decide this variable's storage based on the type checker's verdict.
 	// Absent type info (legacy Generate path), stay boxed.
@@ -83,9 +123,9 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 				if callee, ok := call.Callee.(*syntax.IdentExpr); ok && callee.Name == "range" && len(call.Args) == 1 {
 					nCode, nStore := g.emitExprTyped(call.Args[0])
 					if nStore == storeInt {
-						g.emitLine("    MonkValue %s = monk_range_int(%s);\n", name, nCode)
+						g.emitVarDeclLine(name, "MonkValue", "monk_range_int("+nCode+")", forModule)
 					} else {
-						g.emitLine("    MonkValue %s = monk_range_int((%s).int_val);\n", name, g.emitExpr(call.Args[0]))
+						g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_range_int((%s).int_val)", g.emitExpr(call.Args[0])), forModule)
 					}
 					g.recordArrayLen(s.Name, s.Value)
 					return
@@ -110,15 +150,15 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 				valCode, valStore := g.emitExprTyped(call.Args[1])
 				switch {
 				case store == storeBoolArray && valStore == storeBool:
-					g.emitLine("    MonkValue %s = monk_fill_bool(%s, %s);\n", name, nCode, valCode)
+					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_bool(%s, %s)", nCode, valCode), forModule)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				case store == storeIntArray && valStore == storeInt:
-					g.emitLine("    MonkValue %s = monk_fill_int(%s, %s);\n", name, nCode, valCode)
+					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_int(%s, %s)", nCode, valCode), forModule)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				case store == storeFloatArray && valStore == storeFloat:
-					g.emitLine("    MonkValue %s = monk_fill_float(%s, %s);\n", name, nCode, valCode)
+					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_float(%s, %s)", nCode, valCode), forModule)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				}
@@ -126,7 +166,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 		}
 		value := g.emitExpr(s.Value)
 		convFn := arrayConvFunc(store)
-		g.emitLine("    MonkValue %s = %s(%s);\n", name, convFn, value)
+		g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("%s(%s)", convFn, value), forModule)
 		g.recordArrayLen(s.Name, s.Value) // bounds-check elision
 		return
 	}
@@ -151,7 +191,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 			if isRawScalar(rhsStore) {
 				store = rhsStore
 				g.storage[name] = store
-				g.emitLine("    %s %s = %s;\n", cTypeName(store), name, rhsCode)
+				g.emitVarDeclLine(name, cTypeName(store), rhsCode, forModule)
 				g.recordConst(s.Name, s.Value) // bounds-check elision
 				return
 			}
@@ -164,7 +204,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 			rhsCode = g.emitExpr(s.Value)
 		}
 		g.storage[name] = storeBoxed
-		g.emitLine("    MonkValue %s = monk_deep_copy(%s);\n", name, rhsCode)
+		g.emitVarDeclLine(name, "MonkValue", "monk_deep_copy("+rhsCode+")", forModule)
 		return
 	}
 
@@ -172,7 +212,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 	g.storage[name] = store
 	rhsCode, rhsStore := g.emitExprTyped(s.Value)
 	init := coerce(rhsCode, rhsStore, store)
-	g.emitLine("    %s %s = %s;\n", cTypeName(store), name, init)
+	g.emitVarDeclLine(name, cTypeName(store), init, forModule)
 	g.recordConst(s.Name, s.Value) // bounds-check elision
 }
 
@@ -184,7 +224,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	// that leaks the old backing store and reads the wrong union member.
 	// Pass: `x = x + 1` (storeInt). Fail: `arr = append(arr, 5)` (storeIntArray).
 	if target, ok := s.Target.(*syntax.IdentExpr); ok {
-		name := mangleName(target.Name)
+		name := g.mangledName(target.Name)
 		if store := g.varStorage(name); isRawScalar(store) {
 			rhsCode, rhsStore := g.emitExprTyped(s.Value)
 			rhs := coerce(rhsCode, rhsStore, store)
@@ -234,7 +274,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	if s.Op == syntax.Equal {
 		if indexTarget, ok := s.Target.(*syntax.IndexExpr); ok {
 			if identObj, ok2 := indexTarget.Object.(*syntax.IdentExpr); ok2 {
-				objName := mangleName(identObj.Name)
+				objName := g.mangledName(identObj.Name)
 				objSt := g.varStorage(objName)
 				elemSt := elemStorageFor(objSt)
 				if elemSt != storeBoxed {
@@ -268,7 +308,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	if s.Op == syntax.Equal && g.info != nil {
 		if propTarget, ok := s.Target.(*syntax.PropertyExpr); ok {
 			if identObj, ok2 := propTarget.Object.(*syntax.IdentExpr); ok2 {
-				objName := mangleName(identObj.Name)
+				objName := g.mangledName(identObj.Name)
 				if objType, ok3 := g.info.Types[propTarget.Object]; ok3 && objType != nil {
 					idx, fieldSt := recordField(objType, propTarget.Property)
 					if idx >= 0 {
@@ -303,7 +343,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 
 	switch target := s.Target.(type) {
 	case *syntax.IdentExpr:
-		name := mangleName(target.Name)
+		name := g.mangledName(target.Name)
 		// Invalidate direct-call optimization on function reassignment.
 		// `let f = (x) { x+1 }; f = (x) { x*2 }; f(5)` — without this,
 		// f(5) still emits `_monk_func_1(5)` (the OLD function) because
@@ -367,369 +407,4 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	}
 }
 
-// emitCondition generates the C expression for an `if`/`while` condition.
-// Uses typed emission when possible so `while (i < N)` stays as raw C
-// comparison instead of going through monk_is_truthy(monk_less(...)).
-func (g *generator) emitCondition(e syntax.Expr) string {
-	if g.info != nil {
-		code, kind := g.emitExprTyped(e)
-		// Strip ONE layer of outer parens when the whole expression is wrapped
-		// in a single balanced pair. This avoids cc's -Wparentheses-equality
-		// warning on code like `if ((a == b))`. Unsafe strips would change
-		// meaning (e.g. `(a)+(b)` → `a)+(b`), so we verify balance.
-		code = stripOuterParens(code)
-		switch kind {
-		case storeBool:
-			return code
-		case storeInt, storeFloat:
-			// Truthiness: 0 is falsy, everything else is truthy.
-			return "(" + code + ") != 0"
-		}
-	}
-	return "monk_is_truthy(" + g.emitExpr(e) + ")"
-}
-
-// stripOuterParens removes ONE layer of enclosing parens if the first `(`
-// matches the last `)` directly (i.e. the entire expression is wrapped).
-// Returns s unchanged for everything else.
-// IMPORTANT: never strip parens from GCC statement expressions `({...})` —
-// removing the outer `()` turns a valid expression into a bare `{...}` block.
-// Pass: `((a == b))` → `(a == b)`. Fail: `({int64_t t=x; t;})` → unchanged.
-func stripOuterParens(s string) string {
-	if len(s) < 2 || s[0] != '(' || s[len(s)-1] != ')' {
-		return s
-	}
-	// Statement expression: ({...}) — must keep outer parens.
-	if len(s) >= 3 && s[1] == '{' {
-		return s
-	}
-	depth := 0
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '(':
-			depth++
-		case ')':
-			depth--
-			if depth == 0 && i < len(s)-1 {
-				// The matching `)` for the opening `(` is not at the end —
-				// meaning the expression is NOT wrapped in a single balanced
-				// pair. Example: "(a)+(b)" — depth hits 0 at index 2.
-				return s
-			}
-		}
-	}
-	return s[1 : len(s)-1]
-}
-
-// emitIf handles if/else-if/else chains recursively.
-func (g *generator) emitIf(s *syntax.IfStmt) {
-	g.emitLine("    if (%s) {\n", g.emitCondition(s.Condition))
-	thenSnap := g.saveStorage()
-	for _, stmt := range s.Then.Stmts {
-		g.emitStmt(stmt)
-	}
-	g.restoreStorage(thenSnap)
-	if s.Else != nil {
-		switch e := s.Else.(type) {
-		case *syntax.BlockStmt:
-			g.emitLine("    } else {\n")
-			elseSnap := g.saveStorage()
-			for _, stmt := range e.Stmts {
-				g.emitStmt(stmt)
-			}
-			g.restoreStorage(elseSnap)
-			g.emitLine("    }\n")
-			return
-		case *syntax.IfStmt:
-			// Recursive: handles arbitrary else-if chain depth
-			g.body.WriteString("    } else ")
-			g.emitIfInline(e)
-			return
-		}
-	}
-	g.emitLine("    }\n")
-}
-
-// emitIfInline emits an if statement without the leading indent (for else-if chains).
-func (g *generator) emitIfInline(s *syntax.IfStmt) {
-	fmt.Fprintf(&g.body, "if (%s) {\n", g.emitCondition(s.Condition))
-	thenSnap := g.saveStorage()
-	for _, stmt := range s.Then.Stmts {
-		g.emitStmt(stmt)
-	}
-	g.restoreStorage(thenSnap)
-	if s.Else != nil {
-		switch e := s.Else.(type) {
-		case *syntax.BlockStmt:
-			g.emitLine("    } else {\n")
-			elseSnap := g.saveStorage()
-			for _, stmt := range e.Stmts {
-				g.emitStmt(stmt)
-			}
-			g.restoreStorage(elseSnap)
-			g.emitLine("    }\n")
-			return
-		case *syntax.IfStmt:
-			g.body.WriteString("    } else ")
-			g.emitIfInline(e)
-			return
-		}
-	}
-	g.emitLine("    }\n")
-}
-
-// emitWhile emits a C `while` loop. The storage snapshot is taken before the
-// body and restored after so that variables declared inside the loop don't
-// pollute the outer storage map.
-func (g *generator) emitWhile(s *syntax.WhileStmt) {
-	g.emitLine("    while (%s) {\n", g.emitCondition(s.Condition))
-	snap := g.saveStorage()
-	// Bounds-check elision: track the loop counter's range so that array
-	// accesses inside the body can be proven in-bounds.
-	var boundVar string
-	var boundPrev [2]int64
-	var boundHad bool
-	if g.constVals != nil {
-		if varName, lo, hi, found := g.whileBoundsEntry(s.Condition); found {
-			boundVar = varName
-			boundPrev, boundHad = g.setVarBound(varName, lo, hi)
-		}
-	}
-	for _, stmt := range s.Body.Stmts {
-		g.emitStmt(stmt)
-	}
-	if boundVar != "" {
-		g.restoreVarBound(boundVar, boundPrev, boundHad)
-	}
-	g.restoreStorage(snap)
-	g.emitLine("    }\n")
-}
-
-func (g *generator) emitFor(s *syntax.ForStmt) {
-	varName := mangleName(s.VarName)
-
-	// Counter-loop fast path: `for x in range(N)` → `for(int64_t x=0; x<N; x++)`.
-	// Avoids allocating an N-element array entirely.
-	// Pass: `for i in range(10)` → counter. Fail: `for x in arr` → iterate.
-	if call, ok := s.Iterable.(*syntax.CallExpr); ok {
-		if callee, ok := call.Callee.(*syntax.IdentExpr); ok && callee.Name == "range" && len(call.Args) == 1 {
-			nCode, nStore := g.emitExprTyped(call.Args[0])
-			var nExpr string
-			if nStore == storeInt {
-				nExpr = nCode
-			} else {
-				nExpr = "(" + g.emitExpr(call.Args[0]) + ").int_val"
-			}
-			g.emitLine("    {\n")
-			g.emitLine("        int64_t _n = %s;\n", nExpr)
-			g.emitLine("        for (int64_t %s = 0; %s < _n; %s++) {\n", varName, varName, varName)
-			g.emitLine("            {\n")
-			snap := g.saveStorage()
-			g.storage[varName] = storeInt
-			for _, stmt := range s.Body.Stmts {
-				g.emitStmt(stmt)
-			}
-			g.restoreStorage(snap)
-			g.emitLine("            }\n")
-			g.emitLine("        }\n")
-			g.emitLine("    }\n")
-			return
-		}
-	}
-
-	iter := g.emitExpr(s.Iterable)
-
-	// Fast path: when we know the iterable is a typed array at compile time,
-	// emit a direct loop with a raw scalar loop variable — no boxing, no
-	// runtime kind-dispatch. This is what makes for-in over int[] match C.
-	if g.info != nil {
-		if iterType, ok := g.info.Types[s.Iterable]; ok && iterType != nil {
-			iterStore := storageFor(iterType)
-			if isArrayStorage(iterStore) {
-				ptrField := arrayPtrField(iterStore)
-				var elemStore storageKind
-				var cType string
-				switch iterStore {
-				case storeIntArray:
-					elemStore = storeInt
-					cType = "int64_t"
-				case storeFloatArray:
-					elemStore = storeFloat
-					cType = "double"
-				case storeBoolArray:
-					elemStore = storeBool
-					cType = "bool"
-				}
-				// Extract raw element from the iterable without conversion.
-				// Handles both typed backing store (MONK_INT_ARRAY) and generic
-				// MONK_ARRAY (reads .int_val from each MonkValue element).
-				// No allocation, no copy — just a branch at loop setup.
-				var kindName, genericField string
-				switch iterStore {
-				case storeIntArray:
-					kindName = "MONK_INT_ARRAY"
-					genericField = "int_val"
-				case storeFloatArray:
-					kindName = "MONK_FLOAT_ARRAY"
-					genericField = "float_val"
-				case storeBoolArray:
-					kindName = "MONK_BOOL_ARRAY"
-					genericField = "bool_val"
-				}
-				g.emitLine("    {\n")
-				g.emitLine("        MonkValue _iter = %s;\n", iter)
-				g.emitLine("        int64_t _len = (_iter.kind == %s) ? _iter.%s->length : _iter.array_val->length;\n",
-					kindName, ptrField)
-				g.emitLine("        for (int64_t _i = 0; _i < _len; _i++) {\n")
-				g.emitLine("            %s %s = (_iter.kind == %s) ? _iter.%s->data[_i] : _iter.array_val->data[_i].%s;\n",
-					cType, varName, kindName, ptrField, genericField)
-				g.emitLine("            {\n")
-				snap := g.saveStorage()
-				g.storage[varName] = elemStore
-				for _, stmt := range s.Body.Stmts {
-					g.emitStmt(stmt)
-				}
-				g.restoreStorage(snap)
-				g.emitLine("            }\n")
-				g.emitLine("        }\n")
-				g.emitLine("    }\n")
-				return
-			}
-		}
-	}
-
-	g.emitLine("    {\n")
-	g.emitLine("        MonkValue _iter = %s;\n", iter)
-	// Generic MONK_ARRAY path
-	g.emitLine("        if (_iter.kind == MONK_ARRAY) {\n")
-	g.emitLine("            for (int64_t _i = 0; _i < _iter.array_val->length; _i++) {\n")
-	g.emitLine("                MonkValue %s = monk_deep_copy(_iter.array_val->data[_i]);\n", varName)
-	// Inner block so user code can safely shadow the loop variable.
-	g.emitLine("                {\n")
-	arrSnap := g.saveStorage()
-	for _, stmt := range s.Body.Stmts {
-		g.emitStmt(stmt)
-	}
-	g.restoreStorage(arrSnap)
-	g.emitLine("                }\n")
-	g.emitLine("                monk_free(%s);\n", varName)
-	g.emitLine("            }\n")
-	// Typed backing-store array paths: iterate raw scalars, box each into MonkValue
-	// so the loop body always sees a MonkValue (consistent with MONK_ARRAY path).
-	g.emitLine("        } else if (_iter.kind == MONK_INT_ARRAY) {\n")
-	g.emitLine("            for (int64_t _i = 0; _i < _iter.int_array_val->length; _i++) {\n")
-	g.emitLine("                MonkValue %s = monk_int(_iter.int_array_val->data[_i]);\n", varName)
-	g.emitLine("                {\n")
-	intArrSnap := g.saveStorage()
-	for _, stmt := range s.Body.Stmts {
-		g.emitStmt(stmt)
-	}
-	g.restoreStorage(intArrSnap)
-	g.emitLine("                }\n")
-	g.emitLine("            }\n")
-	g.emitLine("        } else if (_iter.kind == MONK_FLOAT_ARRAY) {\n")
-	g.emitLine("            for (int64_t _i = 0; _i < _iter.float_array_val->length; _i++) {\n")
-	g.emitLine("                MonkValue %s = monk_float(_iter.float_array_val->data[_i]);\n", varName)
-	g.emitLine("                {\n")
-	floatArrSnap := g.saveStorage()
-	for _, stmt := range s.Body.Stmts {
-		g.emitStmt(stmt)
-	}
-	g.restoreStorage(floatArrSnap)
-	g.emitLine("                }\n")
-	g.emitLine("            }\n")
-	g.emitLine("        } else if (_iter.kind == MONK_BOOL_ARRAY) {\n")
-	g.emitLine("            for (int64_t _i = 0; _i < _iter.bool_array_val->length; _i++) {\n")
-	g.emitLine("                MonkValue %s = monk_bool(_iter.bool_array_val->data[_i]);\n", varName)
-	g.emitLine("                {\n")
-	boolArrSnap := g.saveStorage()
-	for _, stmt := range s.Body.Stmts {
-		g.emitStmt(stmt)
-	}
-	g.restoreStorage(boolArrSnap)
-	g.emitLine("                }\n")
-	g.emitLine("            }\n")
-	g.emitLine("        } else if (_iter.kind == MONK_STRING) {\n")
-	g.emitLine("            for (int64_t _i = 0; _iter.str_val[_i]; ) {\n")
-	g.emitLine("                int64_t _clen = 1;\n")
-	// Fix 6: bounds check for malformed UTF-8
-	g.emitLine("                while (_iter.str_val[_i + _clen] && (_iter.str_val[_i + _clen] & 0xC0) == 0x80) _clen++;\n")
-	g.emitLine("                char *_ch = malloc(_clen + 1);\n")
-	g.emitLine("                if (!_ch) monk_panic(\"out of memory\");\n")
-	g.emitLine("                memcpy(_ch, _iter.str_val + _i, _clen);\n")
-	g.emitLine("                _ch[_clen] = '\\0';\n")
-	// Note: value-semantics keeps this safe even though _ch is freed after
-	// the body runs. Any downstream consumer (emitVarDecl, monk_append,
-	// monk_record_set, …) deep-copies the loop variable on store, so a
-	// captured reference owns its own string by the time we hit free(_ch).
-	g.emitLine("                MonkValue %s = (MonkValue){.kind = MONK_STRING, .str_val = _ch};\n", varName)
-	g.emitLine("                {\n")
-	strSnap := g.saveStorage()
-	for _, stmt := range s.Body.Stmts {
-		g.emitStmt(stmt)
-	}
-	g.restoreStorage(strSnap)
-	g.emitLine("                }\n")
-	g.emitLine("                free(_ch);\n")
-	g.emitLine("                _i += _clen;\n")
-	g.emitLine("            }\n")
-	g.emitLine("        }\n")
-	g.emitLine("    }\n")
-}
-
-// emitReturn saves captured variables back to _self->captures (via
-// emitCaptureSaveBack) then emits the C return. For unboxed functions the
-// return value is coerced to the declared raw scalar type.
-func (g *generator) emitReturn(s *syntax.ReturnStmt) {
-	// Save captured variables back to _self->captures before returning.
-	g.emitCaptureSaveBack()
-
-	if s.Value == nil {
-		if g.retStorage == storeBoxed {
-			g.emitLine("    return monk_none();\n")
-		} else {
-			g.emitLine("    return 0;\n")
-		}
-		return
-	}
-	if g.retStorage == storeBoxed {
-		g.emitLine("    return %s;\n", g.emitExpr(s.Value))
-		return
-	}
-	// Unboxed return: evaluate in typed form and coerce.
-	code, kind := g.emitExprTyped(s.Value)
-	g.emitLine("    return %s;\n", coerce(code, kind, g.retStorage))
-}
-
-// emitCaptureSaveBack writes local capture variables back to _self->captures
-// so mutations persist across calls. Only emits if the current function has captures.
-func (g *generator) emitCaptureSaveBack() {
-	for i, name := range g.currentCaptures {
-		mn := mangleName(name)
-		g.emitLine("    _self->captures[%d] = %s;\n", i, mn)
-	}
-}
-
-// emitGuard emits the setjmp-based guard construct. The guarded expression runs
-// inside monk_guard_begin's if-branch; on throw the else-branch runs with the
-// error value bound to errName. The guard variable is pre-initialised to none
-// so it has a safe default even if the against block doesn't assign it.
-func (g *generator) emitGuard(s *syntax.GuardStmt) {
-	varName := mangleName(s.VarName)
-	errName := mangleName(s.ErrorName)
-
-	g.emitLine("    MonkValue %s = monk_none();\n", varName)
-	g.emitLine("    {\n")
-	g.emitLine("        MonkGuardContext _guard_ctx;\n")
-	g.emitLine("        if (monk_guard_begin(&_guard_ctx) == 0) {\n")
-	g.emitLine("            %s = %s;\n", varName, g.emitExpr(s.Expr))
-	g.emitLine("            monk_guard_end(&_guard_ctx);\n")
-	g.emitLine("        } else {\n")
-	g.emitLine("            MonkValue %s = monk_current_error();\n", errName)
-	for _, stmt := range s.Against.Stmts {
-		g.emitStmt(stmt)
-	}
-	g.emitLine("            (void)%s;\n", errName)
-	g.emitLine("        }\n")
-	g.emitLine("    }\n")
-}
+// Control-flow emitters live in gen_flow.go.

@@ -1,0 +1,271 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Building the Resolver" lessonNumber="7.3" section="Phase 7">
+
+    <LessonHeader lessonNumber="7.3" title="Building the Resolver" description="DFS, the dependency graph, cycle detection, and topological sort. How src/module/module.go works.">
+        <TagBadge variant="build">build</TagBadge>
+        <TagBadge variant="go">go</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The Graph struct -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The output: a Graph.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The resolver's output is a <code class="bg-stone-100 px-1 rounded text-xs">Graph</code> struct — the complete picture of all reachable modules:
+        </p>
+
+        <Code code={`type Module struct &#123;
+    Path     string          // absolute file path (canonical key)
+    AST      *syntax.Program // parsed AST
+    Exports  map[string]bool // names declared via export
+    DepPaths []string        // absolute paths of direct dependencies
+&#125;
+
+type Graph struct &#123;
+    Entry   string             // absolute path of entry module
+    Modules map[string]*Module // path -> Module (the full set)
+    Order   []string           // topological order: deps first, entry last
+&#125;`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            <code class="bg-stone-100 px-1 rounded text-xs">Graph.Order</code> is the key output. It tells the type checker and code generator exactly what order to process modules. Walking <code class="bg-stone-100 px-1 rounded text-xs">Order</code> left-to-right guarantees every dependency is already processed when you reach the modules that depend on it.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm">Absolute paths are used as canonical keys throughout. Two <code class="bg-stone-100 px-1 rounded text-xs">use</code> statements with different relative strings but resolving to the same file produce the same key — so the module is only processed once.</p>
+        </InsightBox>
+    </section>
+
+    <!-- The algorithm: DFS -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The algorithm: depth-first search.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <code class="bg-stone-100 px-1 rounded text-xs">module.Build(entryPath)</code> runs a DFS starting from the entry file. DFS naturally produces topological order as a side effect: a node is "done" only after all its dependencies are done, so appending to the order list on completion gives deps-before-dependents.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The DFS uses two sets to track state:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-orange-600 font-bold text-sm">gray</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Currently being visited.</p>
+                    <p class="text-monk-muted text-sm">A module is gray while its subtree is being explored. If the DFS encounters a gray node, there is a cycle — the graph has a path from that node back to itself.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0">
+                    <span class="text-stone-600 font-bold text-sm">black</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Fully processed.</p>
+                    <p class="text-monk-muted text-sm">A module is black when its entire subtree has been visited, all its dependencies are in the graph, and it has been appended to <code class="bg-stone-100 px-1 rounded text-xs">Graph.Order</code>. Revisiting a black node is a no-op.</p>
+                </div>
+            </div>
+        </div>
+
+        <Code code={`gray := make(map[string]bool)   // currently on the DFS stack
+black := make(map[string]bool)  // fully processed
+
+var visit func(path string) error
+visit = func(path string) error &#123;
+    if black[path] &#123; return nil &#125;  // already done, skip
+    if gray[path]  &#123; /* cycle! */ &#125; // back edge = cycle
+
+    gray[path] = true
+    // ... parse, recurse into imports ...
+    delete(gray, path)
+    black[path] = true
+    g.Order = append(g.Order, path) // post-order = deps before dependents
+    return nil
+&#125;`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            The <code class="bg-stone-100 px-1 rounded text-xs">append</code> to <code class="bg-stone-100 px-1 rounded text-xs">g.Order</code> happens at the very end of <code class="bg-stone-100 px-1 rounded text-xs">visit</code>, after all recursive calls return. This is post-order traversal — guaranteeing deps-before-dependents.
+        </p>
+    </section>
+
+    <!-- Cycle detection -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Cycle detection with readable error messages.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When a gray node is re-encountered, there is a cycle. A bare "circular import" error is unhelpful — the developer needs to know which files form the cycle.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The resolver maintains a <code class="bg-stone-100 px-1 rounded text-xs">chain</code> slice that tracks the current DFS path. When a cycle is detected, it slices <code class="bg-stone-100 px-1 rounded text-xs">chain</code> from the first occurrence of the repeated path and formats the cycle:
+        </p>
+
+        <Code code={`// chain = ["main.monk", "a.monk", "b.monk"] when b.monk imports a.monk:
+// cycle message: "circular import: a.monk -> b.monk -> a.monk"
+
+cycle := append(chain[start:], path)  // the loop
+names := make([]string, len(cycle))
+for i, p := range cycle &#123;
+    names[i] = filepath.Base(p)        // just the filename, not the full path
+&#125;
+return fmt.Errorf("circular import: %s", strings.Join(names, " -> "))`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            The error message shows exactly which files form the cycle, in the order they were imported. The developer can immediately see which import to break.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm">The <code class="bg-stone-100 px-1 rounded text-xs">chain</code> is maintained by appending before the recursive call and slicing after (via <code class="bg-stone-100 px-1 rounded text-xs">defer</code>). This keeps the slice in sync with the call stack without any additional bookkeeping.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Export collection -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Collecting exports from the AST.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            After parsing a file, the resolver walks its AST to collect exported names. This happens in <code class="bg-stone-100 px-1 rounded text-xs">collectExportNames</code> — a simple one-pass AST walk:
+        </p>
+
+        <Code code={`for _, stmt := range prog.Stmts &#123;
+    es, ok := stmt.(*syntax.ExportStmt)
+    if !ok &#123; continue &#125;
+
+    switch inner := es.Stmt.(type) &#123;
+    case *syntax.VarDeclStmt:
+        exports[inner.Name] = true    // export let add = ...
+    case *syntax.TypeDeclStmt:
+        exports[inner.Name] = true    // export type Point = ...
+    case *syntax.ExprStmt:
+        // bare "export name" — inner expression is an IdentExpr
+        if id, ok := inner.Expr.(*syntax.IdentExpr); ok &#123;
+            exports[id.Name] = true
+        &#125;
+    &#125;
+&#125;`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            The result is stored in <code class="bg-stone-100 px-1 rounded text-xs">Module.Exports</code>. The resolver then validates every non-wildcard import against this map immediately, before any type-checking:
+        </p>
+
+        <Code code={`if !use.Star &#123;
+    for _, name := range use.Names &#123;
+        if !dep.Exports[name] &#123;
+            return fmt.Errorf("%s:%d: module %q does not export %q",
+                filepath.Base(path), use.Line, use.Source, name)
+        &#125;
+    &#125;
+&#125;`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            This catches misspelled export names and missing exports before the expensive type-checking pass, with an error that includes the file name and line number.
+        </p>
+    </section>
+
+    <!-- Path resolution -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Path resolution.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <code class="bg-stone-100 px-1 rounded text-xs">ResolvePath(source, importerPath)</code> turns a module source string into an absolute file path:
+        </p>
+
+        <Code code={`ResolvePath("./utils", "/project/main.monk")
+    // -> "/project/utils.monk"
+
+ResolvePath("./lib/math", "/project/main.monk")
+    // -> "/project/lib/math.monk"
+
+ResolvePath("./utils.monk", "/project/main.monk")
+    // -> "/project/utils.monk"  (extension already present, no double-add)`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            The function enforces three rules:
+        </p>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">1</span></div>
+                <p class="text-sm">The source must start with <code class="bg-stone-100 px-1 rounded text-xs">.</code> — no bare names or absolute paths.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">2</span></div>
+                <p class="text-sm">The <code class="bg-stone-100 px-1 rounded text-xs">.monk</code> extension is added if missing.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">3</span></div>
+                <p class="text-sm">The file must exist. If it doesn't, a specific error is returned immediately — not a Go "file not found" message, but a Monk error with the module name.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- How CheckModules and GenerateModules use the graph -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">How the rest of the pipeline uses the graph.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            <code class="bg-stone-100 px-1 rounded text-xs">types.CheckModules</code> and <code class="bg-stone-100 px-1 rounded text-xs">codegen.GenerateModules</code> both receive the same <code class="bg-stone-100 px-1 rounded text-xs">*Graph</code> and walk <code class="bg-stone-100 px-1 rounded text-xs">Graph.Order</code> left-to-right:
+        </p>
+
+        <Code code={`// In types.CheckModules:
+for _, path := range graph.Order &#123;
+    mod := graph.Modules[path]
+    // check mod.AST with bindings from previously-processed modules
+    // add exported names to the cross-module scope
+&#125;
+
+// In codegen.GenerateModules:
+for _, path := range graph.Order &#123;
+    mod := graph.Modules[path]
+    // emit C for mod.AST
+    // exported functions/vars are already emitted when dependents reference them
+&#125;`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            Because dependencies always appear earlier in <code class="bg-stone-100 px-1 rounded text-xs">Order</code>, every name referenced by a module is already in the type map (or already emitted as C) by the time that module is processed. No forward-declaration problem, no two-pass needed.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">1</span></div>
+                <p class="text-sm">Post-order DFS naturally produces a topological sort. Deps-before-dependents falls out of the algorithm without a separate sorting step.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">2</span></div>
+                <p class="text-sm">Gray/black coloring detects cycles in one pass with no extra memory beyond the two maps and the chain slice.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">3</span></div>
+                <p class="text-sm">Export validation happens at graph-build time — before the type checker runs. Misspelled import names fail fast.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">4</span></div>
+                <p class="text-sm">Absolute paths as keys mean two different relative strings pointing to the same file are deduplicated automatically.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-7-modules/monks-module-syntax"
+        prevLabel="Prev: Monk's Module Syntax"
+        nextHref="/phase-7-modules/references"
+        nextLabel="Next: References"
+    />
+
+</LessonLayout>

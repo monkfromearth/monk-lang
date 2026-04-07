@@ -100,6 +100,10 @@ func collectRefsStmt(stmt syntax.Stmt, locals map[string]bool, refs map[string]b
 		collectRefs(s.Against.Stmts, locals, refs)
 	case *syntax.BlockStmt:
 		collectRefs(s.Stmts, locals, refs)
+		// ExportStmt and UseStmt are intentionally absent. freeVars is only called
+		// on FuncExpr bodies, and the parser prevents export/use from appearing
+		// inside a function body — they are module-level-only statements. If that
+		// invariant ever changes, add cases here or captures will be silently missed.
 	}
 }
 

@@ -287,7 +287,7 @@ func (g *generator) emitExprTyped(expr syntax.Expr) (string, storageKind) {
 		return "false", storeBool
 	case *syntax.IdentExpr:
 		// Look up the variable's declared storage.
-		name := mangleName(e.Name)
+		name := g.mangledName(e.Name)
 		return name, g.varStorage(name)
 	case *syntax.BinaryExpr:
 		return g.emitBinaryTyped(e)

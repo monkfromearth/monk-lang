@@ -1,6 +1,7 @@
 # `src/types/` — static type checker
 
 Entry: `Check(prog) (*Info, error)` in `checker.go`.
+Multi-module: `CheckModules(graph) (*ModuleInfo, error)` — checks all modules in topological order, resolving cross-module imports.
 
 The checker is a single AST walk that:
 1. Resolves named type declarations (`type Point = ...`)
@@ -15,7 +16,7 @@ and the `MonkValue` tagged union.
 | File           | Contains                                                                    |
 | -------------- | --------------------------------------------------------------------------- |
 | `types.go`     | `Kind` enum (9 kinds), `Type` struct, `AssignableTo`, constructors (`Int`, `ArrayOf`, …) |
-| `checker.go`   | `Info` struct, `Check` entry, `checker` + `scope` + `Binding`, `checkProgram` / `checkStmt` / `checkBlock`, builtin declarations |
+| `checker.go`   | `Info` struct, `Check` entry, `CheckModules` + `ModuleInfo` (multi-module), `checker` + `scope` + `Binding`, `checkProgram` / `checkStmt` / `checkBlock`, builtin declarations |
 | `stmts.go`     | Statement checks: `checkVarDecl`, `checkAssign`, `checkCompoundOp`, `checkIf`, `checkWhile`, `checkFor`, `checkReturn`, `checkGuard`, type resolver (`resolveTypeDef` / `resolveTypeExpr`) |
 | `exprs.go`     | Expression inference: `inferExpr` / `inferExprInner`, one `infer*` function per expression kind, helper predicates (`isNumericOrAny`, `isIntOrAny`, `isNonComparable`) |
 | `returns.go`   | All-paths-return analysis (`stmtsAlwaysReturn` / `stmtAlwaysReturns`) used to verify typed return functions |

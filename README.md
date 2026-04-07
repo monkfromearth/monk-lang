@@ -9,8 +9,8 @@
 A minimalist, readable, and performant programming language for the modern age.
 
 [![Build](https://img.shields.io/badge/build-passing-brightgreen?style=flat)](#status)
-[![Tests](https://img.shields.io/badge/tests-620_passing-brightgreen?style=flat)](#status)
-[![Phase](https://img.shields.io/badge/phase-6_of_11-blue?style=flat)](#status)
+[![Tests](https://img.shields.io/badge/tests-676_passing-brightgreen?style=flat)](#status)
+[![Phase](https://img.shields.io/badge/phase-7_of_11-blue?style=flat)](#status)
 [![Go](https://img.shields.io/badge/Go-1.26.1+-00ADD8?style=flat&logo=go&logoColor=white)](#install)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat)](#license)
 
@@ -129,6 +129,31 @@ guard result = divide(10, 0) against error {
 }
 ```
 
+### Modules
+
+Split programs across files with `use` and `export`:
+
+```javascript
+// math.monk
+let add = (a int, b int) int { return a + b }
+export add
+
+// main.monk
+use add from "./math"
+show(to_string(add(3, 4)))
+```
+
+All four import forms:
+
+```javascript
+use add from "./math"              // single import
+use { add, mul } from "./math"     // destructured
+use * from "./math"                // wildcard
+use add as plus from "./math"      // alias
+```
+
+Modules compile to a single `.c` file. Module-level code runs once. Circular imports are a compile error.
+
 ### Type System
 
 Monk has a static type checker. Annotations are optional — the checker infers from first assignment.
@@ -162,7 +187,7 @@ let sorted = bubble_sort(original)
 
 ## Examples
 
-The [`examples/`](examples/) directory has 23 working programs:
+The [`examples/`](examples/) directory has 24 working programs:
 
 | File | What it shows |
 |------|---------------|
@@ -189,6 +214,7 @@ The [`examples/`](examples/) directory has 23 working programs:
 | [`bitwise.monk`](examples/bitwise.monk) | Bitwise operators |
 | [`gcd_lcm.monk`](examples/gcd_lcm.monk) | GCD/LCM, number theory |
 | [`sieve.monk`](examples/sieve.monk) | Sieve of Eratosthenes, typed arrays |
+| [`modules/`](examples/modules/) | Multi-file imports, exports, modules |
 
 ## CLI
 
@@ -312,7 +338,7 @@ Three rules resolve every edge case:
 
 ## Status
 
-**0.0.1 — Buniyaad** (2026-04-04). 630 tests passing (467 Go + 163 C runtime). 21 benchmarks, 23 examples.
+**0.0.1 — Buniyaad** (2026-04-04). 676 tests passing (510 Go + 166 C runtime). 21 benchmarks, 24 examples.
 
 | Phase | Status |
 |-------|--------|
@@ -322,8 +348,8 @@ Three rules resolve every edge case:
 | 4. C Code Generation | :white_check_mark: Done |
 | 5. CLI | :white_check_mark: Done |
 | 6. Type System + scalar unboxing codegen | :white_check_mark: Done |
-| 7. Module System | :arrow_left: Next |
-| 8. C FFI | Planned |
+| 7. Module System | :white_check_mark: Done |
+| 8. C FFI | :arrow_left: Next |
 | 9. Linter & Formatter | Planned |
 | 10. LSP + Editor | Planned |
 | 11. Distribution | Planned |
@@ -332,11 +358,12 @@ Three rules resolve every edge case:
 
 ```
 src/                Go compiler (module root)
-  main.go             CLI entry point (39 tests)
+  main.go             CLI entry point (53 tests)
   embed.go            Embedded runtime (self-contained binary)
   syntax/             Lexer + Parser + AST (195 tests)
   types/              Static type checker (112 tests)
-  codegen/            AST → C code generator + unboxing (63 tests)
+  codegen/            AST → C code generator + unboxing (67 tests)
+  module/             Module resolver, dependency graph (13 tests)
     unbox.go            Scalar/typed-array unboxing, storage kind inference
   runtime/            C runtime library (8 .c files, 163 C tests)
     runtime.h           Public API (MonkValue + function declarations)
@@ -344,13 +371,18 @@ src/                Go compiler (module root)
     value.c, arith.c, string.c, container.c, math.c, builtins.c, error.c, higher_order.c
 spec/               Language specification (REFERENCE.md is the source of truth)
 knowledge/          Learning course — monkfromearth.github.io/monk-lang/
-examples/           23 working .monk programs
+examples/           24 working .monk programs (including multi-file module example)
 bench/              Benchmark suite (21 benchmarks, Monk vs C)
 Makefile            make build/install/test/clean
 ```
 
+## Contributing
+
+New to the codebase? Start with **[WALKTHROUGH.md](WALKTHROUGH.md)** — a plain-markdown tour of the compiler pipeline, key data structures, reading order, and how to add features. No build tools required.
+
 ## Links
 
+- [Code Walkthrough](WALKTHROUGH.md) — developer guide to reading and contributing to the compiler
 - [Language Reference](spec/REFERENCE.md) — the source of truth for syntax and semantics
 - [Architecture Decisions](spec/ARCHITECTURE_DECISIONS.md) — why Go, why compile-to-C
 - [Roadmap](ROADMAP.md) — phased build plan with checkboxes

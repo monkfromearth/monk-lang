@@ -15,9 +15,26 @@ func (g *generator) emitLine(format string, args ...any) {
 	fmt.Fprintf(&g.body, format, args...)
 }
 
-// mangleName prefixes Monk variable names to avoid C keyword collisions.
-func mangleName(name string) string {
-	return "mk_" + name
+// mangledName returns the C name for a Monk variable, accounting for module
+// prefix (multi-module codegen) and import overrides.
+//
+//	Entry module:   mangledName("x") -> "mk_x"       (modulePrefix == "")
+//	Module m0:      mangledName("x") -> "mk_m0_x"    (modulePrefix == "m0_")
+//	Imported "x":   mangledName("x") -> "mk_m2_x"    (via importMap)
+//
+// Invariant: entry-module generators always have modulePrefix == "". importMap
+// only contains foreign names (symbols from other modules). A local name that
+// is not in importMap falls through to the "mk_" + prefix + name path.
+// If a name lands in neither importMap nor the local prefix path, the generated
+// C will reference an undefined symbol — no silent corruption, just a build error.
+func (g *generator) mangledName(name string) string {
+	// Check import map first — imported names resolve to foreign C names.
+	if g.importMap != nil {
+		if cName, ok := g.importMap[name]; ok {
+			return cName
+		}
+	}
+	return "mk_" + g.modulePrefix + name
 }
 
 // cString returns a C string literal with proper escaping. Used both for

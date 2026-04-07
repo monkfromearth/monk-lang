@@ -1,0 +1,15 @@
+// Module system demo — import functions and constants from another file.
+
+use { add, mul } from "./math"
+use PI from "./math"
+
+show("=== Module System ===")
+
+// Use imported functions
+show("add(3, 4) = " + to_string(add(3, 4)))
+show("mul(5, 6) = " + to_string(mul(5, 6)))
+show("PI = " + to_string(PI))
+
+// Compose imported functions
+let result = add(mul(3, 4), mul(5, 6))
+show("3*4 + 5*6 = " + to_string(result))

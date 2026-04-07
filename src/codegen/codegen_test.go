@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/monkfromearth/monk-lang/module"
 	"github.com/monkfromearth/monk-lang/syntax"
 	"github.com/monkfromearth/monk-lang/types"
 )
@@ -357,6 +358,80 @@ func TestCodegenLength(t *testing.T) {
 func TestCodegenTypeof(t *testing.T) {
 	expectOutput(t, `show(typeof(42))`, "int")
 	expectOutput(t, `show(typeof("hi"))`, "string")
+}
+
+func TestCodegenKnownTypePredicatesInlinePureKnownTypes(t *testing.T) {
+	out, src := runMonkTyped(t, `let n int = 42
+let s = "hi"
+let arr int[] = [1, 2]
+show(typeof(n))
+show(to_string(is_number(n)))
+show(to_string(is_string(s)))
+show(to_string(is_array(arr)))
+show(to_string(is_none(none)))`)
+	if out != "int\ntrue\ntrue\ntrue\ntrue" {
+		t.Fatalf("output = %q, want known type predicate results", out)
+	}
+	for _, call := range []string{"monk_typeof", "monk_is_number", "monk_is_string", "monk_is_array", "monk_is_none"} {
+		if strings.Contains(src, call) {
+			t.Fatalf("expected %s to be inlined for pure known-type args, got:\n%s", call, src)
+		}
+	}
+	if !strings.Contains(src, "if (true)") && !strings.Contains(src, "monk_bool(true)") {
+		t.Fatalf("expected generated C to contain constant predicate results, got:\n%s", src)
+	}
+}
+
+func TestCodegenKnownTypePredicatesDoNotSkipEffects(t *testing.T) {
+	out, src := runMonkTyped(t, `let touch = () string {
+    show("called")
+    return "x"
+}
+show(typeof(touch()))
+`)
+	if out != "called\nstring" {
+		t.Fatalf("output = %q, want call side effect and string", out)
+	}
+	if !strings.Contains(src, "monk_typeof") {
+		t.Fatalf("expected typeof(call()) to keep runtime evaluation, got:\n%s", src)
+	}
+
+	out, src = runMonkTyped(t, `let arr int[] = [1, 2]
+show(to_string(is_number(arr[10])))`)
+	if out != "false" {
+		t.Fatalf("output = %q, want false from runtime checked indexed read", out)
+	}
+	if !strings.Contains(src, "monk_is_number") {
+		t.Fatalf("expected is_number(arr[i]) to keep runtime evaluation, got:\n%s", src)
+	}
+}
+
+func TestGenerateModulesTypedArrayInitializesUniquenessTracking(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"lib.monk": `let arr int[] = [1, 2, 3]
+export arr`,
+		"main.monk": `use arr from "./lib"
+show(to_string(length(arr)))`,
+	}
+	for name, source := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	graph, err := module.Build(filepath.Join(dir, "main.monk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := types.CheckModules(graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := GenerateModules(graph, info)
+	if !strings.Contains(c, "monk_int_array_from") {
+		t.Fatalf("expected module typed-array generation, got:\n%s", c)
+	}
 }
 
 func TestCodegenAppend(t *testing.T) {
@@ -1159,6 +1234,37 @@ show(to_string(a[0]) + "," + to_string(b[0]))`)
 	// Fail: direct `b.int_array_val->data[0] = 99` mutates shared storage.
 	if !strings.Contains(src, "monk_int_array_ensure_unique(&mk_b)") {
 		t.Errorf("expected COW detach before typed-array write, generated:\n%s", src)
+	}
+}
+
+func TestBackingStoreReassignUpdatesCopyOnWriteUniqueness(t *testing.T) {
+	out, src := runMonkTyped(t, `let source int[] = [1, 2]
+let arr int[] = range(2)
+arr = source
+arr[0] = 9
+show(to_string(source[0]))`)
+	if out != "1" {
+		t.Fatalf("source[0] = %q, want 1", out)
+	}
+	if !strings.Contains(src, "monk_int_array_ensure_unique(&mk_arr)") {
+		t.Fatalf("expected COW barrier after typed-array reassignment, got:\n%s", src)
+	}
+}
+
+func TestBackingStoreScopeRestoreInvalidatesShadowedUniqueness(t *testing.T) {
+	out, src := runMonkTyped(t, `let source int[] = [1, 2]
+let arr int[] = source
+if true {
+    let arr int[] = range(2)
+    arr[0] = 7
+}
+arr[0] = 9
+show(to_string(source[0]))`)
+	if out != "1" {
+		t.Fatalf("source[0] = %q, want 1", out)
+	}
+	if got := strings.Count(src, "monk_int_array_ensure_unique(&mk_arr)"); got < 1 {
+		t.Fatalf("expected COW barrier after scoped shadowing, got %d:\n%s", got, src)
 	}
 }
 

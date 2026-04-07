@@ -877,6 +877,49 @@ concat assignment, and numeric `+=` fallback.
 `TestCodegenStringAppendAssignmentDoesNotOvermatch`, plus C runtime coverage
 for alias-safe self-append. C runtime assertions: 174 → 176.
 
+### Known-type builtin inlining (2026-04-08)
+
+Implemented the ROADMAP item for inlining `typeof` / `is_*` when codegen can
+prove the argument's type without evaluating an effectful expression. This is
+deliberately conservative:
+
+- Inlines identifiers and literals with non-optional, non-`Any` static types
+  (`typeof(n int)` → `monk_string("int")`, `is_array(arr int[])` → `true`)
+- Leaves calls, index expressions, property reads, optional values, and `Any`
+  on the runtime path so side effects, bounds behavior, and dynamic checks
+  remain observable
+- Works in both boxed and typed emission paths; typed conditions like
+  `if is_number(n)` can use a raw C `true`/`false`
+
+This is not benchmark-specific and no benchmark source changed for it.
+
+**Tests added:** `TestCodegenKnownTypePredicatesInlinePureKnownTypes` and
+`TestCodegenKnownTypePredicatesDoNotSkipEffects`.
+
+### Review hardening for optimization state (2026-04-08)
+
+Processed the pasted review for the performance branch. Three real
+`arrayUnique` issues were fixed:
+
+- `GenerateModules` now initializes `arrayUnique`, so typed-array declarations
+  in modules no longer panic with "assignment to entry in nil map"
+- Typed-array reassignment updates COW uniqueness facts, so `arr = source`
+  cannot leave a stale "unique" bit from an earlier `range()` initializer
+- Scope snapshots now include `arrayUnique`; restore is conservative and turns
+  changed outer keys into "maybe shared" rather than restoring stale `true`
+
+Also split `unbox.go` after it crossed the file-size soft limit:
+`gen_access.go` owns typed array / record access fast paths, and
+`gen_optimize.go` owns COW uniqueness, string append detection, and known-type
+builtin inlining. `unbox.go` is back under 500 lines.
+
+Review items intentionally skipped: string append old-value free (handled by
+`realloc`), self-append `memmove` (already correct and tested), and nested
+array COW sharing (intentional; mutation barriers preserve value semantics).
+
+**Tests added:** module typed-array generation, typed-array reassignment COW
+tracking, and scope-shadowed COW uniqueness restore.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
@@ -884,6 +927,7 @@ for alias-safe self-append. C runtime assertions: 174 → 176.
 | 7 | Module System | **Complete** ✅ |
 | 6 | `restrict` function extraction | Deferred — matmul/nbody 1.8×→~1×, invasive codegen |
 | 6 | Copy-on-write for arrays | **Complete** ✅ — generic + typed arrays, hidden refcount + write barrier |
+| 6 | Runtime `typeof`/`is_*` inlining | **Complete** ✅ — pure known-type args only; effectful/unknown args stay runtime |
 | 6 | Closure escape analysis | Deferred — closure_invoke 17×→~1×, 2-3 sessions |
 | 6 | String views / builder | Partial — string_concat fast path complete; string_ops/levenshtein still need views/cached strings |
 | 6 | Stream fusion (lazy map/filter/reduce) | Deferred — functional_chain 4×→~1×, 3+ sessions |

@@ -231,8 +231,8 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 			}
 			if g.funcHasCapture[cName] {
 				mn := mangleName(ident.Name)
-				return fmt.Sprintf("monk_call(%s, (MonkValue[]){%s}, %d)",
-					mn, strings.Join(args, ", "), len(args))
+				return fmt.Sprintf("monk_call(%s, %s)",
+					mn, monkValArray(args, len(args)))
 			}
 			return fmt.Sprintf("%s(%s)", cName, strings.Join(args, ", "))
 		}
@@ -252,12 +252,12 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 
 		// Function value (parameter or variable) — indirect call via monk_call
 		name := mangleName(ident.Name)
-		return fmt.Sprintf("monk_call(%s, (MonkValue[]){%s}, %d)", name, argStr, len(e.Args))
+		return fmt.Sprintf("monk_call(%s, %s)", name, monkValArray(args, len(e.Args)))
 	}
 
 	// Indirect call — call through the function value's fn pointer.
 	callee := g.emitExpr(e.Callee)
-	return fmt.Sprintf("monk_call(%s, (MonkValue[]){%s}, %d)", callee, argStr, len(e.Args))
+	return fmt.Sprintf("monk_call(%s, %s)", callee, monkValArray(args, len(e.Args)))
 }
 
 // padDefaults returns a full argument list, appending default expressions

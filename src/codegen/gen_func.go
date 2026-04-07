@@ -137,8 +137,8 @@ func (g *generator) emitFuncValueNamed(cName string, e *syntax.FuncExpr) string 
 			captureExprs[i] = mn
 		}
 	}
-	return fmt.Sprintf("monk_make_function(%s, (MonkValue[]){%s}, %d)",
-		thunkName, strings.Join(captureExprs, ", "), len(validCaptures))
+	return fmt.Sprintf("monk_make_function(%s, %s)",
+		thunkName, monkValArray(captureExprs, len(validCaptures)))
 }
 
 // hoistFunctionWithCaptures is like hoistFunction but adds extra MonkValue

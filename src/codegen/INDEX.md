@@ -17,7 +17,7 @@ as static C functions, everything else goes into the body of `main()`.
 | `gen_func.go`     | function hoisting, trampolines, closures, capture save-back |
 | `gen_module.go`   | `GenerateModules` — multi-module → single `.c`, init functions, module-prefixed names |
 | `gen_helpers.go`  | `mangledName`, `cString`, `compoundToArith`, `builtinMap`  |
-| `unbox.go`        | scalar and typed-array unboxing (`int64_t`/`double`/`bool`, `storeIntArray` etc.), typed-array COW uniqueness tracking |
+| `unbox.go`        | scalar and typed-array unboxing (`int64_t`/`double`/`bool`, `storeIntArray` etc.), typed-array COW uniqueness tracking, string-append assignment detection |
 | `capture.go`      | `freeVars` — free variable analysis for closure captures   |
 | `gen_bounds.go`   | static bounds analysis for bounds-check elision (`constVals`, `arrayLens`, `varBounds`, `isBoundedSafe`) |
 

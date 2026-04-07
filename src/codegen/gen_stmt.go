@@ -357,6 +357,18 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 			}
 		}
 	}
+
+	if rhsExpr := g.stringAppendRHS(s); rhsExpr != nil {
+		target := s.Target.(*syntax.IdentExpr)
+		name := g.mangledName(target.Name)
+		rhs := g.emitExpr(rhsExpr)
+		// In-place string concat assignment.
+		// Pass: `s = s + "x"` / `s += "x"` grows s directly.
+		// Fail: numeric `x += 1` must still use arithmetic assignment.
+		g.emitLine("    monk_string_append_in_place(&%s, %s);\n", name, rhs)
+		return
+	}
+
 	value := g.emitExpr(s.Value)
 
 	switch target := s.Target.(type) {

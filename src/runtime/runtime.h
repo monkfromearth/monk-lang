@@ -240,6 +240,7 @@ MonkValue monk_trim(MonkValue s);
 MonkValue monk_to_upper_case(MonkValue s);
 MonkValue monk_to_lower_case(MonkValue s);
 MonkValue monk_string_concat(MonkValue a, MonkValue b);
+void monk_string_append_in_place(MonkValue *target, MonkValue suffix);
 
 /* --- Array --- */
 

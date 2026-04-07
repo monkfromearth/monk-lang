@@ -279,6 +279,7 @@ The three remaining gaps between Monk and C performance — in order of impact:
 ### 5. Unicode strings
 **Problem:** C's `char*` is bytes, not Unicode.
 **Our approach:** Store strings as UTF-8 byte arrays internally. `length()` iterates UTF-8 sequences to count Unicode scalar values. String indexing is O(n) — acceptable for a first implementation, optimize with cached offsets later if needed.
+**Shipped optimization:** Codegen lowers `s = s + rhs` and `s += rhs` to `monk_string_append_in_place(&s, rhs)`, which reallocates the target buffer directly. This is invisible at the language level: `+` still produces a new string, and only assignment back into the same variable takes the fast path. Full string views/builders remain future work for `substring`, `to_upper_case`, and `to_lower_case`-heavy workloads.
 
 ### 6. Two-phase compile time
 **Problem:** Monk→C is fast, but C→binary adds 500ms-1s.

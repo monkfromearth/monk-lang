@@ -131,6 +131,14 @@ void test_string_ops(void) {
     ASSERT_STR(monk_to_lower_case(monk_string("HELLO")), "hello");
 
     ASSERT_STR(monk_string_concat(monk_string("hello"), monk_string(" world")), "hello world");
+
+    /* Alias-safe append: `s += s` must read from the reallocated buffer, not
+     * from the old freed pointer. Pass: "ha" -> "haha". Fail: UAF/corruption. */
+    MonkValue mutable = monk_string("ha");
+    monk_string_append_in_place(&mutable, mutable);
+    ASSERT_STR(mutable, "haha");
+    monk_string_append_in_place(&mutable, monk_string("!"));
+    ASSERT_STR(mutable, "haha!");
 }
 
 void test_string_index(void) {

@@ -846,6 +846,37 @@ This preserves Monk's value semantics (`let b = a; b[0] = 99` still leaves
 coverage for generic-array and typed-array COW sharing/detach. C runtime
 assertions: 166 → 174.
 
+### String concat assignment fast path (2026-04-08)
+
+Implemented the first string optimization slice without changing the language
+spec: codegen now recognizes `s = s + rhs` and `s += rhs` when both sides are
+statically strings, then emits `monk_string_append_in_place(&s, rhs)` instead
+of allocating a whole replacement string via `monk_string_concat`.
+
+This preserves user-visible value semantics because only assignment back into
+the same variable takes the in-place path; ordinary `a + b` still returns a new
+string. The runtime helper handles `s += s` safely by checking for self-append
+before `realloc`.
+
+**Benchmarks (Apple M4 Pro, hyperfine, targeted run):**
+
+| Benchmark | Before | After | C ref | Notes |
+|---|---:|---:|---:|---|
+| `string_concat` | 43.6 ms | 6.5 ms | 4.8 ms | 6.7× faster; now ~1.36× C |
+| `string_ops` | 100.1 ms | 102.4 ms | 1.7 ms | unchanged; dominated by `to_upper_case`/`to_lower_case` allocation |
+| `levenshtein` | 74.3 ms | 75.5 ms | 2.0 ms | unchanged; dominated by per-character `substring` allocation |
+
+**Overfitting audit:** A broader test caught that `s += rhs` was documented as
+optimized but did not actually take the fast path; the original benchmark only
+used `s = s + "hello"`. Fixed by recording assignment-lvalue type info in
+`types.Info`, then added coverage for variable RHS, computed RHS, non-self
+concat assignment, and numeric `+=` fallback.
+
+**Tests added:** `TestCodegenStringAppendAssignmentUsesInPlaceHelper`,
+`TestCodegenStringAppendAssignmentCoversGeneralForms`,
+`TestCodegenStringAppendAssignmentDoesNotOvermatch`, plus C runtime coverage
+for alias-safe self-append. C runtime assertions: 174 → 176.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
@@ -854,7 +885,7 @@ assertions: 166 → 174.
 | 6 | `restrict` function extraction | Deferred — matmul/nbody 1.8×→~1×, invasive codegen |
 | 6 | Copy-on-write for arrays | **Complete** ✅ — generic + typed arrays, hidden refcount + write barrier |
 | 6 | Closure escape analysis | Deferred — closure_invoke 17×→~1×, 2-3 sessions |
-| 6 | String views / builder | Deferred — string_concat/ops/levenshtein, 1-2 sessions |
+| 6 | String views / builder | Partial — string_concat fast path complete; string_ops/levenshtein still need views/cached strings |
 | 6 | Stream fusion (lazy map/filter/reduce) | Deferred — functional_chain 4×→~1×, 3+ sessions |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |

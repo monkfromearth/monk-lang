@@ -161,6 +161,43 @@ func (g *generator) markArrayUniquenessFromExpr(name string, store storageKind, 
 	g.arrayUnique[name] = isFreshArrayExpr(expr)
 }
 
+func (g *generator) stringAppendRHS(s *syntax.AssignStmt) syntax.Expr {
+	if g.info == nil {
+		return nil
+	}
+	target, ok := s.Target.(*syntax.IdentExpr)
+	if !ok {
+		return nil
+	}
+	switch s.Op {
+	case syntax.PlusEqual:
+		// Compound string append: checker guarantees target is string when RHS
+		// is string. Pass: `s += "x"`. Fail: `n += "x"` never reaches codegen.
+		targetType := g.info.Types[s.Target]
+		valueType := g.info.Types[s.Value]
+		if targetType != nil && valueType != nil &&
+			targetType.Kind == types.KindStr && valueType.Kind == types.KindStr &&
+			!targetType.Optional && !valueType.Optional {
+			return s.Value
+		}
+	case syntax.Equal:
+		bin, ok := s.Value.(*syntax.BinaryExpr)
+		if !ok || bin.Op != syntax.Plus {
+			return nil
+		}
+		left, ok := bin.Left.(*syntax.IdentExpr)
+		if !ok || left.Name != target.Name {
+			return nil
+		}
+		lt := g.info.Types[bin.Left]
+		rt := g.info.Types[bin.Right]
+		if lt != nil && rt != nil && lt.Kind == types.KindStr && rt.Kind == types.KindStr && !lt.Optional && !rt.Optional {
+			return bin.Right
+		}
+	}
+	return nil
+}
+
 // arrayPtrField returns the MonkValue union field name for a typed-array storage
 // kind. Used in the backing-store path: arr.{field}->data[i].
 func arrayPtrField(s storageKind) string {

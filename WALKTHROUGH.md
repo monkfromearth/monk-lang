@@ -124,7 +124,7 @@ Not Go. A small C library (~1,200 lines across 8 files) linked into every Monk b
 | `internal.h` | Shared helpers not used by generated code |
 | `value.c` | Constructors, `monk_deep_copy`/`monk_free`, array COW share/free, `monk_show`, typed-array converters |
 | `arith.c` | Arithmetic: `monk_add`/`sub`/`mul`/`div`/`mod`, comparison operators |
-| `string.c` | String ops: `concat`, `length`, `substring`, `split`, `trim`, `to_upper_case` |
+| `string.c` | String ops: `concat`, in-place append for concat assignment, `length`, `substring`, `split`, `trim`, `to_upper_case` |
 | `container.c` | Array/record ops: `get`/`set`, COW detach helpers, `append`/`pop`/`slice`, `fill`, `range`, record `get`/`set` |
 | `math.c` | `abs`, `floor`/`ceil`/`round`, `sqrt`/`pow`/`log`, trig |
 | `builtins.c` | `typeof`, `is_*` type checks, file I/O, `env_get`, `exit`, `args` |

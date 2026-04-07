@@ -218,6 +218,7 @@ Strings compare lexicographically. Cross-type comparison (e.g. `int == string`) 
 | Function | Monk builtin | Notes |
 |----------|-------------|-------|
 | `monk_string_concat(a, b)` | `string + string` | Allocates new string |
+| `monk_string_append_in_place(&target, suffix)` | generated for `s = s + rhs` / `s += rhs` | Reallocates target string directly; preserves user-visible value semantics |
 | `monk_length(v)` | `length(v)` | Works on strings (Unicode codepoints), arrays, and records |
 | `monk_substring(s, start, end)` | `substring(s, start, end)` | Indices clamped to bounds |
 | `monk_index_of(s, search)` | `index_of(s, search)` | Returns -1 if not found |

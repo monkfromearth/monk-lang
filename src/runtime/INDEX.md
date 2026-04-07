@@ -12,7 +12,7 @@ copy-on-write refcounts hidden inside array backing stores.
 | `internal.h`     | shared helper declarations (not for generated code), `monk_typed_to_generic`, `monk_free_generic_intermediate` |
 | `value.c`        | constructors, `monk_deep_copy_heap`/`monk_free_heap`, array COW share/free, `monk_type_name`, `monk_value_to_cstr`, `monk_show`, typed array converters (`monk_int/float/bool_array_from`) |
 | `arith.c`        | `monk_equal`/`less`/`greater` (+ `_equal` variants), `monk_add`/`sub`/`mul`/`div`/`mod`/`neg` |
-| `string.c`       | `monk_string_concat`, `length` (handles typed arrays), `substring`, `index_of`, `split`, `trim`, `to_upper_case`, `to_lower_case`, `string_index` |
+| `string.c`       | `monk_string_concat`, `monk_string_append_in_place`, `length` (handles typed arrays), `substring`, `index_of`, `split`, `trim`, `to_upper_case`, `to_lower_case`, `string_index` |
 | `container.c`    | array ops (`_get`/`_set` handle typed arrays; structural mutators convert-to-generic first), COW detach helpers, `monk_typed_to_generic` (shared), `monk_free_generic_intermediate` (single def), `monk_fill`/`monk_fill_bool`/`monk_fill_int`/`monk_fill_float`, `monk_range_int`, record ops |
 | `math.c`         | `abs`, `floor`/`ceil`/`round`, `sqrt`/`pow`/`log`/`log10`/`exp`, `min`/`max`, trig |
 | `builtins.c`     | `typeof`, `is_array` (true for all array kinds), other `is_*`, file I/O, `env_get`, `exit`, `args` |

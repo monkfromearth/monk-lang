@@ -139,6 +139,57 @@ func TestCodegenStringConcat(t *testing.T) {
 	expectOutput(t, `show("hello" + " " + "world")`, "hello world")
 }
 
+func TestCodegenStringAppendAssignmentUsesInPlaceHelper(t *testing.T) {
+	out, src := runMonkTyped(t, `let s = "ha"
+s = s + "!"
+s += s
+show(s)`)
+	if out != "ha!ha!" {
+		t.Fatalf("output = %q, want ha!ha!", out)
+	}
+	if !strings.Contains(src, "monk_string_append_in_place(&mk_s") {
+		t.Fatalf("expected generated C to append directly, got:\n%s", src)
+	}
+}
+
+func TestCodegenStringAppendAssignmentCoversGeneralForms(t *testing.T) {
+	out, src := runMonkTyped(t, `let suffix = (n int) string { return to_string(n) }
+let sep = ":"
+let s = "id"
+s += sep
+s = s + suffix(7)
+show(s)`)
+	if out != "id:7" {
+		t.Fatalf("output = %q, want id:7", out)
+	}
+	if got := strings.Count(src, "monk_string_append_in_place(&mk_s"); got != 2 {
+		t.Fatalf("expected two direct appends for variable/computed RHS, got %d:\n%s", got, src)
+	}
+}
+
+func TestCodegenStringAppendAssignmentDoesNotOvermatch(t *testing.T) {
+	out, src := runMonkTyped(t, `let a = "x"
+let b = ""
+b = a + "y"
+show(b)`)
+	if out != "xy" {
+		t.Fatalf("output = %q, want xy", out)
+	}
+	if strings.Contains(src, "monk_string_append_in_place") {
+		t.Fatalf("expected non-self concat assignment to keep allocation semantics, got:\n%s", src)
+	}
+
+	out, src = runMonkTyped(t, `let n = 1
+n += 2
+show(to_string(n))`)
+	if out != "3" {
+		t.Fatalf("output = %q, want 3", out)
+	}
+	if strings.Contains(src, "monk_string_append_in_place") {
+		t.Fatalf("expected numeric += to avoid string append helper, got:\n%s", src)
+	}
+}
+
 // === COMPARISON ===
 
 func TestCodegenEqual(t *testing.T) {

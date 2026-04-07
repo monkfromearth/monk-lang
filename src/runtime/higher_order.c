@@ -3,17 +3,8 @@
 #include "internal.h"
 #include <stdlib.h>
 
-/* Free a generic MONK_ARRAY created by monk_typed_to_generic. */
-static void free_generic_intermediate(MonkValue arr) {
-    if (arr.kind != MONK_ARRAY || !arr.array_val) return;
-    for (int64_t i = 0; i < arr.array_val->length; i++)
-        monk_free(arr.array_val->data[i]);
-    free(arr.array_val->data);
-    free(arr.array_val);
-}
-
 MonkValue monk_map(MonkValue arr, MonkValue fn) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY || !arr.array_val) {
         monk_panic("map: first argument must be an array");
@@ -33,12 +24,12 @@ MonkValue monk_map(MonkValue arr, MonkValue fn) {
         monk_free(results[i]);
     }
     free(results);
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return out;
 }
 
 MonkValue monk_filter(MonkValue arr, MonkValue fn) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY || !arr.array_val) {
         monk_panic("filter: first argument must be an array");
@@ -60,12 +51,12 @@ MonkValue monk_filter(MonkValue arr, MonkValue fn) {
     }
     MonkValue out = monk_array(results, count);
     free(results);
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return out;
 }
 
 MonkValue monk_reduce(MonkValue arr, MonkValue fn, MonkValue initial) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY || !arr.array_val) {
         monk_panic("reduce: first argument must be an array");
@@ -81,6 +72,6 @@ MonkValue monk_reduce(MonkValue arr, MonkValue fn, MonkValue initial) {
         monk_free(acc);
         acc = new_acc;
     }
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return acc;
 }

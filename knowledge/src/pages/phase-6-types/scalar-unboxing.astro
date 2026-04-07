@@ -292,10 +292,10 @@ const (
                 <p class="text-sm"><strong>Copy-on-write for arrays.</strong> Share backing storage on assign, copy only on mutation. Makes <code class="bg-stone-100 px-1 rounded text-xs">let b = a</code> O(1) instead of O(n). Not yet done.</p>
             </div>
             <div class="flex items-start gap-3">
-                <div class="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span class="text-stone-500 font-bold text-xs">○</span>
+                <div class="w-6 h-6 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-monk-green font-bold text-xs">✓</span>
                 </div>
-                <p class="text-sm"><strong>Bounds-check elision.</strong> Skip the bounds check for typed arrays in provably-safe loops (<code class="bg-stone-100 px-1 rounded text-xs">for i in range(0, arr.length)</code>). Not yet done.</p>
+                <p class="text-sm"><strong>Bounds-check elision.</strong> Typed array accesses inside provably-safe loops skip the runtime bounds check. A lightweight static analysis (<code class="bg-stone-100 px-1 rounded text-xs">gen_bounds.go</code>) tracks constant values, array lengths, and loop-counter ranges — if it can prove <code class="bg-stone-100 px-1 rounded text-xs">0 ≤ idx &lt; arr.length</code>, the check is dropped. Done.</p>
             </div>
         </div>
 
@@ -322,7 +322,7 @@ const (
             </div>
             <div class="flex items-start gap-3">
                 <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">4</span></div>
-                <p class="text-sm">Array-heavy benchmarks (matmul) remain slow. Arrays are the next frontier -- typed array backing store and copy-on-write are the open items.</p>
+                <p class="text-sm">Array-heavy benchmarks (matmul) remain slow. Bounds-check elision is done; copy-on-write for arrays is the last open item on this front.</p>
             </div>
         </div>
     </section>

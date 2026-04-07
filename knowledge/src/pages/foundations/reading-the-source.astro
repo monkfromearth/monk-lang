@@ -1,0 +1,383 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Reading the Source" lessonNumber="0.3" section="Foundations">
+
+    <LessonHeader lessonNumber="0.3" title="Reading the Source" description="A developer's tour of the Go codebase. Where the pipeline lives in code, how data moves between packages, and where to start reading.">
+        <TagBadge variant="go">go</TagBadge>
+        <TagBadge variant="default">20 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Entry point -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Start here: main.go.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Everything begins in <code class="bg-stone-100 px-1 rounded text-xs">src/main.go</code>. The <code class="bg-stone-100 px-1 rounded text-xs">runCompile</code> function is the entire compiler pipeline in nine lines:
+        </p>
+
+        <Code code={`func runCompile(source, outPath string) error {
+    prog, err := syntax.Parse(source)        // source text → AST
+    if err != nil { return err }
+
+    info, err := types.Check(prog)           // AST → typed Info
+    if err != nil { return err }
+
+    return codegen.GenerateWithTypes(prog, outPath, info)
+    // ↑ typed AST + Info → C source, then cc compiles it
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Three function calls, three packages. The compiler is that flat. Each package is a pure function — it takes the previous stage's output and returns the next stage's output. No global state.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>monk check vs monk build vs monk run.</strong> <code class="bg-stone-100 px-1 rounded text-xs">check</code> runs just the first two calls (parse + type-check, no codegen). <code class="bg-stone-100 px-1 rounded text-xs">build</code> runs all three. <code class="bg-stone-100 px-1 rounded text-xs">run</code> runs all three, executes the binary, then deletes it. The CLI flags in <code class="bg-stone-100 px-1 rounded text-xs">src/main.go</code> all route to the same <code class="bg-stone-100 px-1 rounded text-xs">runCompile</code> function.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Package overview -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The four packages.</h2>
+
+        <div class="space-y-4">
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="font-mono text-sm text-monk-blue font-bold">syntax/</span>
+                    <span class="text-monk-muted text-xs">8 files — lexer, parser, AST</span>
+                </div>
+                <p class="text-monk-muted text-sm mb-3">Transforms source text into a typed AST tree. Input: a string. Output: <code class="bg-stone-100 px-1 rounded text-xs">*syntax.Program</code>, a slice of <code class="bg-stone-100 px-1 rounded text-xs">syntax.Stmt</code> nodes.</p>
+                <div class="bg-monk-bg rounded-lg p-3 font-mono text-xs text-monk-muted">
+                    <div><span class="text-monk-blue">token.go</span> — TokenKind constants + LookupIdent</div>
+                    <div><span class="text-monk-blue">scanner.go</span> — Scan() → []Token (hand-written, no regex)</div>
+                    <div><span class="text-monk-blue">ast.go / ast_expr.go / ast_stmt.go</span> — node structs</div>
+                    <div><span class="text-monk-blue">parser.go / parse_stmt.go / parse_expr.go / parse_type.go</span> — recursive descent</div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="font-mono text-sm text-sky-600 font-bold">types/</span>
+                    <span class="text-monk-muted text-xs">5 files — static type checker</span>
+                </div>
+                <p class="text-monk-muted text-sm mb-3">Walks the AST, infers and validates types. Input: <code class="bg-stone-100 px-1 rounded text-xs">*syntax.Program</code>. Output: <code class="bg-stone-100 px-1 rounded text-xs">*types.Info</code>, the type-annotation map codegen reads.</p>
+                <div class="bg-monk-bg rounded-lg p-3 font-mono text-xs text-monk-muted">
+                    <div><span class="text-sky-600">types.go</span> — Kind enum, Type struct, AssignableTo</div>
+                    <div><span class="text-sky-600">checker.go</span> — Info, Check(), scope chain, builtin declarations</div>
+                    <div><span class="text-sky-600">stmts.go / exprs.go</span> — one check/infer function per node kind</div>
+                    <div><span class="text-sky-600">returns.go</span> — all-paths-return analysis</div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="font-mono text-sm text-monk-amber font-bold">codegen/</span>
+                    <span class="text-monk-muted text-xs">7 files — AST → C emitter</span>
+                </div>
+                <p class="text-monk-muted text-sm mb-3">Emits C source. Input: <code class="bg-stone-100 px-1 rounded text-xs">*syntax.Program</code> + <code class="bg-stone-100 px-1 rounded text-xs">*types.Info</code>. Output: a <code class="bg-stone-100 px-1 rounded text-xs">.c</code> file (or native binary after <code class="bg-stone-100 px-1 rounded text-xs">cc</code> runs).</p>
+                <div class="bg-monk-bg rounded-lg p-3 font-mono text-xs text-monk-muted">
+                    <div><span class="text-monk-amber">gen.go</span> — generator struct, GenerateWithTypes entry, driver loop</div>
+                    <div><span class="text-monk-amber">gen_stmt.go / gen_expr.go</span> — statement + expression emitters (boxed path)</div>
+                    <div><span class="text-monk-amber">gen_func.go</span> — function hoisting, trampolines, closure capture</div>
+                    <div><span class="text-monk-amber">unbox.go</span> — typed (unboxed) emission paths + storageKind</div>
+                    <div><span class="text-monk-amber">capture.go</span> — free-variable analysis for closures</div>
+                    <div><span class="text-monk-amber">gen_helpers.go</span> — mangleName, cString, builtinMap</div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="font-mono text-sm text-monk-green font-bold">runtime/</span>
+                    <span class="text-monk-muted text-xs">C library — compiled into every Monk binary</span>
+                </div>
+                <p class="text-monk-muted text-sm mb-3">Not Go. A small C library linked into every binary. Defines <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>, arithmetic, string ops, array ops, and the setjmp-based error handling. Codegen's generated C includes <code class="bg-stone-100 px-1 rounded text-xs">runtime.h</code> and calls these functions.</p>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Cross-package data structures -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The three structs that cross package boundaries.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-6">
+            Each pipeline stage hands something to the next. Understanding these three types tells you how the whole compiler fits together.
+        </p>
+
+        <!-- syntax.Program -->
+        <div class="mb-8">
+            <h3 class="font-bold mb-3">1. <code class="bg-stone-100 px-1 rounded text-sm">*syntax.Program</code> — the AST root</h3>
+            <p class="text-monk-muted text-sm mb-3">Just a slice of statements. Every statement is a <code class="bg-stone-100 px-1 rounded text-xs">syntax.Stmt</code> interface; every expression is a <code class="bg-stone-100 px-1 rounded text-xs">syntax.Expr</code> interface. The concrete types are in <code class="bg-stone-100 px-1 rounded text-xs">ast_stmt.go</code> and <code class="bg-stone-100 px-1 rounded text-xs">ast_expr.go</code>.</p>
+            <Code code={`// ast.go
+type Program struct {
+    Stmts []Stmt
+}
+
+// ast_stmt.go — examples
+type VarDeclStmt struct { Name string; Value Expr; Type *TypeExpr; IsConst bool; Pos Pos }
+type IfStmt      struct { Condition Expr; Then *BlockStmt; Else Stmt; Pos Pos }
+type ForStmt     struct { VarName string; Iterable Expr; Body *BlockStmt; Pos Pos }
+
+// ast_expr.go — examples
+type BinaryExpr  struct { Left, Right Expr; Op TokenKind; Pos Pos }
+type CallExpr    struct { Callee Expr; Args []Expr; Pos Pos }
+type FuncExpr    struct { Params []Param; ReturnType TypeExpr; Body *BlockStmt; Pos Pos }`} lang="go" />
+        </div>
+
+        <!-- types.Info -->
+        <div class="mb-8">
+            <h3 class="font-bold mb-3">2. <code class="bg-stone-100 px-1 rounded text-sm">*types.Info</code> — the type annotation map</h3>
+            <p class="text-monk-muted text-sm mb-3">The checker annotates every AST node with its type, then hands this map to codegen. Codegen uses it to decide "boxed MonkValue or raw int64_t?"</p>
+            <Code code={`// checker.go
+type Info struct {
+    // Every Expr node → its computed type
+    Types map[syntax.Expr]*Type
+
+    // Every VarDeclStmt → its resolved type (annotation || inferred)
+    Decls map[*syntax.VarDeclStmt]*Type
+
+    // Every FuncExpr → its full signature (params + return)
+    // Used by codegen to decide whether to emit an unboxed function
+    Funcs map[*syntax.FuncExpr]*Type
+}`} lang="go" />
+            <p class="text-monk-muted text-sm mt-3">Codegen looks up the same AST pointer it already has. The <code class="bg-stone-100 px-1 rounded text-xs">map[syntax.Expr]*Type</code> key is a pointer comparison — the exact same node object the parser built, so there's no name resolution needed.</p>
+        </div>
+
+        <!-- types.Type -->
+        <div class="mb-8">
+            <h3 class="font-bold mb-3">3. <code class="bg-stone-100 px-1 rounded text-sm">*types.Type</code> — the type representation</h3>
+            <p class="text-monk-muted text-sm mb-3">A single struct covers all 9 kinds. Most fields are zero-valued for kinds that don't use them.</p>
+            <Code code={`// types.go
+type Kind int
+const (
+    KindAny Kind = iota   // unknown / dynamic
+    KindInt               // int64_t
+    KindFloat             // double
+    KindStr               // char*
+    KindBool              // bool
+    KindNone              // void / null
+    KindArray             // []T
+    KindRecord            // {field: T, ...}
+    KindFunc              // (T1, T2) -> T3
+)
+
+type Type struct {
+    Kind       Kind
+    Optional   bool          // T? — the orthogonal nullable flag
+    Elem       *Type         // for KindArray
+    Fields     []RecordTypeField  // for KindRecord
+    RecordName string        // for named records ("Point", "User")
+    Params     []*Type       // for KindFunc
+    Return     *Type         // for KindFunc
+    MinParams  int           // for KindFunc with defaults
+}`} lang="go" />
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Why pointer keys in Info.Types?</strong> The AST uses pointer identity — each node is allocated exactly once during parsing. Using the pointer as a map key is an O(1) lookup with zero ambiguity: there's no chance of two different <code class="bg-stone-100 px-1 rounded text-xs">BinaryExpr</code> nodes at the same line/column being confused. It also means codegen doesn't need to re-walk the AST to find nodes — it already holds the pointers.</p>
+        </InsightBox>
+    </section>
+
+    <!-- The generator struct -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The generator struct: codegen's working state.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Codegen's entire state is one struct. Understanding its fields explains most of what <code class="bg-stone-100 px-1 rounded text-xs">gen.go</code> and <code class="bg-stone-100 px-1 rounded text-xs">gen_stmt.go</code> are doing.
+        </p>
+
+        <Code code={`// gen.go
+type generator struct {
+    // Output buffers: functions are hoisted above main()
+    funcs  strings.Builder  // static C function definitions
+    body   strings.Builder  // main() body
+
+    // Type info from checker
+    info   *types.Info
+
+    // Storage maps: what C type does each variable use?
+    // storeBoxed → MonkValue, storeInt → int64_t, etc.
+    storage map[string]storageKind   // current scope's variable kinds
+
+    // Function tracking
+    funcCount  int                        // counter for unique names
+    funcNames  map[string]string          // monk name → C name
+    fnStorage  map[string]funcStorage     // C name → param/return kinds
+    funcHasCapture map[string]bool        // does this func close over anything?
+    funcDefaults   map[string][]syntax.Expr  // default param expressions
+
+    // Current function context
+    retStorage      storageKind  // return type of the function being emitted
+    currentCaptures []string     // captured variable names (for save-back on return)
+
+    // Bounds-check elision (nil when no type info)
+    constVals map[string]int64    // compile-time constant variables (e.g. let N = 400)
+    arrayLens map[string]int64    // statically known lengths of typed array variables
+    varBounds map[string][2]int64 // inclusive [lo, hi] range for while-loop counters
+
+    // Temp variable counter
+    tempCount int
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">The key insight: <strong>storage</strong> is the map from variable name → C type. When codegen decides to emit <code class="bg-stone-100 px-1 rounded text-xs">int64_t x = ...</code> instead of <code class="bg-stone-100 px-1 rounded text-xs">MonkValue x = ...</code>, it sets <code class="bg-stone-100 px-1 rounded text-xs">storage["mk_x"] = storeInt</code>. Later, when that variable is read by <code class="bg-stone-100 px-1 rounded text-xs">emitExpr</code>, it boxes it back up.</p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-5">
+            <h4 class="font-semibold text-sm mb-3">Why saveStorage / restoreStorage?</h4>
+            <p class="text-monk-muted text-sm">An <code class="bg-stone-100 px-1 rounded text-xs">if</code> branch may introduce a variable with a certain storage kind. That variable doesn't exist in the other branch. If we don't snapshot and restore, a variable promoted to <code class="bg-stone-100 px-1 rounded text-xs">storeInt</code> in the then-branch would be treated as <code class="bg-stone-100 px-1 rounded text-xs">int64_t</code> in the else-branch where it was never declared. <code class="bg-stone-100 px-1 rounded text-xs">saveStorage</code> clones the map; <code class="bg-stone-100 px-1 rounded text-xs">restoreStorage</code> reverts it. Called around every if-branch, while-body, and for-body.</p>
+        </div>
+    </section>
+
+    <!-- The two emission paths -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Two emission paths: boxed vs unboxed.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is the most non-obvious part of codegen. There are two ways to emit any expression:
+        </p>
+
+        <div class="space-y-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h4 class="font-semibold text-sm mb-2">Boxed path — <code class="bg-stone-100 px-1 rounded text-xs">emitExpr(e)</code> in gen_expr.go</h4>
+                <p class="text-monk-muted text-sm mb-2">Always returns a C expression of type <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>. Every arithmetic operation goes through a runtime call like <code class="bg-stone-100 px-1 rounded text-xs">monk_add(a, b)</code>. Correct for everything; required when the caller needs a <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>.</p>
+                <Code code={`// gen_expr.go — boxed addition
+case syntax.Plus:
+    tmp := g.newTemp()
+    return fmt.Sprintf(
+        "({MonkValue %s=%s; %s.kind==MONK_STRING ? "+
+        "monk_string_concat(%s,%s) : monk_add(%s,%s);})",
+        tmp, left, tmp, tmp, right, tmp, right)`} lang="go" />
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h4 class="font-semibold text-sm mb-2">Unboxed path — <code class="bg-stone-100 px-1 rounded text-xs">emitExprTyped(e)</code> in unbox.go</h4>
+                <p class="text-monk-muted text-sm mb-2">Returns <code class="bg-stone-100 px-1 rounded text-xs">(string, storageKind)</code> — the C expression AND what type it produces. When both sides are <code class="bg-stone-100 px-1 rounded text-xs">storeInt</code>, addition becomes raw <code class="bg-stone-100 px-1 rounded text-xs">+</code>. No function call, no tagged union.</p>
+                <Code code={`// unbox.go — unboxed addition (int + int)
+case syntax.Plus:
+    if lk == storeInt && rk == storeInt {
+        return fmt.Sprintf("(%s + %s)", lc, rc), storeInt
+    }`} lang="go" />
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The two paths coexist. When an unboxed value ends up in a boxed context (e.g. passed to a builtin that expects <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>), <code class="bg-stone-100 px-1 rounded text-xs">boxExpr</code> wraps it. When a boxed value feeds into an unboxed path, <code class="bg-stone-100 px-1 rounded text-xs">unboxExpr</code> extracts the raw field. The function <code class="bg-stone-100 px-1 rounded text-xs">coerce(code, from, to)</code> handles both directions.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>When does unboxing activate?</strong> <code class="bg-stone-100 px-1 rounded text-xs">storageFor(t *types.Type)</code> in unbox.go maps a <code class="bg-stone-100 px-1 rounded text-xs">types.Type</code> to a <code class="bg-stone-100 px-1 rounded text-xs">storageKind</code>. If the type is <code class="bg-stone-100 px-1 rounded text-xs">KindInt</code> → <code class="bg-stone-100 px-1 rounded text-xs">storeInt</code>. If it's <code class="bg-stone-100 px-1 rounded text-xs">KindFloat</code> → <code class="bg-stone-100 px-1 rounded text-xs">storeFloat</code>. For a function to be fully unboxed, ALL params AND the return must be raw scalars — checked by <code class="bg-stone-100 px-1 rounded text-xs">deriveFuncStorage</code> in gen_func.go. One boxed param forces the whole function to stay boxed.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Function hoisting -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Function hoisting and the two-buffer trick.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            C requires a function to be declared before it's called. Monk allows forward references and mutual recursion. The solution: two output buffers.
+        </p>
+
+        <Code code={`// gen.go — the generator has two output buffers
+type generator struct {
+    funcs  strings.Builder  // hoisted C functions go here
+    body   strings.Builder  // main() body goes here
+    ...
+}
+
+// gen.go — final assembly
+func (g *generator) emit() string {
+    return preamble + g.funcs.String() +
+           "int main(void) {\n" +
+           g.body.String() +
+           "    return 0;\n}\n"
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            When codegen encounters <code class="bg-stone-100 px-1 rounded text-xs">let add = (a int, b int) int &#123; ... &#125;</code>, it immediately writes the C function definition into <code class="bg-stone-100 px-1 rounded text-xs">g.funcs</code> (above main), then writes <code class="bg-stone-100 px-1 rounded text-xs">MonkValue mk_add = monk_make_function(...);</code> into <code class="bg-stone-100 px-1 rounded text-xs">g.body</code>. When later code calls <code class="bg-stone-100 px-1 rounded text-xs">add(3, 4)</code>, the C function is already declared above.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Recursive self-reference works because <code class="bg-stone-100 px-1 rounded text-xs">emitVarDecl</code> pre-registers the C name in <code class="bg-stone-100 px-1 rounded text-xs">g.funcNames</code> <em>before</em> hoisting the body. So when the body refers to <code class="bg-stone-100 px-1 rounded text-xs">fib</code>, <code class="bg-stone-100 px-1 rounded text-xs">emitCall</code> finds it in <code class="bg-stone-100 px-1 rounded text-xs">funcNames</code> and emits a direct C call.
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-5">
+            <h4 class="font-semibold text-sm mb-2">The trampoline</h4>
+            <p class="text-monk-muted text-sm">Every hoisted function also gets a <strong>trampoline</strong> — a thin wrapper that matches the <code class="bg-stone-100 px-1 rounded text-xs">MonkFuncPtr</code> signature <code class="bg-stone-100 px-1 rounded text-xs">MonkValue(*)(MonkFunction*, MonkValue*, int64_t)</code>. This is what <code class="bg-stone-100 px-1 rounded text-xs">monk_call</code> uses for indirect calls (passing functions as values). Direct calls bypass the trampoline entirely.</p>
+        </div>
+    </section>
+
+    <!-- Checker internals -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Checker non-obvious details.</h2>
+
+        <div class="space-y-5">
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h4 class="font-semibold text-sm mb-2">Why three sub-passes in checkProgram?</h4>
+                <p class="text-monk-muted text-sm">Type declarations (<code class="bg-stone-100 px-1 rounded text-xs">type Point = ...</code>) must be resolved before function signatures, because a function may take a <code class="bg-stone-100 px-1 rounded text-xs">Point</code> param. Function signatures must be hoisted before any statement is checked, because <code class="bg-stone-100 px-1 rounded text-xs">fib</code> may call itself on line 2. So the order is: (1) types, (2) function signatures, (3) all statements.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h4 class="font-semibold text-sm mb-2">The sticky typeErr in the parser</h4>
+                <p class="text-monk-muted text-sm"><code class="bg-stone-100 px-1 rounded text-xs">parseTypeExpr</code> cannot return an error — it's called from inside expression parsers that don't propagate errors. Instead, it sets <code class="bg-stone-100 px-1 rounded text-xs">p.typeErr</code> on the <code class="bg-stone-100 px-1 rounded text-xs">Parser</code> struct. After every <code class="bg-stone-100 px-1 rounded text-xs">parseStmt</code> call, <code class="bg-stone-100 px-1 rounded text-xs">parseProgram</code> checks <code class="bg-stone-100 px-1 rounded text-xs">p.typeErr</code> and surfaces it as a first-class error.</p>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h4 class="font-semibold text-sm mb-2">For-loop scope splitting</h4>
+                <p class="text-monk-muted text-sm">The loop variable is declared const in a scope that is the <em>parent</em> of the body scope. If both were in the same scope, a <code class="bg-stone-100 px-1 rounded text-xs">let i = ...</code> inside the body would shadow the const binding and let the user "reassign" the loop variable. Separate scopes prevent this. See <code class="bg-stone-100 px-1 rounded text-xs">checkFor</code> in <code class="bg-stone-100 px-1 rounded text-xs">types/stmts.go</code>.</p>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Reading order -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Suggested reading order for contributors.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-blue font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>syntax/token.go</strong> — 5 min. Every keyword and operator in one file. Understand the vocabulary before the grammar.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-blue font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>syntax/ast_stmt.go + ast_expr.go</strong> — 10 min. The shape of every node. Read the struct definitions; skip the marker methods.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-blue font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>types/types.go</strong> — 10 min. The <code class="bg-stone-100 px-1 rounded text-xs">Kind</code> enum and <code class="bg-stone-100 px-1 rounded text-xs">AssignableTo</code>. The 7-rule compatibility table determines what the checker allows everywhere.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-blue font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>src/main.go runCompile</strong> — 5 min. The pipeline as code. See how the three packages are wired together.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-blue font-bold text-xs">5</span></div>
+                <p class="text-sm"><strong>codegen/gen.go</strong> — 20 min. The generator struct and <code class="bg-stone-100 px-1 rounded text-xs">GenerateWithTypes</code>. Understand the two-buffer layout before reading the emitters.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-blue font-bold text-xs">6</span></div>
+                <p class="text-sm"><strong>codegen/gen_stmt.go → gen_expr.go → unbox.go</strong> — the two emission paths side by side. Read <code class="bg-stone-100 px-1 rounded text-xs">emitVarDecl</code> first — it shows all three paths (typed array, scalar probe, plain boxed) in one function.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-blueLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-blue font-bold text-xs">7</span></div>
+                <p class="text-sm"><strong>runtime/runtime.h</strong> — 10 min. See what <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> actually looks like in C. Then codegen's emit strings become concrete.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/foundations/setting-up"
+        prevLabel="Prev: Setting Up"
+        nextHref="/phase-1-lexer/what-is-a-lexer"
+        nextLabel="Start Phase 1: The Lexer"
+    />
+
+</LessonLayout>

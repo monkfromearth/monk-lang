@@ -83,7 +83,16 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 		cFuncName := fmt.Sprintf("_monk_%sfunc_%d", g.modulePrefix, g.funcCount)
 		g.funcNames[s.Name] = cFuncName
 		if !forModule && g.stackFuncDecls[s] {
-			g.stackFuncValues[s] = g.emitStackFuncValueNamed(cFuncName, fnExpr)
+			info := g.emitStackFuncValueNamed(cFuncName, fnExpr)
+			g.stackFuncValues[s] = info
+			// Register capture cleanup so restoreStorage frees deep-copied heap
+			// values when the enclosing scope exits (prevents leak in loops).
+			if info.capCount > 0 {
+				g.pendingCapCleanups = append(g.pendingCapCleanups, capCleanup{
+					arrayName: info.capArrayName,
+					count:     info.capCount,
+				})
+			}
 			return
 		}
 		// emitFuncValueNamed uses the pre-allocated cName (doesn't increment funcCount again).
@@ -376,7 +385,19 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 		// In-place string concat assignment.
 		// Pass: `s = s + "x"` / `s += "x"` grows s directly.
 		// Fail: numeric `x += 1` must still use arithmetic assignment.
-		g.emitLine("    monk_string_append_in_place(&%s, %s);\n", name, rhs)
+		if _, isIdent := rhsExpr.(*syntax.IdentExpr); isIdent {
+			// RHS is a variable — not a temporary, don't free it.
+			g.emitLine("    monk_string_append_in_place(&%s, %s);\n", name, rhs)
+		} else {
+			// RHS is a temporary expression (e.g. to_string(n), string literal).
+			// The suffix MonkValue's str_val is heap-allocated and must be freed
+			// after the append copies its bytes into the target's buffer.
+			// Pass: `s += to_string(7)` frees the to_string result.
+			// Fail: without this, the suffix str_val leaks every call.
+			tmp := g.newTemp()
+			g.emitLine("    { MonkValue %s = %s; monk_string_append_in_place(&%s, %s); monk_free(%s); }\n",
+				tmp, rhs, name, tmp, tmp)
+		}
 		return
 	}
 

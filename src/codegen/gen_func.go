@@ -172,7 +172,7 @@ func (g *generator) emitStackFuncValueNamed(cName string, e *syntax.FuncExpr) st
 	// Pass: `let f=(x){return x+n}; f(1)` uses &self. Fail: escaped f stays heap.
 	g.emitLine("    MonkFunction %s = {.fn = NULL, .captures = %s, .capture_count = %d};\n",
 		selfName, capName, len(validCaptures))
-	return stackFuncInfo{cName: cName, selfName: selfName}
+	return stackFuncInfo{cName: cName, selfName: selfName, capArrayName: capName, capCount: len(validCaptures)}
 }
 
 func (g *generator) newClosureTemp(kind string) string {

@@ -3,8 +3,10 @@ package codegen
 import "github.com/monkfromearth/monk-lang/syntax"
 
 type stackFuncInfo struct {
-	cName    string
-	selfName string
+	cName        string
+	selfName     string
+	capArrayName string // C name of the MonkValue captures[] stack array (empty if no captures)
+	capCount     int    // number of captures (for cleanup loop)
 }
 
 type stackFuncAnalysis struct {

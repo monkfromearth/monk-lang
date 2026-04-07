@@ -181,6 +181,7 @@ All codegen state lives in one struct. Understanding its fields explains most of
 type generator struct {
     funcs   strings.Builder          // hoisted C functions (above main)
     body    strings.Builder          // main() body
+    globals strings.Builder          // file-scope static globals (module vars only)
 
     info    *types.Info              // type annotations from checker
     storage map[string]storageKind   // variable name → C storage kind
@@ -196,6 +197,11 @@ type generator struct {
     constVals map[string]int64       // compile-time constants (bounds elision)
     arrayLens map[string]int64       // known array lengths (bounds elision)
     varBounds map[string][2]int64    // loop-counter ranges (bounds elision)
+
+    // Module system fields (zero-valued in single-file path — safe to ignore)
+    modulePrefix string            // "" for entry, "m0_", "m1_" for imports
+    importMap    map[string]string // local Monk name → foreign C variable name
+    moduleInit   bool              // true while emitting a non-entry module init body
 }
 ```
 
@@ -234,6 +240,72 @@ storeBoolArray  → MONK_BOOL_ARRAY (bool* backing store)
 For functions, `deriveFuncStorage` checks if ALL params AND the return type are raw scalars. If yes, the function gets an unboxed C signature. One boxed param forces the whole function to stay boxed.
 
 ---
+
+## How multi-module codegen works
+
+`codegen.GenerateModules` in `gen_module.go` produces a **single `.c` file** from all modules.
+
+**Name mangling:**
+
+| Context | Monk `add` | C name |
+|---|---|---|
+| Entry module | `let add = ...` | `mk_add` |
+| Imported module 0 | `let add = ...` | `mk_m0_add` |
+| Imported module 1 | `let add = ...` | `mk_m1_add` |
+
+`g.mangledName(name)` checks `importMap` first (for foreign names), then falls through to `"mk_" + g.modulePrefix + name`. Entry-module generators always have `modulePrefix == ""`.
+
+**Init functions for non-entry modules:**
+
+```c
+static void _mod_0_init(void) {
+    static int _initialized = 0;   // once-guard
+    if (_initialized) return;
+    _initialized = 1;
+    // module-level statements
+}
+```
+
+`main()` calls every init function before the entry module's statements:
+
+```c
+int main(void) {
+    _mod_0_init();   // math module
+    _mod_1_init();   // utils module
+    // entry module statements
+    return 0;
+}
+```
+
+Because `Graph.Order` is topological (deps first), init call order is always correct. The `static int _initialized` guard handles diamond dependencies — if A imports B and C, and both import D, `_mod_D_init()` only executes once regardless of call order.
+
+**Module-level variables** must be visible from both the init function and the entry module's `main()`. They're split into a static global declaration and an init-body assignment:
+
+```
+Monk source:      let x = 42           (in math.monk)
+Static global:    static int64_t mk_m0_x;    (file scope)
+Init body:            mk_m0_x = 42;          (inside _mod_0_init)
+```
+
+`emitModuleVarDecl` handles this split: it runs `emitVarDecl` into a temp buffer, text-parses `"TYPE name = expr;"` lines, emits the declaration to `g.globals`, and the assignment to `g.body`.
+
+**Assembly order of the single `.c` output:**
+
+```
+[header + #includes]
+[module 0 static globals]
+[module 0 hoisted functions]
+static void _mod_0_init() { ... }
+[module 1 static globals]
+[module 1 hoisted functions]
+static void _mod_1_init() { ... }
+[entry module hoisted functions]
+int main(void) {
+    _mod_0_init(); _mod_1_init();
+    [entry module statements]
+    return 0;
+}
+```
 
 ## Bounds-check elision
 

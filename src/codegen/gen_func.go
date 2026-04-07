@@ -164,6 +164,13 @@ func (g *generator) hoistFunctionWithCaptures(cName string, e *syntax.FuncExpr, 
 	savedBody := g.body
 	savedRet := g.retStorage
 	savedStorage := g.saveStorage()
+	savedModuleInit := g.moduleInit
+	// Function bodies are never module-init context regardless of enclosing module.
+	// Without this reset, `let result = x*2` inside a function in a non-entry module
+	// emits mk_m0_result as a static global — shared across all calls.
+	// Pass: let double=(x) { let result=x*2; return result }  → stack-local result
+	// Fail (before fix): result declared static → shared across recursive calls
+	g.moduleInit = false
 
 	// Build parameter list: _self (if captures) + regular params
 	var paramParts []string
@@ -235,6 +242,7 @@ func (g *generator) hoistFunctionWithCaptures(cName string, e *syntax.FuncExpr, 
 	g.retStorage = savedRet
 	g.currentCaptures = savedCaptures
 	g.restoreStorage(savedStorage)
+	g.moduleInit = savedModuleInit
 
 	fmt.Fprintf(&g.funcs, "static %s %s(%s) {\n", retType, cName, paramStr)
 	g.funcs.WriteString(bodyStr)

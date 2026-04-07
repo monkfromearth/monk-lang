@@ -439,4 +439,3 @@ func exportedName(es *syntax.ExportStmt) string {
 	}
 	return ""
 }
-

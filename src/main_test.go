@@ -1252,3 +1252,67 @@ show(to_string(adder(5)))`,
 		t.Errorf("expected '15', got %q", stdout)
 	}
 }
+
+// TestRunModuleLocalVarInsideFunction verifies that `let` declarations inside
+// exported functions in non-entry modules are emitted as stack-local variables,
+// NOT as static globals. Before the moduleInit save/restore fix, `result` would
+// be declared `static int64_t mk_m0_result` at file scope — shared across calls.
+// Pass: double(5) = 10, double(3) = 6  (each call gets its own result)
+// Fail (before fix): static result corrupted by second call
+func TestRunModuleLocalVarInsideFunction(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `
+let double = (x int) int {
+    let result = x * 2
+    return result
+}
+export double
+`,
+		"main.monk": `
+use double from "./lib"
+show(to_string(double(5)))
+show(to_string(double(3)))
+`,
+	})
+	stdout, stderr, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	want := "10\n6"
+	if stdout != want {
+		t.Errorf("got %q, want %q", stdout, want)
+	}
+}
+
+// TestRunModuleRecursiveLocalVar verifies that a recursive exported function
+// with a local variable works correctly across multiple activations. Before
+// the fix, the static global would be overwritten by each recursive call —
+// factorial(5) would return 1 instead of 120.
+// Pass: factorial(5) = 120
+// Fail (before fix): shared static result corrupts the call stack
+func TestRunModuleRecursiveLocalVar(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `
+let factorial = (n int) int {
+    if n <= 1 { return 1 }
+    let sub = factorial(n - 1)
+    return n * sub
+}
+export factorial
+`,
+		"main.monk": `
+use factorial from "./lib"
+show(to_string(factorial(5)))
+`,
+	})
+	stdout, stderr, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	want := "120"
+	if stdout != want {
+		t.Errorf("got %q, want %q", stdout, want)
+	}
+}

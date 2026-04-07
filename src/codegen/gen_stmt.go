@@ -2,7 +2,6 @@ package codegen
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/monkfromearth/monk-lang/syntax"
 )
@@ -50,8 +49,27 @@ func (g *generator) emitStmt(stmt syntax.Stmt) {
 		g.emitStmt(s.Stmt)
 	case *syntax.UseStmt:
 		// Imports resolved at generator construction time — nothing to emit.
+	case *syntax.TypeDeclStmt:
+		// Type declarations are compile-time only — no C code to emit.
 	default:
 		g.emitLine("    /* TODO: unhandled statement %T */\n", stmt)
+	}
+}
+
+// emitVarDeclLine emits a single C variable declaration. In module mode it splits
+// the declaration into a file-scope static global + an init-body assignment:
+//
+//	forModule=false: "    TYPE name = expr;\n"  → g.body  (stack-local)
+//	forModule=true:  "static TYPE name;\n"       → g.globals (file scope)
+//	                 "    name = expr;\n"         → g.body    (init assignment)
+//
+// This replaces the text-parsing approach in the old emitModuleVarDecl.
+func (g *generator) emitVarDeclLine(name, typeName, expr string, forModule bool) {
+	if forModule {
+		fmt.Fprintf(&g.globals, "static %s %s;\n", typeName, name)
+		g.emitLine("    %s = %s;\n", name, expr)
+	} else {
+		g.emitLine("    %s %s = %s;\n", typeName, name, expr)
 	}
 }
 
@@ -76,18 +94,6 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 		} else {
 			g.emitLine("    MonkValue %s = %s;\n", name, funcVal)
 		}
-		return
-	}
-
-	// Module mode for non-function variables: declare as static global,
-	// assign in init body. This makes exported variables visible across C
-	// functions (init function + caller's main).
-	//
-	// Strategy: temporarily capture the normal emitVarDecl output, then
-	// split "TYPE name = expr;" into "static TYPE name;" (global) +
-	// "name = expr;" (init body).
-	if forModule {
-		g.emitModuleVarDecl(s)
 		return
 	}
 
@@ -117,9 +123,9 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 				if callee, ok := call.Callee.(*syntax.IdentExpr); ok && callee.Name == "range" && len(call.Args) == 1 {
 					nCode, nStore := g.emitExprTyped(call.Args[0])
 					if nStore == storeInt {
-						g.emitLine("    MonkValue %s = monk_range_int(%s);\n", name, nCode)
+						g.emitVarDeclLine(name, "MonkValue", "monk_range_int("+nCode+")", forModule)
 					} else {
-						g.emitLine("    MonkValue %s = monk_range_int((%s).int_val);\n", name, g.emitExpr(call.Args[0]))
+						g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_range_int((%s).int_val)", g.emitExpr(call.Args[0])), forModule)
 					}
 					g.recordArrayLen(s.Name, s.Value)
 					return
@@ -144,15 +150,15 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 				valCode, valStore := g.emitExprTyped(call.Args[1])
 				switch {
 				case store == storeBoolArray && valStore == storeBool:
-					g.emitLine("    MonkValue %s = monk_fill_bool(%s, %s);\n", name, nCode, valCode)
+					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_bool(%s, %s)", nCode, valCode), forModule)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				case store == storeIntArray && valStore == storeInt:
-					g.emitLine("    MonkValue %s = monk_fill_int(%s, %s);\n", name, nCode, valCode)
+					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_int(%s, %s)", nCode, valCode), forModule)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				case store == storeFloatArray && valStore == storeFloat:
-					g.emitLine("    MonkValue %s = monk_fill_float(%s, %s);\n", name, nCode, valCode)
+					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_float(%s, %s)", nCode, valCode), forModule)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				}
@@ -160,7 +166,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 		}
 		value := g.emitExpr(s.Value)
 		convFn := arrayConvFunc(store)
-		g.emitLine("    MonkValue %s = %s(%s);\n", name, convFn, value)
+		g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("%s(%s)", convFn, value), forModule)
 		g.recordArrayLen(s.Name, s.Value) // bounds-check elision
 		return
 	}
@@ -185,7 +191,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 			if isRawScalar(rhsStore) {
 				store = rhsStore
 				g.storage[name] = store
-				g.emitLine("    %s %s = %s;\n", cTypeName(store), name, rhsCode)
+				g.emitVarDeclLine(name, cTypeName(store), rhsCode, forModule)
 				g.recordConst(s.Name, s.Value) // bounds-check elision
 				return
 			}
@@ -198,7 +204,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 			rhsCode = g.emitExpr(s.Value)
 		}
 		g.storage[name] = storeBoxed
-		g.emitLine("    MonkValue %s = monk_deep_copy(%s);\n", name, rhsCode)
+		g.emitVarDeclLine(name, "MonkValue", "monk_deep_copy("+rhsCode+")", forModule)
 		return
 	}
 
@@ -206,83 +212,8 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 	g.storage[name] = store
 	rhsCode, rhsStore := g.emitExprTyped(s.Value)
 	init := coerce(rhsCode, rhsStore, store)
-	g.emitLine("    %s %s = %s;\n", cTypeName(store), name, init)
+	g.emitVarDeclLine(name, cTypeName(store), init, forModule)
 	g.recordConst(s.Name, s.Value) // bounds-check elision
-}
-
-// emitModuleVarDecl handles top-level variable declarations in non-entry
-// modules. Variables must be declared as file-scope `static` globals so they're
-// visible from both the init function and the importing module's main().
-//
-// Strategy: run the normal emitVarDecl into a temporary body buffer, then
-// transform each "    TYPE name = expr;\n" into:
-//
-//   - "static TYPE name;\n" in g.globals  (file scope)
-//   - "    name = expr;\n"  in g.body     (init body)
-//
-// Example:
-//
-//	Module code: let x = 42
-//	Globals:     static int64_t mk_m0_x;
-//	Init body:       mk_m0_x = 42;
-//
-// ASSUMPTION: all C type tokens emitted by emitVarDecl are single words
-// (MonkValue, int64_t, double, bool). Multi-word types (e.g. "unsigned long")
-// would confuse the parts[0]/parts[1] split. If that ever happens, the panic
-// guard below fires with a clear message rather than emitting corrupt C.
-//
-func (g *generator) emitModuleVarDecl(s *syntax.VarDeclStmt) {
-	// Save the real body, swap in a temp buffer.
-	saved := g.body
-	g.body = strings.Builder{}
-
-	// Call emitVarDecl with forModule=false so it takes the normal (non-module)
-	// path — we handle the global/init split ourselves below.
-	g.emitVarDecl(s, false)
-
-	output := g.body.String()
-	g.body = saved
-
-	// Transform the captured output. Each line is "    TYPE name = expr;\n".
-	// We split on the first " = " to get the declaration and initializer.
-	for _, line := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-
-		// Find "TYPE name = expr;" pattern.
-		// Some lines may not be declarations (e.g. intermediate temp vars
-		// or side-effect statements). Those go straight to init body.
-		eqIdx := strings.Index(trimmed, " = ")
-		if eqIdx == -1 || !strings.HasSuffix(trimmed, ";") {
-			g.emitLine("%s\n", line)
-			continue
-		}
-
-		declPart := trimmed[:eqIdx]   // "TYPE name" or just "name" for reassignment
-		exprPart := trimmed[eqIdx+3:] // "expr;" (includes semicolon)
-
-		// Check if this is a declaration (has a type prefix) vs an assignment.
-		// Declarations have format "TYPE name" where TYPE is one of the single-token
-		// C types emitted by Monk codegen: MonkValue, int64_t, double, bool.
-		parts := strings.Fields(declPart)
-		if len(parts) == 2 {
-			typeName := parts[0]
-			varName := parts[1]
-			// Guard: if the type name contains a space, our parsing assumption has
-			// broken. Panic early with a clear message rather than emitting corrupt C.
-			if strings.Contains(typeName, " ") {
-				panic("emitModuleVarDecl: multi-word C type '" + typeName + "' — update parser to use forModule bool")
-			}
-			// Emit as static global + init assignment.
-			fmt.Fprintf(&g.globals, "static %s %s;\n", typeName, varName)
-			g.emitLine("    %s = %s\n", varName, exprPart)
-		} else {
-			// Not a simple declaration — emit as-is in init body.
-			g.emitLine("%s\n", line)
-		}
-	}
 }
 
 func (g *generator) emitAssign(s *syntax.AssignStmt) {
@@ -477,4 +408,3 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 }
 
 // Control-flow emitters live in gen_flow.go.
-

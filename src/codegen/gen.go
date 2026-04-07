@@ -87,10 +87,19 @@ type generator struct {
 	// Module system — populated only when GenerateModules is used.
 	modulePrefix string            // "" for entry module, "m0_"/"m1_" for imports
 	importMap    map[string]string // Monk name -> foreign C variable name (for imported non-function values)
+	// Stack closure capture cleanup — heap values inside stack MonkValue[] arrays
+	// must be freed when the enclosing scope exits, otherwise loops leak per iteration.
+	// Each entry is a (capArrayName, capCount) pair pushed by emitStackFuncValueNamed.
+	pendingCapCleanups []capCleanup
 	// moduleInit is true for non-entry modules: variable declarations are split
 	// into static globals (in g.globals) and assignments (in g.body/init function).
 	moduleInit bool
 	globals    strings.Builder // static global variable declarations (module mode only)
+}
+
+type capCleanup struct {
+	arrayName string
+	count     int
 }
 
 // funcStorage captures the unboxed C signature of a Monk function, so call
@@ -113,8 +122,9 @@ func (g *generator) varStorage(monkName string) storageKind {
 }
 
 type generatorSnapshot struct {
-	storage     map[string]storageKind
-	arrayUnique map[string]bool
+	storage        map[string]storageKind
+	arrayUnique    map[string]bool
+	capCleanupMark int // len(pendingCapCleanups) at snapshot time
 }
 
 // saveStorage takes a snapshot of g.storage and flow-sensitive optimization
@@ -126,8 +136,9 @@ type generatorSnapshot struct {
 // The returned value is an opaque snapshot; pass it to restoreStorage.
 func (g *generator) saveStorage() generatorSnapshot {
 	snap := generatorSnapshot{
-		storage:     make(map[string]storageKind, len(g.storage)),
-		arrayUnique: make(map[string]bool, len(g.arrayUnique)),
+		storage:        make(map[string]storageKind, len(g.storage)),
+		arrayUnique:    make(map[string]bool, len(g.arrayUnique)),
+		capCleanupMark: len(g.pendingCapCleanups),
 	}
 	maps.Copy(snap.storage, g.storage)
 	maps.Copy(snap.arrayUnique, g.arrayUnique)
@@ -137,6 +148,17 @@ func (g *generator) saveStorage() generatorSnapshot {
 // restoreStorage replaces g.storage with a previously saved snapshot,
 // discarding any storage decisions made since the snapshot was taken.
 func (g *generator) restoreStorage(snap generatorSnapshot) {
+	// Emit cleanup for stack closure captures allocated since the snapshot.
+	// Without this, heap values (strings, arrays) inside stack MonkValue[]
+	// capture arrays leak every time the scope re-enters (e.g. loop iterations).
+	// Pass: `while ... { let f=(x){x+name}; f(1) }` frees deep-copied name each iter.
+	// Fail: omitting cleanup leaks one deep-copy per captured heap value per iteration.
+	for i := snap.capCleanupMark; i < len(g.pendingCapCleanups); i++ {
+		c := g.pendingCapCleanups[i]
+		g.emitLine("    for (int _ci = 0; _ci < %d; _ci++) monk_free(%s[_ci]);\n", c.count, c.arrayName)
+	}
+	g.pendingCapCleanups = g.pendingCapCleanups[:snap.capCleanupMark]
+
 	restoredUnique := make(map[string]bool, len(snap.arrayUnique))
 	maps.Copy(restoredUnique, snap.arrayUnique)
 	for name, nowUnique := range g.arrayUnique {

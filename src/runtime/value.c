@@ -141,26 +141,64 @@ MonkValue monk_call(MonkValue fn, MonkValue *args, int64_t argc) {
 
 /* --- Typed array converters --- */
 
+/* COW refcount ceiling. If a pathological program shares the same array 2^30
+ * times, we stop incrementing and fall back to deep copy. One predicted-not-taken
+ * branch per share; prevents silent overflow → premature free → use-after-free. */
+#define MONK_REFCOUNT_MAX ((int32_t)0x3FFFFFFF)
+
 static MonkValue monk_array_share(MonkValue v) {
     /* COW copy: share now, detach on first write.
      * Pass: `let b = a` increments refcount and stays O(1).
      * Fail: mutating b without ensure_unique would also mutate a. */
-    if (v.array_val) v.array_val->refcount++;
+    if (v.array_val) {
+        if (v.array_val->refcount >= MONK_REFCOUNT_MAX) return monk_array(v.array_val->data, v.array_val->length);
+        v.array_val->refcount++;
+    }
     return v;
 }
 
 static MonkValue monk_int_array_share(MonkValue v) {
-    if (v.int_array_val) v.int_array_val->refcount++;
+    if (v.int_array_val) {
+        if (v.int_array_val->refcount >= MONK_REFCOUNT_MAX) {
+            MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
+            arr->length = v.int_array_val->length;
+            arr->refcount = 1;
+            arr->data = monk_malloc_internal(sizeof(int64_t) * (arr->length > 0 ? arr->length : 1));
+            memcpy(arr->data, v.int_array_val->data, sizeof(int64_t) * arr->length);
+            return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
+        }
+        v.int_array_val->refcount++;
+    }
     return v;
 }
 
 static MonkValue monk_float_array_share(MonkValue v) {
-    if (v.float_array_val) v.float_array_val->refcount++;
+    if (v.float_array_val) {
+        if (v.float_array_val->refcount >= MONK_REFCOUNT_MAX) {
+            MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
+            arr->length = v.float_array_val->length;
+            arr->refcount = 1;
+            arr->data = monk_malloc_internal(sizeof(double) * (arr->length > 0 ? arr->length : 1));
+            memcpy(arr->data, v.float_array_val->data, sizeof(double) * arr->length);
+            return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
+        }
+        v.float_array_val->refcount++;
+    }
     return v;
 }
 
 static MonkValue monk_bool_array_share(MonkValue v) {
-    if (v.bool_array_val) v.bool_array_val->refcount++;
+    if (v.bool_array_val) {
+        if (v.bool_array_val->refcount >= MONK_REFCOUNT_MAX) {
+            MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
+            arr->length = v.bool_array_val->length;
+            arr->refcount = 1;
+            arr->data = monk_malloc_internal(sizeof(bool) * (arr->length > 0 ? arr->length : 1));
+            memcpy(arr->data, v.bool_array_val->data, sizeof(bool) * arr->length);
+            return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
+        }
+        v.bool_array_val->refcount++;
+    }
     return v;
 }
 

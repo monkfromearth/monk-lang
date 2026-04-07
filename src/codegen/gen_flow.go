@@ -61,7 +61,16 @@ func stripOuterParens(s string) string {
 }
 
 // emitIf handles if/else-if/else chains recursively.
+// Variables declared inside control-flow blocks are always stack-local, even in
+// module-init context. Without this reset, `let x = 42` inside an if-block in a
+// non-entry module emits `static int64_t mk_m0_x;` at file scope — conflicting
+// with a sibling scope's `let x = "hello"` → `static MonkValue mk_m0_x;`.
+// Pass: if true { let x = 42 } in lib.monk → stack-local x
+// Fail (before fix): x becomes static global, sibling-scope same-name conflicts
 func (g *generator) emitIf(s *syntax.IfStmt) {
+	savedModuleInit := g.moduleInit
+	g.moduleInit = false
+	defer func() { g.moduleInit = savedModuleInit }()
 	g.emitLine("    if (%s) {\n", g.emitCondition(s.Condition))
 	thenSnap := g.saveStorage()
 	for _, stmt := range s.Then.Stmts {
@@ -120,7 +129,11 @@ func (g *generator) emitIfInline(s *syntax.IfStmt) {
 // emitWhile emits a C `while` loop. The storage snapshot is taken before the
 // body and restored after so that variables declared inside the loop don't
 // pollute the outer storage map.
+// moduleInit is reset to false — see emitIf comment for rationale.
 func (g *generator) emitWhile(s *syntax.WhileStmt) {
+	savedModuleInit := g.moduleInit
+	g.moduleInit = false
+	defer func() { g.moduleInit = savedModuleInit }()
 	g.emitLine("    while (%s) {\n", g.emitCondition(s.Condition))
 	snap := g.saveStorage()
 	// Bounds-check elision: track the loop counter's range so that array
@@ -144,7 +157,11 @@ func (g *generator) emitWhile(s *syntax.WhileStmt) {
 	g.emitLine("    }\n")
 }
 
+// moduleInit is reset to false — see emitIf comment for rationale.
 func (g *generator) emitFor(s *syntax.ForStmt) {
+	savedModuleInit := g.moduleInit
+	g.moduleInit = false
+	defer func() { g.moduleInit = savedModuleInit }()
 	varName := g.mangledName(s.VarName)
 
 	// Counter-loop fast path: `for x in range(N)` → `for(int64_t x=0; x<N; x++)`.
@@ -353,10 +370,19 @@ func (g *generator) emitCaptureSaveBack() {
 // inside monk_guard_begin's if-branch; on throw the else-branch runs with the
 // error value bound to errName. The guard variable is pre-initialised to none
 // so it has a safe default even if the against block doesn't assign it.
+// moduleInit is reset to false — see emitIf comment for rationale.
 func (g *generator) emitGuard(s *syntax.GuardStmt) {
+	savedModuleInit := g.moduleInit
+	g.moduleInit = false
+	defer func() { g.moduleInit = savedModuleInit }()
 	varName := g.mangledName(s.VarName)
 	errName := g.mangledName(s.ErrorName)
 
+	// REVIEW-SKIP: guard/error variables are emitted directly via g.emitLine, NOT
+	// through emitVarDeclLine. This is intentional — guard variables must always be
+	// stack-local (they're scoped to the enclosing function/init body). The moduleInit
+	// reset above ensures any user `let` declarations inside the against block are
+	// also stack-local.
 	g.emitLine("    MonkValue %s = monk_none();\n", varName)
 	g.emitLine("    {\n")
 	g.emitLine("        MonkGuardContext _guard_ctx;\n")

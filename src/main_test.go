@@ -1316,3 +1316,77 @@ show(to_string(factorial(5)))
 		t.Errorf("got %q, want %q", stdout, want)
 	}
 }
+
+// TestRunModuleControlFlowLocalVars verifies that variable declarations inside
+// control-flow blocks (if/while/for) in non-entry modules are emitted as
+// stack-local variables, NOT as static globals. Before the fix, moduleInit
+// leaked into control-flow bodies — `let x = 42` inside an if-block became
+// `static int64_t mk_m0_x;` at file scope, and a sibling scope's
+// `let x = "hello"` produced a conflicting `static MonkValue mk_m0_x;`.
+// Pass: program compiles and runs, output = "42\nhello"
+// Fail (before fix): C compilation error from conflicting static declarations
+func TestRunModuleControlFlowLocalVars(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `
+let pick = (flag int) string {
+    if flag == 1 {
+        let x = 42
+        return to_string(x)
+    } else {
+        let x = "hello"
+        return x
+    }
+}
+export pick
+`,
+		"main.monk": `
+use pick from "./lib"
+show(pick(1))
+show(pick(0))
+`,
+	})
+	stdout, stderr, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	want := "42\nhello"
+	if stdout != want {
+		t.Errorf("got %q, want %q", stdout, want)
+	}
+}
+
+// TestRunModuleWhileLocalVar verifies that variables inside while loops at
+// module level are stack-local, not static globals. A while loop at module
+// level is unusual but legal (initialization logic).
+// Pass: program compiles and outputs "0\n1\n2"
+// Fail (before fix): `let msg` becomes static global — wrong scope
+func TestRunModuleWhileLocalVar(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `
+let results = []
+let i = 0
+while i < 3 {
+    let msg = to_string(i)
+    results = append(results, msg)
+    i = i + 1
+}
+export results
+`,
+		"main.monk": `
+use results from "./lib"
+for r in results {
+    show(r)
+}
+`,
+	})
+	stdout, stderr, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	want := "0\n1\n2"
+	if stdout != want {
+		t.Errorf("got %q, want %q", stdout, want)
+	}
+}

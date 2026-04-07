@@ -84,7 +84,8 @@ Both paths produce one C source string. The rest of `generateC` pipes it through
 | `gen_helpers.go` | `mangleName` (prefixes `mk_`), `cString` (escapes for C), `compoundToArith`, `builtinMap` (Monk name → C name) |
 | `unbox.go` | **Unboxed** expression emission core: `emitExprTyped` returns `(string, storageKind)`. When both sides of `+` are `storeInt`, emits raw `a + b` instead of `monk_add(a, b)`. |
 | `gen_access.go` | Typed-array element access and typed-record field access fast paths. |
-| `gen_optimize.go` | Small optimization detectors: COW uniqueness helpers, string append assignment, and pure known-type `typeof`/`is_*` inlining. |
+| `gen_optimize.go` | Small optimization detectors: COW uniqueness helpers, string append assignment, pure known-type `typeof`/`is_*` inlining, string length fusion, and fresh-result copy elision. |
+| `gen_escape.go` | Conservative escape analysis for function literals; direct-call-only closures can use stack frames instead of heap `MonkFunction` allocation. |
 | `capture.go` | `freeVars` — free-variable analysis for closure captures. Walks AST, tracks locals, reports references to outer-scope variables. |
 | `gen_bounds.go` | Bounds-check elision: `constVals`, `arrayLens`, `varBounds` tracking. `isBoundedSafe` proves array accesses are in-bounds at compile time so the runtime check can be skipped. |
 

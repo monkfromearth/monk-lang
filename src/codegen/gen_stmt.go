@@ -82,6 +82,10 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 		g.funcCount++
 		cFuncName := fmt.Sprintf("_monk_%sfunc_%d", g.modulePrefix, g.funcCount)
 		g.funcNames[s.Name] = cFuncName
+		if !forModule && g.stackFuncDecls[s] {
+			g.stackFuncValues[s] = g.emitStackFuncValueNamed(cFuncName, fnExpr)
+			return
+		}
 		// emitFuncValueNamed uses the pre-allocated cName (doesn't increment funcCount again).
 		funcVal := g.emitFuncValueNamed(cFuncName, fnExpr)
 		name := g.mangledName(s.Name)
@@ -209,7 +213,14 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 			rhsCode = g.emitExpr(s.Value)
 		}
 		g.storage[name] = storeBoxed
-		g.emitVarDeclLine(name, "MonkValue", "monk_deep_copy("+rhsCode+")", forModule)
+		init := "monk_deep_copy(" + rhsCode + ")"
+		if isFreshValueExpr(s.Value) {
+			// Move fresh temporaries into the binding instead of copying them.
+			// Pass: `let s = to_upper_case(base)` avoids a duplicate string.
+			// Fail: `let b = a` still uses deep_copy for value semantics.
+			init = rhsCode
+		}
+		g.emitVarDeclLine(name, "MonkValue", init, forModule)
 		return
 	}
 

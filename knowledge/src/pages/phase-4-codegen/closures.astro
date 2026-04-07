@@ -1,0 +1,235 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Closures" lessonNumber="4.4" section="Phase 4">
+
+    <LessonHeader lessonNumber="4.4" title="Closures" description="How functions capture variables from enclosing scopes. Free-variable analysis, the capture array, trampolines, and save-back.">
+        <TagBadge variant="go">go</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">20 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The problem -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The problem: hoisted functions lose their scope.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            In the previous lesson, functions get hoisted to the top of the C file as <code class="bg-stone-100 px-1 rounded text-xs">static</code> functions. This works for functions that only use their own parameters. But what about this?
+        </p>
+
+        <Code code={`let make_counter = () {
+    let count = 0
+    return () int {
+        count = count + 1
+        return count
+    }
+}
+
+let counter = make_counter()
+show(counter())   // 1
+show(counter())   // 2
+show(counter())   // 3`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The inner function references <code class="bg-stone-100 px-1 rounded text-xs">count</code> -- a variable from <code class="bg-stone-100 px-1 rounded text-xs">make_counter</code>'s scope. When the inner function gets hoisted to the top of the C file, <code class="bg-stone-100 px-1 rounded text-xs">count</code> is nowhere to be found. It was a local variable in a different function.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Worse: the inner function <em>mutates</em> <code class="bg-stone-100 px-1 rounded text-xs">count</code>, and the mutation persists across calls. This isn't a one-time snapshot. The closure has its own mutable state.
+        </p>
+    </section>
+
+    <!-- Step 1: Free variable analysis -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 1: find the free variables.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Before emitting a function, the compiler runs <code class="bg-stone-100 px-1 rounded text-xs">freeVars()</code> (in <code class="bg-stone-100 px-1 rounded text-xs">capture.go</code>). This walks the function body and collects every variable name that is <strong>referenced but not declared locally</strong> -- not a parameter, not a <code class="bg-stone-100 px-1 rounded text-xs">let</code>/<code class="bg-stone-100 px-1 rounded text-xs">const</code> inside the body.
+        </p>
+
+        <Code code={`// capture.go — simplified
+func freeVars(fn *syntax.FuncExpr) []string &#123;
+    locals := map[string]bool&#123;&#125;
+    for _, p := range fn.Params &#123;
+        locals[p.Name] = true   // params are local
+    &#125;
+    refs := map[string]bool&#123;&#125;
+    collectRefs(fn.Body.Stmts, locals, refs)
+    return sorted(refs)         // deterministic C output
+&#125;`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            The walk is recursive. When a <code class="bg-stone-100 px-1 rounded text-xs">let</code> is encountered, the new variable is added to <code class="bg-stone-100 px-1 rounded text-xs">locals</code>. When an identifier is referenced, it's checked against <code class="bg-stone-100 px-1 rounded text-xs">locals</code> -- if absent, it goes into <code class="bg-stone-100 px-1 rounded text-xs">refs</code> (a free variable).
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Scoping matters. A <code class="bg-stone-100 px-1 rounded text-xs">let x = 20</code> inside a while loop body copies the locals map first, so the declaration doesn't leak into the outer scope. Without this, a closure referencing the outer <code class="bg-stone-100 px-1 rounded text-xs">x</code> after the loop would think <code class="bg-stone-100 px-1 rounded text-xs">x</code> is local and miss the capture.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Hoisted function names are excluded.</strong> If <code class="bg-stone-100 px-1 rounded text-xs">fib</code> calls itself recursively, <code class="bg-stone-100 px-1 rounded text-xs">fib</code> is available as a <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> local -- it doesn't need to be captured. <code class="bg-stone-100 px-1 rounded text-xs">freeVars</code> skips any name that's already in <code class="bg-stone-100 px-1 rounded text-xs">g.funcNames</code>.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Step 2: MonkFunction and the capture array -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 2: the MonkFunction struct.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A function value in Monk is represented at runtime as a <code class="bg-stone-100 px-1 rounded text-xs">MonkFunction</code> struct in C. It holds a function pointer (for calling) and a capture array (for stored variables):
+        </p>
+
+        <Code code={`// runtime.h
+typedef struct MonkFunction &#123;
+    MonkFuncPtr fn;           // the actual C function to call
+    MonkValue  *captures;     // array of captured values
+    int64_t     capture_count;
+&#125; MonkFunction;`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            When a closure is created, the compiler emits <code class="bg-stone-100 px-1 rounded text-xs">monk_make_function(thunk, captures, n)</code>. The captures array is a snapshot of the outer variables at creation time. Each capture is a <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> -- if the outer variable was an unboxed scalar, it gets boxed into the array.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            For the <code class="bg-stone-100 px-1 rounded text-xs">make_counter</code> example, the inner function captures one variable (<code class="bg-stone-100 px-1 rounded text-xs">count</code>). The generated creation code looks like:
+        </p>
+
+        <Code code={`// Closure creation: captures "count" from enclosing scope
+MonkValue _inner = monk_make_function(
+    _monk_func_2_thunk,
+    (MonkValue[])&#123; mk_count &#125;,  // capture array
+    1                              // capture count
+);`} lang="c" />
+    </section>
+
+    <!-- Step 3: The trampoline -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 3: the trampoline.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            All Monk function values are called through <code class="bg-stone-100 px-1 rounded text-xs">monk_call(fn, args, argc)</code>, which invokes <code class="bg-stone-100 px-1 rounded text-xs">fn.fn(fn, args, argc)</code>. The function pointer receives the <code class="bg-stone-100 px-1 rounded text-xs">MonkFunction*</code> as its first argument (<code class="bg-stone-100 px-1 rounded text-xs">_self</code>) -- this is how it accesses the captures.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            But the hoisted C function has a custom signature (one param per Monk param, possibly unboxed). It can't match the generic <code class="bg-stone-100 px-1 rounded text-xs">MonkFuncPtr</code> signature. The <strong>trampoline</strong> bridges the gap:
+        </p>
+
+        <Code code={`// Trampoline: generic signature -> specific signature
+static MonkValue _monk_func_2_thunk(
+    MonkFunction *_self, MonkValue *_args, int64_t _argc
+) &#123;
+    return _monk_func_2(_self);  // pass _self for capture access
+&#125;
+
+// Actual function: loads captures from _self
+static MonkValue _monk_func_2(MonkFunction *_self) &#123;
+    MonkValue mk_count = _self->captures[0];  // load
+    mk_count = monk_add(mk_count, monk_int(1));
+    _self->captures[0] = mk_count;             // save back
+    return mk_count;
+&#125;`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            Direct calls (where the compiler knows the function at the call site) bypass the trampoline entirely and call the hoisted function directly. The trampoline only runs for indirect calls -- passing functions as values, callbacks, etc.
+        </p>
+    </section>
+
+    <!-- Step 4: Save-back -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Step 4: save-back makes mutations persist.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            At function entry, captured variables are loaded from <code class="bg-stone-100 px-1 rounded text-xs">_self->captures[i]</code> into local C variables. The function body reads and writes these locals normally. Before every <code class="bg-stone-100 px-1 rounded text-xs">return</code>, the compiler writes the locals back to <code class="bg-stone-100 px-1 rounded text-xs">_self->captures[i]</code>.
+        </p>
+
+        <Code code={`// Generated pattern for closures with captures:
+static MonkValue _monk_func_2(MonkFunction *_self) &#123;
+    // Load captures at entry
+    MonkValue mk_count = _self->captures[0];
+
+    // ... function body mutates mk_count ...
+
+    // Save back before return (emitCaptureSaveBack)
+    _self->captures[0] = mk_count;
+    return mk_count;
+&#125;`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            This is the <code class="bg-stone-100 px-1 rounded text-xs">emitCaptureSaveBack()</code> call in <code class="bg-stone-100 px-1 rounded text-xs">gen_func.go</code>. It runs on every <code class="bg-stone-100 px-1 rounded text-xs">return</code> statement, and there's a fallback save-back at the end of the function body for implicit returns (falling off the end without an explicit <code class="bg-stone-100 px-1 rounded text-xs">return</code>).
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Value semantics still applies.</strong> When the outer scope copies a value into the capture array, it's a deep copy. The closure owns its own version of the data. Two closures created from the same outer scope get independent copies -- mutating one doesn't affect the other.</p>
+        </InsightBox>
+    </section>
+
+    <!-- The complete picture -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The complete lifecycle of a closure.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-amber font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Analysis.</strong> <code class="bg-stone-100 px-1 rounded text-xs">freeVars()</code> walks the body and finds <code class="bg-stone-100 px-1 rounded text-xs">count</code> is referenced but not declared locally.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-amber font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Hoist.</strong> The function body is emitted as a <code class="bg-stone-100 px-1 rounded text-xs">static</code> C function with an extra <code class="bg-stone-100 px-1 rounded text-xs">MonkFunction *_self</code> parameter.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-amber font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Trampoline.</strong> A thin wrapper matching the generic <code class="bg-stone-100 px-1 rounded text-xs">MonkFuncPtr</code> signature unpacks args and calls the hoisted function.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-amber font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>Creation.</strong> <code class="bg-stone-100 px-1 rounded text-xs">monk_make_function(thunk, captures, n)</code> allocates the capture array with current values.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-amber font-bold text-xs">5</span></div>
+                <p class="text-sm"><strong>Call.</strong> <code class="bg-stone-100 px-1 rounded text-xs">monk_call()</code> invokes the trampoline, which passes <code class="bg-stone-100 px-1 rounded text-xs">_self</code> to the hoisted function.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-amber font-bold text-xs">6</span></div>
+                <p class="text-sm"><strong>Save-back.</strong> Before returning, the function writes mutated captures back to <code class="bg-stone-100 px-1 rounded text-xs">_self->captures[]</code>.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">1</span></div>
+                <p class="text-sm">Free-variable analysis (<code class="bg-stone-100 px-1 rounded text-xs">freeVars</code>) finds what a function references but doesn't declare. These become captures.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">2</span></div>
+                <p class="text-sm"><code class="bg-stone-100 px-1 rounded text-xs">MonkFunction</code> holds a function pointer and a <code class="bg-stone-100 px-1 rounded text-xs">MonkValue[]</code> capture array. Captures are deep-copied at creation (value semantics).</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">3</span></div>
+                <p class="text-sm">The trampoline bridges the generic <code class="bg-stone-100 px-1 rounded text-xs">monk_call</code> interface to the specific hoisted function signature.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-amberLight flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-monk-accent font-bold text-xs">4</span></div>
+                <p class="text-sm">Mutations persist across calls via save-back: captured locals are written back to the capture array before every return.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-4-codegen/function-hoisting"
+        prevLabel="Prev: Function Hoisting"
+        nextHref="/phase-4-codegen/building-codegen"
+        nextLabel="Next: Building the Code Generator"
+    />
+
+</LessonLayout>

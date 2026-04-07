@@ -1209,3 +1209,46 @@ show(to_string(add(1, 2)))`,
 		t.Errorf("expected 'ok' in stderr, got %q", stderr)
 	}
 }
+
+func TestCheckModuleImportShadowError(t *testing.T) {
+	// `let x = ...` after `use x from "./lib"` must be a compile error.
+	// Without this check, codegen silently maps `x` to the imported C name,
+	// making the local declaration dead with no warning.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `let value = 42
+export value`,
+		"main.monk": `use value from "./lib"
+let value = 99
+show(to_string(value))`,
+	})
+	_, stderr, code := runMonkCmd(t, bin, "check", filepath.Join(dir, "main.monk"))
+	if code == 0 {
+		t.Fatal("expected compile error for import shadowing, got exit 0")
+	}
+	if !strings.Contains(stderr, "already declared via import") {
+		t.Errorf("expected shadowing error message, got: %s", stderr)
+	}
+}
+
+func TestRunModuleCrossModuleClosure(t *testing.T) {
+	// Exported function that captures a module-level variable.
+	// The defining module's funcHasCapture must propagate to the importer so
+	// emitCall routes through monk_call instead of a direct C call.
+	// Without the fix: "too few arguments to function" C compile error.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"counter.monk": `let n = 10
+let adder = (x int) int { return x + n }
+export adder`,
+		"main.monk": `use adder from "./counter"
+show(to_string(adder(5)))`,
+	})
+	stdout, stderr, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	if stdout != "15" {
+		t.Errorf("expected '15', got %q", stdout)
+	}
+}

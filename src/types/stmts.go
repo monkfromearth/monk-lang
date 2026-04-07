@@ -174,6 +174,16 @@ func (c *checker) checkVarDecl(s *syntax.VarDeclStmt) error {
 	}
 	// Arrays that start as [] inherit element type from context if possible.
 	// Here the context is an explicit annotation, already handled above.
+
+	// Redeclaring an imported name is an error. Without this check, the local
+	// `let` silently shadows the import — codegen uses importMap for the name
+	// so the local declaration is effectively dead.
+	// Pass: `use add from "./m"; let x = 1`  (different names)
+	// Fail: `use add from "./m"; let add = 2` (shadows import)
+	if c.importedNames[s.Name] {
+		return newTypeError(s.Pos, "'%s' is already declared via import", s.Name)
+	}
+
 	c.scope.declare(s.Name, declared, s.IsConst)
 	c.info.Decls[s] = declared
 	return nil

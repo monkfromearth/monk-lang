@@ -32,14 +32,18 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 	}
 
 	// Per-module export tracking, populated as we generate each module:
-	// exportCNames[modPath][monkName]      = C variable name ("mk_m0_add")
-	// exportCFuncNames[modPath][monkName]  = C function name ("_monk_m0_func_1")
-	// exportFnStorage[modPath][monkName]   = funcStorage (for cross-module unboxed calls)
-	// exportVarStorage[modPath][monkName]  = storageKind (so importers know int64_t vs MonkValue)
+	// exportCNames[modPath][monkName]         = C variable name ("mk_m0_add")
+	// exportCFuncNames[modPath][monkName]     = C function name ("_monk_m0_func_1")
+	// exportFnStorage[modPath][monkName]      = funcStorage (for cross-module unboxed calls)
+	// exportVarStorage[modPath][monkName]     = storageKind (so importers know int64_t vs MonkValue)
+	// exportFuncHasCapture[modPath][cFuncName] = true if function closes over variables
+	//   Required so importers emit monk_call(fn, args) instead of direct fn(args) —
+	//   closures need _self passed implicitly; direct calls omit it → C compile error.
 	exportCNames := make(map[string]map[string]string)
 	exportCFuncNames := make(map[string]map[string]string)
 	exportFnStorage := make(map[string]map[string]funcStorage)
 	exportVarStorage := make(map[string]map[string]storageKind)
+	exportFuncHasCapture := make(map[string]map[string]bool)
 
 	// Global function counter shared across all modules to avoid name collisions.
 	globalFuncCount := 0
@@ -114,6 +118,15 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 					if fs, ok2 := exportFnStorage[depPath][imp.orig]; ok2 {
 						g.fnStorage[cFuncName] = fs
 					}
+					// Propagate closure flag so emitCall uses monk_call(fn, args)
+					// instead of a direct fn(args) call. Closures need _self passed
+					// implicitly; omitting it produces a C "too few arguments" error.
+					// e.g. let n=10; let f=(x int) int { return x+n }; export f
+					//   → _monk_m0_func_N(MonkFunction *_self, int64_t mk_x)
+					//   → importer must emit: monk_call(mk_m0_f, args)
+					if exportFuncHasCapture[depPath][cFuncName] {
+						g.funcHasCapture[cFuncName] = true
+					}
 				}
 				// Wire variable imports so IdentExpr resolves to the foreign C name.
 				if cName, ok := exportCNames[depPath][imp.orig]; ok {
@@ -147,6 +160,7 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 		cFuncNames := make(map[string]string)
 		fnStorageMap := make(map[string]funcStorage)
 		varStorageMap := make(map[string]storageKind)
+		hasCapture := make(map[string]bool)
 		for exportName := range mod.Exports {
 			// Re-export check: if this name was imported (in importMap),
 			// propagate the original C name instead of generating a new one.
@@ -166,12 +180,17 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 				if fs, ok2 := g.fnStorage[cFuncName]; ok2 {
 					fnStorageMap[exportName] = fs
 				}
+				// Record closure flag so importers can route through monk_call.
+				if g.funcHasCapture[cFuncName] {
+					hasCapture[cFuncName] = true
+				}
 			}
 		}
 		exportCNames[modPath] = cNames
 		exportCFuncNames[modPath] = cFuncNames
 		exportFnStorage[modPath] = fnStorageMap
 		exportVarStorage[modPath] = varStorageMap
+		exportFuncHasCapture[modPath] = hasCapture
 	}
 
 	// Assemble the single .c file.

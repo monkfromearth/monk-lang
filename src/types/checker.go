@@ -78,19 +78,21 @@ func (s *scope) declare(name string, t *Type, isConst bool) {
 
 // checker carries state across the walk.
 type checker struct {
-	scope      *scope
-	typeDefs   map[string]*Type // named types from `type Point = ...`
-	returnType *Type            // expected return type of the current function
-	inLoop     int              // break/continue legality
-	info       *Info            // collected type info, returned to codegen
+	scope         *scope
+	typeDefs      map[string]*Type // named types from `type Point = ...`
+	returnType    *Type            // expected return type of the current function
+	inLoop        int              // break/continue legality
+	info          *Info            // collected type info, returned to codegen
+	importedNames map[string]bool  // names injected by `use` — redeclaration is an error
 }
 
 // newChecker creates a checker with a fresh top-level scope pre-populated
 // with all builtin function signatures.
 func newChecker() *checker {
 	c := &checker{
-		scope:    newScope(nil),
-		typeDefs: make(map[string]*Type),
+		scope:         newScope(nil),
+		typeDefs:      make(map[string]*Type),
+		importedNames: make(map[string]bool),
 		info: &Info{
 			Types: make(map[syntax.Expr]*Type),
 			Decls: make(map[*syntax.VarDeclStmt]*Type),
@@ -350,9 +352,11 @@ func CheckModules(graph *module.Graph) (*ModuleInfo, error) {
 				// use * from "./mod" — import all exports.
 				for name, b := range depExports {
 					c.scope.declare(name, b.Type, b.IsConst)
+					c.importedNames[name] = true
 				}
 				for name, t := range depTypeDefs {
 					c.typeDefs[name] = t
+					c.importedNames[name] = true
 				}
 			} else if use.Alias != "" && len(use.Names) == 1 {
 				// use X as Y from "./mod" — import X under alias Y.
@@ -360,9 +364,11 @@ func CheckModules(graph *module.Graph) (*ModuleInfo, error) {
 				b := depExports[origName]
 				if b != nil {
 					c.scope.declare(use.Alias, b.Type, b.IsConst)
+					c.importedNames[use.Alias] = true
 				}
 				if t, ok := depTypeDefs[origName]; ok {
 					c.typeDefs[use.Alias] = t
+					c.importedNames[use.Alias] = true
 				}
 			} else {
 				// use X from "./mod" or use { X, Y } from "./mod".
@@ -370,9 +376,11 @@ func CheckModules(graph *module.Graph) (*ModuleInfo, error) {
 					b := depExports[name]
 					if b != nil {
 						c.scope.declare(name, b.Type, b.IsConst)
+						c.importedNames[name] = true
 					}
 					if t, ok := depTypeDefs[name]; ok {
 						c.typeDefs[name] = t
+						c.importedNames[name] = true
 					}
 				}
 			}

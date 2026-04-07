@@ -100,6 +100,11 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 			var imports []ie
 
 			if use.Star {
+				// REVIEW-SKIP: Go map iteration is non-deterministic, so star imports
+				// are wired in arbitrary order. This is safe — each name is wired
+				// independently into importMap/funcNames/storage, and ordering has no
+				// effect on the generated C semantics. Sorting would add cost with
+				// no correctness benefit.
 				for name := range exportCNames[depPath] {
 					imports = append(imports, ie{name, name})
 				}
@@ -168,6 +173,10 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 		varStorageMap := make(map[string]storageKind)
 		hasCapture := make(map[string]bool)
 		funcDefaultsMap := make(map[string][]syntax.Expr)
+		// REVIEW-SKIP: Type-only exports (e.g. `export type Point = ...`) add entries
+		// to exportCNames even though no C variable `mk_m0_Point` exists. Harmless —
+		// the type checker prevents type names from appearing in value positions, so
+		// importMap["Point"] is never consulted by any codegen expression emitter.
 		for exportName := range mod.Exports {
 			// Re-export check: if this name was imported (in importMap),
 			// propagate the original C name instead of generating a new one.

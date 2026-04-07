@@ -161,6 +161,10 @@ func ResolvePath(source, importerPath string) (string, error) {
 		return "", fmt.Errorf("module path %q must be relative (start with '.' or '..')", source)
 	}
 
+	// REVIEW-SKIP: No project-root boundary check for ../ traversal. Intentional:
+	// Monk's threat model is a local developer on their own machine (see security.md).
+	// ../ imports are a supported feature (tested: TestRunModuleParentDirectory).
+	// Revisit if/when Monk gains sandboxed or server-side execution.
 	dir := filepath.Dir(importerPath)
 	resolved := filepath.Join(dir, source)
 

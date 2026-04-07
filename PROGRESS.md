@@ -663,7 +663,7 @@ The three "near C" benchmarks (matmul, sieve, nbody) previously used untyped arr
 
 **Sieve `int64_t` vs `char` gap:** The C reference uses `static char is_prime[N+1]` (1 byte/element). Monk's `int[]` uses `int64_t` (8 bytes/element) — 8× more cache pressure. Monk has no `byte` or `boolean` scalar type that maps to 1-byte storage, so this gap is structural. Adding a `fill(n, val)` runtime builtin would enable `boolean[]` initialization and close this gap.
 
-### Code review fixes (2026-04-07)
+### Code review fixes — round 1 (2026-04-07)
 
 Processed a 20-item code review against the Phase 6 deferred branch. 4 ACT, 14 SKIP (stale or by-design), 2 duplicates.
 
@@ -679,6 +679,93 @@ Processed a 20-item code review against the Phase 6 deferred branch. 4 ACT, 14 S
 
 Tests: 467 Go + 163 C runtime. 23/23 examples. 21/21 benchmarks. gofmt/vet clean.
 
+### Code review fixes — round 2 (2026-04-07)
+
+Processed a 28-item follow-up review. 5 ACT (3 real bugs + 1 soundness fix + 1 silent miscompilation), 23 SKIP (6 already fixed in round 1, rest stale/by-design/observations).
+
+**Critical bug fixed — unsound bounds-check elision:**
+- **`evalRange` checked `constVals` before `varBounds`.** A loop counter `let i int = 0` recorded `constVals["i"] = 0`. Inside `while i < N`, `evalRange("i")` returned `[0, 0]` instead of `[0, N-1]` from `varBounds` — because `constVals` was checked first. If `N > arrayLen`, the bounds check was incorrectly elided, causing buffer overflow in generated C with no safety check. Fixed: `evalRange` now checks `varBounds` before `constVals`.
+- **`whileBoundsEntry` hardcoded lower bound to 0.** `while i < N` always assumed `i ∈ [0, N-1]` regardless of the variable's actual initial value. `let i int = 5; while i < 10` would set `varBounds["i"] = [0, 9]` instead of `[5, 9]`. Fixed: lower bound now comes from `constVals[ident.Name]`; bails if initial value unknown.
+
+**Closure capture bug fixed — scope leak in free-variable analysis:**
+- **`WhileStmt` and `ForStmt` in `capture.go` didn't copy `locals` before visiting the body.** `let x = 20` inside a while body added `x` to the shared `locals` map. After the loop, a closure referencing the OUTER `x` missed the capture (analysis thought `x` was local). Fixed: both use `copyLocals(locals)` for the body, matching `IfStmt`'s pattern.
+
+**Silent miscompilation fixed — function reassignment called old function:**
+- **Non-capture function calls dispatched directly to hoisted C function name.** `let f = (x) { x+1 }` created `_monk_func_1` and `mk_f`. `f(5)` emitted `_monk_func_1(5)` directly. After `f = (x) { x*2 }`, `mk_f` was updated but calls still hardcoded `_monk_func_1` — silently calling the old function. Fixed: `emitAssign` deletes `funcNames[target.Name]` on reassignment, forcing subsequent calls through `monk_call(mk_f, ...)` which reads the variable.
+
+Tests: 467 Go + 163 C runtime. 23/23 examples. 21/21 benchmarks. gofmt/vet clean.
+
+### `fill()` builtin + specialized typed-array allocation (2026-04-07)
+
+New `fill(n, value)` builtin: creates an array of `n` copies of `value`. Spec addition. Return type refined in type checker: `fill(5, true)` → `bool[]`, `fill(3, 0)` → `int[]`.
+
+**Three layers of optimization for typed arrays:**
+
+1. **Specialized runtime functions:** `monk_fill_bool`, `monk_fill_int`, `monk_fill_float` allocate the typed backing store directly. `monk_fill_bool(N, true)` does `memset(data, 1, N)` — 1 MB for 1M booleans instead of 16 MB intermediate + conversion + free.
+
+2. **Specialized `monk_range_int`:** `let arr int[] = range(N)` now emits `monk_range_int(N)` which allocates `int64_t*` directly — half the memory vs the generic `monk_range` → `monk_int_array_from` path.
+
+3. **Codegen integration:** `emitVarDecl` intercepts `fill()` and `range()` calls on typed-array declarations and emits the specialized functions. First arg emits typed (`monk_int(expr)` instead of boxed add expression).
+
+**Bounds-check elision for `fill()`:** `recordArrayLen` now recognizes `fill(CONST_EXPR, val)` alongside `range()`, so `fill(N+1, true)` → `arrayLens["is_prime"] = N+1`.
+
+**`stripOuterParens` bug fixed:** Statement expressions `({...})` used as `if` conditions had their outer parens stripped, producing invalid `if {…}`. Added guard: skip stripping when second char is `{`.
+
+**Sieve benchmark rewritten:** `int[]` with `is_prime[i] == 1` → `boolean[]` with `is_prime[i]` (direct truthy). Uses `fill(N+1, true)` for initialization.
+
+**Benchmark results (Apple M4 Pro, -O3 -flto):**
+
+| Benchmark | Before | After | C ref | Notes |
+|-----------|--------|-------|-------|-------|
+| sieve | 6.3 ms (2.0× C) | **2.0 ms (1.15× C)** | 1.7 ms | `bool` (1B) vs `char` (1B): bandwidth parity |
+| for_in_sum | 26 ms (15× C) | **10 ms (6.6× C)** | 1.5 ms | `range_int` halves init; loop overhead remains |
+
+4 new codegen tests (fill_bool, fill_int, fill_empty, fill_bool_sieve). 3 new C runtime tests. All 166 C tests pass.
+
+### `restrict` investigation (2026-04-07)
+
+Investigated whether `restrict` can close the matmul/nbody 1.8× gap.
+
+**Findings:**
+- **Struct-member `restrict`** (on `MonkIntArray.data`): zero effect. Clang ignores it.
+- **Block-scoped `restrict` locals** (hoist `int64_t * restrict _Ad = arr.int_array_val->data`): zero effect. Clang doesn't honor `restrict` on locals in the same translation unit.
+- **Function-parameter `restrict`**: **2× speedup** (19 ms → 9.8 ms, matches C ref). Proven by extracting matmul inner loop into `void matmul(int64_t * restrict A, int64_t * restrict B, int64_t * restrict C, int64_t N)`.
+- **`#pragma clang loop vectorize(enable) unroll_count(4)`**: 1.4× speedup (19 ms → 13 ms) without function extraction.
+
+**Root cause:** Clang's type-based alias analysis can't prove non-aliasing between data pointers accessed through different MonkValue structs in the same function scope. Function boundary forces fresh alias analysis with `restrict` hints.
+
+**Decision:** Function extraction is too invasive for this session — requires auto-detecting hot loops and hoisting into helper functions. Documented as a known optimization path for future work.
+
+### Structural optimization assessment (2026-04-07)
+
+Comprehensive assessment of all remaining performance gaps. 21 benchmarks categorized:
+
+**At/below C parity (13/21):** fibonacci 1.0×, mandelbrot 1.0×, leibniz 1.0×, collatz 1.0×, ackermann 1.0×, trial_primes 1.0×, bitcount 1.0×, sqrt_sum 1.0×, quicksort 1.0×, fannkuch 0.8×, record_access 1.2×, **sieve 1.15×** *(was 2.0×)*, **for_in_sum 6.6×** *(was 15×, still allocation-dominated)*
+
+**Struct aliasing gap (2/21):** matmul 1.8×, nbody 1.5× — proven fix requires function extraction with `restrict` params
+
+**Structural gaps (6/21) requiring multi-session runtime changes:**
+
+| Optimization | Affected benchmarks | Effort | Dependencies |
+|---|---|---|---|
+| **`for x in range(N)` → counter loop** | for_in_sum 6.6×→~1× | 1 session | Codegen pattern detect |
+| **COW arrays** | binary_trees 57×→~1×, functional_chain 4× | 2-3 sessions | Refcount on MonkArray, write-barrier in every mutator |
+| **String builder / views** | string_concat 8×, string_ops 56×, levenshtein 35× | 1-2 sessions | New MonkStringBuilder runtime type, integrate with `+` |
+| **Closure escape analysis** | closure_invoke 17× | 2-3 sessions | New static analysis pass, stack-allocated closures |
+| **Stream fusion** | functional_chain 4× | 3+ sessions | Lazy iterators for map/filter/reduce |
+| **Arena allocator** | binary_trees 57× | 2-3 sessions | Scope-based memory pools, requires escape analysis |
+
+**Priority order:** counter-loop (cheapest win), COW arrays (biggest impact), string builder (three benchmarks), then escape analysis.
+
+### `for x in range(N)` → counter loop (2026-04-07)
+
+Pattern detection in `emitFor`: when the iterable is `range(EXPR)` with one arg, emit `for(int64_t x=0; x<N; x++)` — zero allocation, pure C counter. The loop variable gets `storeInt` storage, so body arithmetic stays fully unboxed.
+
+Before: `for i in range(10M)` allocated a 10M-element int[] (80MB), iterated it, freed it.
+After: `for(int64_t mk_i=0; mk_i < 10000000; mk_i++)` — same semantics, zero heap.
+
+3 new tests: basic correctness, variable bound, nested counter loops.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
@@ -690,10 +777,13 @@ Tests: 467 Go + 163 C runtime. 23/23 examples. 21/21 benchmarks. gofmt/vet clean
 | 6 | Typed array index returns T not T? | **Complete** ✅ — removes + 0 workaround |
 | 6 | Record field unboxing | **Complete** ✅ — record_access 25×→1.4× C |
 | 6 | Bounds-check elision for typed arrays | **Complete** ✅ — direct `arr.data[i]` in hot loops |
-| 6 | `boolean[]` initialization (`fill` builtin) | Deferred — sieve 2×→~1× |
-| 6 | Copy-on-write for arrays | Deferred — binary_trees 25×→~1× |
-| 6 | Closure escape analysis | Deferred — closure_invoke 12×→~1× |
-| 6 | String views / builder | Deferred — string_concat/ops/levenshtein |
+| 6 | `fill()` builtin + specialized allocation | **Complete** ✅ — sieve 2.0×→1.15× C |
+| 6 | `restrict` function extraction | Deferred — matmul/nbody 1.8×→~1×, invasive codegen |
+| 6 | `for x in range(N)` → counter loop | **Complete** ✅ — zero allocation, pure C for-loop |
+| 6 | Copy-on-write for arrays | Deferred — binary_trees 57×→~1×, 2-3 sessions |
+| 6 | Closure escape analysis | Deferred — closure_invoke 17×→~1×, 2-3 sessions |
+| 6 | String views / builder | Deferred — string_concat/ops/levenshtein, 1-2 sessions |
+| 6 | Stream fusion (lazy map/filter/reduce) | Deferred — functional_chain 4×→~1×, 3+ sessions |
 | 7 | Module System | Not started |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |

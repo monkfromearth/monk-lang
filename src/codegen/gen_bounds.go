@@ -95,26 +95,37 @@ func (g *generator) recordArrayLen(name string, expr syntax.Expr) {
 		g.arrayLens[name] = int64(len(arr.Elements))
 		return
 	}
-	// Pattern: range(CONST_EXPR) → length = CONST_EXPR
+	// Pattern: range(CONST_EXPR) or fill(CONST_EXPR, value) → length = first arg
 	call, ok := expr.(*syntax.CallExpr)
 	if !ok {
 		return
 	}
 	callee, ok := call.Callee.(*syntax.IdentExpr)
-	if !ok || callee.Name != "range" {
+	if !ok {
 		return
 	}
-	switch len(call.Args) {
-	case 1:
-		// range(N) → elements 0..N-1, length = N
-		if n, ok := g.tryConst(call.Args[0]); ok {
-			g.arrayLens[name] = n
+	switch callee.Name {
+	case "range":
+		switch len(call.Args) {
+		case 1:
+			// range(N) → elements 0..N-1, length = N
+			if n, ok := g.tryConst(call.Args[0]); ok {
+				g.arrayLens[name] = n
+			}
+		case 2:
+			// range(start, end) → elements start..end-1, length = end - start
+			if lo, ok1 := g.tryConst(call.Args[0]); ok1 {
+				if hi, ok2 := g.tryConst(call.Args[1]); ok2 {
+					g.arrayLens[name] = hi - lo
+				}
+			}
 		}
-	case 2:
-		// range(start, end) → elements start..end-1, length = end - start
-		if lo, ok1 := g.tryConst(call.Args[0]); ok1 {
-			if hi, ok2 := g.tryConst(call.Args[1]); ok2 {
-				g.arrayLens[name] = hi - lo
+	case "fill":
+		// fill(N, value) → length = N. Same as range(N) for bounds analysis.
+		// Pass: `fill(N + 1, true)` with const N → length = N + 1.
+		if len(call.Args) >= 1 {
+			if n, ok := g.tryConst(call.Args[0]); ok {
+				g.arrayLens[name] = n
 			}
 		}
 	}
@@ -130,13 +141,18 @@ func (g *generator) evalRange(expr syntax.Expr) (lo, hi int64, ok bool) {
 			return v, v, true
 		}
 	case *syntax.IdentExpr:
-		// Constant variable → tight range.
-		if v, constOK := g.constVals[e.Name]; constOK {
-			return v, v, true
-		}
-		// Loop-bounded variable → use the tracked bounds.
+		// Loop-bounded variable takes precedence over constVals.
+		// Inside `while i < N`, varBounds["i"] = [0, N-1] is the live range,
+		// but constVals["i"] = 0 (from `let i int = 0`). Checking constVals
+		// first would return [0, 0], causing unsound elision when N > arrLen.
+		// Pass: `while i < 3 { arr[i] }` with arr=range(3) → [0, 2] < 3.
+		// Fail (before fix): `while i < 10 { arr[i] }` with arr=range(3) → [0, 0] < 3 → elided → OOB.
 		if b, boundOK := g.varBounds[e.Name]; boundOK {
 			return b[0], b[1], true
+		}
+		// Constant variable → tight range (only used outside loops).
+		if v, constOK := g.constVals[e.Name]; constOK {
+			return v, v, true
 		}
 	case *syntax.BinaryExpr:
 		llo, lhi, lok := g.evalRange(e.Left)
@@ -178,7 +194,7 @@ func (g *generator) isBoundedSafe(arrIdent *syntax.IdentExpr, idxExpr syntax.Exp
 //   - `i < varname` where varname is a compile-time constant → same as above
 //   - `i <= varname` → same as above
 //
-// Returns ("", 0) if the condition doesn't match any recognized pattern.
+// Returns ("", 0, 0, false) if the condition doesn't match any recognized pattern.
 func (g *generator) whileBoundsEntry(cond syntax.Expr) (varName string, loInc, hiExc int64, found bool) {
 	bin, ok := cond.(*syntax.BinaryExpr)
 	if !ok {
@@ -192,13 +208,23 @@ func (g *generator) whileBoundsEntry(cond syntax.Expr) (varName string, loInc, h
 	if !ok {
 		return "", 0, 0, false
 	}
+	// Use the variable's known initial value as the lower bound instead of
+	// hardcoding 0. If `let i int = 5` then `while i < N` has range [5, N-1],
+	// not [0, N-1]. If the initial value isn't a compile-time constant (e.g.
+	// `let i int = arr[0]`), we can't prove the range — bail entirely.
+	// Pass: `let i int = 0; while i < N` → lo=0.
+	// Fail: `let i int = some_func(); while i < N` → bail, no elision.
+	lo, hasInit := g.constVals[ident.Name]
+	if !hasInit {
+		return "", 0, 0, false
+	}
 	switch bin.Op {
 	case syntax.Less:
-		// i < N → i ∈ [0, N)
-		return ident.Name, 0, boundVal - 1, true
+		// i < N → i ∈ [lo, N-1]
+		return ident.Name, lo, boundVal - 1, true
 	case syntax.LessEqual:
-		// i <= N → i ∈ [0, N]
-		return ident.Name, 0, boundVal, true
+		// i <= N → i ∈ [lo, N]
+		return ident.Name, lo, boundVal, true
 	}
 	return "", 0, 0, false
 }

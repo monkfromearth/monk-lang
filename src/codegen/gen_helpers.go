@@ -72,6 +72,7 @@ var builtinMap = map[string]string{
 	"take":          "monk_take",
 	"slice":         "monk_slice",
 	"range":         "monk_range",
+	"fill":          "monk_fill",
 	"abs":           "monk_abs",
 	"floor":         "monk_floor",
 	"ceil":          "monk_ceil",

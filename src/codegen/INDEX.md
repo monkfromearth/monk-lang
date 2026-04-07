@@ -34,6 +34,13 @@ as static C functions, everything else goes into the body of `main()`.
    which converts from generic `MONK_ARRAY` (e.g. `range(N)`) or deep-copies an
    existing typed array. Previous "inline access" path with `.array_val->data[i].int_val`
    replaced by this approach — halves element memory stride.
+4. **Counter-loop path** (`emitFor` in `gen_stmt.go`) — `for x in range(N)` is
+   detected before emission and compiled as `for(int64_t x=0; x<N; x++)`. No
+   allocation, no runtime call. The loop variable is `storeInt`.
+5. **Specialized allocation** (`emitVarDecl` in `gen_stmt.go`) — `fill(N, val)` on
+   typed arrays emits `monk_fill_bool`/`int`/`float` which allocate the backing
+   store directly. `range(N)` on `int[]` emits `monk_range_int`. Avoids
+   intermediate MonkValue arrays.
 
 Both paths coexist. When a boxed context consumes an unboxed value (e.g.
 passing a raw `int64_t` where a builtin expects `MonkValue`), the generator

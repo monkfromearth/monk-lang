@@ -1262,6 +1262,7 @@ show(some_function)         // <function>
 | `filter`  | `(arr: array, fn: (any) -> boolean) -> array`                 | Select matching elements            |
 | `reduce`  | `(arr: array, fn: (any, any) -> any, initial: any) -> any`    | Fold. `reduce([], fn, x)` = `x`.   |
 | `range`   | `(n: int) -> int[]`                                           | Generate 0 to n-1. `range(0)` = `[]`. |
+| `fill`    | `(n: int, value: T) -> T[]`                                   | Create array of n copies. `fill(0, x)` = `[]`. |
 
 ### Type Checking
 
@@ -1423,6 +1424,12 @@ From highest to lowest:
 - `range(5)` returns `[0, 1, 2, 3, 4]`
 - `range(0)` returns `[]` (empty array)
 - `range(-5)` returns `[]` (empty array)
+
+### Fill
+- `fill(3, true)` returns `[true, true, true]`
+- `fill(0, x)` returns `[]` (empty array)
+- `fill(-1, x)` returns `[]` (empty array)
+- Return type matches the value: `fill(n, true)` → `bool[]`, `fill(n, 0)` → `int[]`
 
 ### Bounds Clamping
 - `slice`, `take`, `drop`, `substring` clamp indices to valid ranges (graceful on reads)

@@ -230,6 +230,11 @@ MonkValue monk_drop(MonkValue arr, MonkValue n);
 MonkValue monk_take(MonkValue arr, MonkValue n);
 MonkValue monk_slice(MonkValue arr, MonkValue start, MonkValue end);
 MonkValue monk_range(MonkValue n);
+MonkValue monk_range_int(int64_t n);
+MonkValue monk_fill(MonkValue n, MonkValue value);
+MonkValue monk_fill_bool(MonkValue n, bool value);
+MonkValue monk_fill_int(MonkValue n, int64_t value);
+MonkValue monk_fill_float(MonkValue n, double value);
 
 /* --- Higher-order array functions --- */
 

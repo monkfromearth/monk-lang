@@ -78,16 +78,22 @@ func collectRefsStmt(stmt syntax.Stmt, locals map[string]bool, refs map[string]b
 		}
 	case *syntax.WhileStmt:
 		collectRefsExpr(s.Condition, locals, refs)
-		collectRefs(s.Body.Stmts, locals, refs)
+		// Copy locals so declarations inside the loop body don't leak into
+		// the outer scope. Without this, `let x = 20` inside a while body
+		// adds x to the shared locals map — a closure referencing the OUTER
+		// x after the loop would miss the capture (thinks x is local).
+		// Pass: outer x captured after while that declares inner x.
+		// Fail (before fix): inner x leaks → outer x not in refs → undeclared in C.
+		whileLocals := copyLocals(locals)
+		collectRefs(s.Body.Stmts, whileLocals, refs)
 	case *syntax.ForStmt:
 		collectRefsExpr(s.Iterable, locals, refs)
-		// Loop variable is local to the body.
-		saved := locals[s.VarName]
-		locals[s.VarName] = true
-		collectRefs(s.Body.Stmts, locals, refs)
-		if !saved {
-			delete(locals, s.VarName)
-		}
+		// Same scoping fix as WhileStmt: copy locals so body-internal
+		// declarations don't leak into the enclosing scope's locals map.
+		// The loop variable is added to the copy (local to the body only).
+		forLocals := copyLocals(locals)
+		forLocals[s.VarName] = true
+		collectRefs(s.Body.Stmts, forLocals, refs)
 	case *syntax.GuardStmt:
 		collectRefsExpr(s.Expr, locals, refs)
 		locals[s.VarName] = true

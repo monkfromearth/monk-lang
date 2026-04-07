@@ -214,6 +214,104 @@ MonkValue monk_range(MonkValue n_val) {
     return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
 }
 
+/* Specialized range for int[]: allocate MONK_INT_ARRAY directly.
+ * range(10M) → 80 MB (int64_t*) instead of 160 MB (MonkValue*) + 80 MB copy.
+ * Codegen emits this when `let arr int[] = range(N)`. */
+MonkValue monk_range_int(int64_t n) {
+    if (n <= 0) {
+        MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
+        arr->data = monk_malloc_internal(sizeof(int64_t));
+        arr->length = 0;
+        return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
+    }
+    int64_t *data = monk_malloc_internal(sizeof(int64_t) * n);
+    for (int64_t i = 0; i < n; i++) data[i] = i;
+    MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
+    arr->data = data;
+    arr->length = n;
+    return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
+}
+
+/* fill(n, value): create an array of n copies of value.
+ * fill(3, true) → [true, true, true]. fill(0, x) → [] (graceful).
+ * Returns a generic MONK_ARRAY; codegen wraps with monk_bool_array_from()
+ * etc. to produce the typed backing store for bool[]/int[]/float[]. */
+MonkValue monk_fill(MonkValue n_val, MonkValue value) {
+    if (n_val.kind != MONK_INT) monk_panic("fill: expected int for count");
+    int64_t n = n_val.int_val;
+    if (n <= 0) return monk_array(NULL, 0);
+    MonkValue *data = monk_malloc_internal(sizeof(MonkValue) * n);
+    for (int64_t i = 0; i < n; i++) data[i] = monk_deep_copy(value);
+    MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
+    arr->data = data;
+    arr->length = n;
+    return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
+}
+
+/* Specialized fill for bool[]: allocate MONK_BOOL_ARRAY directly.
+ * Avoids 1M intermediate MonkValues — just memset the bool* backing store.
+ * fill(1000000, true) → ~1 MB instead of ~16 MB + conversion. */
+MonkValue monk_fill_bool(MonkValue n_val, bool value) {
+    if (n_val.kind != MONK_INT) monk_panic("fill: expected int for count");
+    int64_t n = n_val.int_val;
+    if (n <= 0) {
+        MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
+        arr->data = monk_malloc_internal(sizeof(bool));
+        arr->length = 0;
+        return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
+    }
+    bool *data = monk_malloc_internal(sizeof(bool) * n);
+    memset(data, value ? 1 : 0, n);
+    MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
+    arr->data = data;
+    arr->length = n;
+    return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
+}
+
+/* Specialized fill for int[]: allocate MONK_INT_ARRAY directly. */
+MonkValue monk_fill_int(MonkValue n_val, int64_t value) {
+    if (n_val.kind != MONK_INT) monk_panic("fill: expected int for count");
+    int64_t n = n_val.int_val;
+    if (n <= 0) {
+        MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
+        arr->data = monk_malloc_internal(sizeof(int64_t));
+        arr->length = 0;
+        return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
+    }
+    int64_t *data = monk_malloc_internal(sizeof(int64_t) * n);
+    if (value == 0) {
+        memset(data, 0, sizeof(int64_t) * n);
+    } else {
+        for (int64_t i = 0; i < n; i++) data[i] = value;
+    }
+    MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
+    arr->data = data;
+    arr->length = n;
+    return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
+}
+
+/* Specialized fill for float[]: allocate MONK_FLOAT_ARRAY directly. */
+MonkValue monk_fill_float(MonkValue n_val, double value) {
+    if (n_val.kind != MONK_INT) monk_panic("fill: expected int for count");
+    int64_t n = n_val.int_val;
+    if (n <= 0) {
+        MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
+        arr->data = monk_malloc_internal(sizeof(double));
+        arr->length = 0;
+        return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
+    }
+    double *data = monk_malloc_internal(sizeof(double) * n);
+    if (value == 0.0) {
+        memset(data, 0, sizeof(double) * n);
+    } else {
+        for (int64_t i = 0; i < n; i++) data[i] = value;
+    }
+    MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
+    arr->data = data;
+    arr->length = n;
+    return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
+}
+
 /* --- Record --- */
 
 MonkValue monk_record_get(MonkValue rec, const char *key) {

@@ -138,6 +138,9 @@ func (c *checker) declareBuiltins() {
 	c.scope.declare("take", FuncType([]*Type{anyArr, Int}, anyArr), true)
 	c.scope.declare("slice", FuncType([]*Type{anyArr, Int, Int}, anyArr), true)
 	c.scope.declare("range", FuncType([]*Type{Int}, ArrayOf(Int)), true)
+	// fill(n, value) → T[] where T is the value's type.
+	// Declared as (int, any) → any[]; inferCall refines the return type.
+	c.scope.declare("fill", FuncType([]*Type{Int, Any}, anyArr), true)
 
 	// Math — accept numeric, return float (most math genuinely returns float).
 	for _, name := range []string{

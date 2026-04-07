@@ -1067,15 +1067,15 @@ show(to_string(x))`)
 	}
 }
 
-// Verify range()-initialized int[] uses monk_int_array_from.
+// Verify range()-initialized int[] uses monk_range_int (specialized direct alloc).
 func TestBackingStoreRangeDecl(t *testing.T) {
 	out, src := runMonkTyped(t, `let arr = range(4)
 show(to_string(arr[2]))`)
 	if out != "2" {
 		t.Errorf("want '2', got %q", out)
 	}
-	if !strings.Contains(src, "monk_int_array_from") {
-		t.Errorf("expected monk_int_array_from for range-init int[], generated:\n%s", src)
+	if !strings.Contains(src, "monk_range_int") {
+		t.Errorf("expected monk_range_int for range-init int[], generated:\n%s", src)
 	}
 }
 
@@ -1298,5 +1298,122 @@ show(to_string(sum))`
 	// sum(0..99) = 99*100/2 = 4950
 	if out != "4950" {
 		t.Errorf("want '4950', got %q", out)
+	}
+}
+
+// fill(n, value) creates an array of n copies.
+// fill(3, true) → [true, true, true] as bool[].
+func TestFillBool(t *testing.T) {
+	src := `let arr boolean[] = fill(5, true)
+show(to_string(length(arr)))
+show(to_string(arr[0]))
+show(to_string(arr[4]))`
+	out, _ := runMonkTyped(t, src)
+	if out != "5\ntrue\ntrue" {
+		t.Errorf("want '5\\ntrue\\ntrue', got %q", out)
+	}
+}
+
+// fill(n, value) with int → int[].
+func TestFillInt(t *testing.T) {
+	src := `let arr int[] = fill(3, 42)
+show(to_string(length(arr)))
+show(to_string(arr[0]))
+show(to_string(arr[2]))`
+	out, _ := runMonkTyped(t, src)
+	if out != "3\n42\n42" {
+		t.Errorf("want '3\\n42\\n42', got %q", out)
+	}
+}
+
+// fill(0, x) returns empty array (graceful).
+func TestFillEmpty(t *testing.T) {
+	src := `let arr int[] = fill(0, 0)
+show(to_string(length(arr)))`
+	out, _ := runMonkTyped(t, src)
+	if out != "0" {
+		t.Errorf("want '0', got %q", out)
+	}
+}
+
+// fill with bool[] used as sieve-style write target.
+func TestFillBoolSieve(t *testing.T) {
+	src := `let N int = 20
+let is_prime boolean[] = fill(N + 1, true)
+is_prime[0] = false
+is_prime[1] = false
+let i int = 2
+while i * i <= N {
+    if is_prime[i] {
+        let j int = i * i
+        while j <= N {
+            is_prime[j] = false
+            j += i
+        }
+    }
+    i += 1
+}
+let count int = 0
+i = 2
+while i <= N {
+    if is_prime[i] {
+        count += 1
+    }
+    i += 1
+}
+show(to_string(count))`
+	out, _ := runMonkTyped(t, src)
+	// primes up to 20: 2,3,5,7,11,13,17,19 = 8
+	if out != "8" {
+		t.Errorf("want '8', got %q", out)
+	}
+}
+
+// for i in range(N) → counter loop, no allocation.
+// sum(0..99) = 4950. Generated C should have no monk_range call.
+func TestCounterLoopRange(t *testing.T) {
+	src := `let sum int = 0
+for i in range(100) {
+    sum += i
+}
+show(to_string(sum))`
+	out, csrc := runMonkTyped(t, src)
+	if out != "4950" {
+		t.Errorf("want '4950', got %q", out)
+	}
+	if strings.Contains(csrc, "monk_range") {
+		t.Errorf("counter loop should not call monk_range, generated:\n%s", csrc)
+	}
+	if !strings.Contains(csrc, "for (int64_t") {
+		t.Errorf("expected C for-loop, generated:\n%s", csrc)
+	}
+}
+
+// for i in range(N) with variable bound.
+func TestCounterLoopRangeVar(t *testing.T) {
+	src := `let N int = 5
+let sum int = 0
+for i in range(N) {
+    sum += i
+}
+show(to_string(sum))`
+	out, _ := runMonkTyped(t, src)
+	if out != "10" {
+		t.Errorf("want '10', got %q", out)
+	}
+}
+
+// Nested counter loops.
+func TestCounterLoopNested(t *testing.T) {
+	src := `let count int = 0
+for i in range(10) {
+    for j in range(10) {
+        count += 1
+    }
+}
+show(to_string(count))`
+	out, _ := runMonkTyped(t, src)
+	if out != "100" {
+		t.Errorf("want '100', got %q", out)
 	}
 }

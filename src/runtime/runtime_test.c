@@ -193,6 +193,13 @@ void test_arrays(void) {
     ASSERT_INT(monk_array_get(range5, monk_int(4)), 4);
     ASSERT_INT(monk_length(monk_range(monk_int(0))), 0);
     ASSERT_INT(monk_length(monk_range(monk_int(-5))), 0);
+
+    /* fill(n, value) — create array of n copies */
+    MonkValue fill3 = monk_fill(monk_int(3), monk_bool(true));
+    ASSERT_INT(monk_length(fill3), 3);
+    /* fill(0, x) and fill(-1, x) return empty array (graceful) */
+    ASSERT_INT(monk_length(monk_fill(monk_int(0), monk_int(0))), 0);
+    ASSERT_INT(monk_length(monk_fill(monk_int(-1), monk_int(0))), 0);
 }
 
 void test_records(void) {

@@ -274,6 +274,16 @@ func (c *checker) inferCall(e *syntax.CallExpr) (*Type, error) {
 				i+1, at, calleeType.Params[i])
 		}
 	}
+	// fill(n, value) → T[] where T is the type of value.
+	// The declaration says (int, any) → any[]; refine to T[] here.
+	// Pass: fill(5, true) → bool[]. fill(3, 0) → int[].
+	if ident, ok := e.Callee.(*syntax.IdentExpr); ok && ident.Name == "fill" && len(e.Args) == 2 {
+		valType, err := c.inferExpr(e.Args[1])
+		if err == nil && valType.Kind != KindAny {
+			return ArrayOf(valType), nil
+		}
+	}
+
 	return calleeType.Return, nil
 }
 

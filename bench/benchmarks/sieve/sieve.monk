@@ -3,22 +3,17 @@
 // Output: count of primes up to N (integer checksum).
 
 let N int = 1000000
-let is_prime int[] = range(N + 1)
+let is_prime boolean[] = fill(N + 1, true)
 
-let i int = 0
-while i <= N {
-    is_prime[i] = 1
-    i += 1
-}
-is_prime[0] = 0
-is_prime[1] = 0
+is_prime[0] = false
+is_prime[1] = false
 
-i = 2
+let i int = 2
 while i * i <= N {
-    if is_prime[i] == 1 {
+    if is_prime[i] {
         let j int = i * i
         while j <= N {
-            is_prime[j] = 0
+            is_prime[j] = false
             j += i
         }
     }
@@ -28,7 +23,7 @@ while i * i <= N {
 let count int = 0
 i = 2
 while i <= N {
-    if is_prime[i] == 1 {
+    if is_prime[i] {
         count += 1
     }
     i += 1

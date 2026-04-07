@@ -1,0 +1,52 @@
+// Default parameter values — trailing parameters can have defaults.
+// Callers can omit them and get the default.
+
+// ─── Simple defaults ───────────────────────────────────────────────────────
+
+let greet = (name string, greeting string = "Hello") string {
+    return greeting + ", " + name + "!"
+}
+
+show(greet("Alice"))           // Hello, Alice!
+show(greet("Bob", "Hey"))      // Hey, Bob!
+show(greet("Charlie", "Hi"))   // Hi, Charlie!
+
+// ─── Multiple defaults ────────────────────────────────────────────────────
+
+let format_number = (n int, width int = 0, fill string = " ") string {
+    let s = to_string(n)
+    let padding = width - length(s)
+    let result = ""
+    let i = 0
+    while i < padding {
+        result = result + fill
+        i += 1
+    }
+    return result + s
+}
+
+show("[" + format_number(42) + "]")           // [42]
+show("[" + format_number(42, 6) + "]")        // [    42]
+show("[" + format_number(42, 6, "0") + "]")   // [000042]
+
+// ─── Numeric defaults ─────────────────────────────────────────────────────
+
+let power = (base float, exponent float = 2.0) float {
+    return pow(base, exponent)
+}
+
+show("3^2 = " + to_string(power(3.0)))          // 9
+show("2^10 = " + to_string(power(2.0, 10.0)))   // 1024
+
+// ─── Boolean defaults ──────────────────────────────────────────────────────
+
+let log_message = (msg string, verbose boolean = false) none {
+    if verbose {
+        show("[VERBOSE] " + msg)
+    } else {
+        show(msg)
+    }
+}
+
+log_message("starting up")
+log_message("debug info here", true)

@@ -1,0 +1,337 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Scalar Unboxing" lessonNumber="6.4" section="Phase 6">
+
+    <LessonHeader lessonNumber="6.4" title="Scalar Unboxing" description="Using type information to eliminate tagged-union overhead. How Monk reached C-speed on scalar benchmarks.">
+        <TagBadge variant="go">go</TagBadge>
+        <TagBadge variant="c">c</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- The problem -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Every integer was paying a tax it didn't need to.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Before Phase 6, every Monk value -- integers, floats, booleans, strings, arrays -- was represented as a <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> tagged union in the generated C. The runtime needed this to dispatch operations dynamically: when you write <code class="bg-stone-100 px-1 rounded text-xs">a + b</code>, the generated C calls <code class="bg-stone-100 px-1 rounded text-xs">monk_add(a, b)</code>, which checks the tag, extracts the values, adds them, and wraps the result back.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            That's a lot of work for something a C compiler knows at compile time. An integer addition in C is one instruction. In Monk, it was a function call with a tag check, two struct field extractions, an addition, and a struct construction.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The first benchmark results showed the cost clearly:
+        </p>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm border border-monk-border rounded-xl overflow-hidden">
+                <thead>
+                    <tr class="bg-stone-50 border-b border-monk-border">
+                        <th class="text-left px-4 py-3 font-semibold">Benchmark</th>
+                        <th class="text-right px-4 py-3 font-semibold">C</th>
+                        <th class="text-right px-4 py-3 font-semibold">Monk (before)</th>
+                        <th class="text-right px-4 py-3 font-semibold">vs C</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-monk-border">
+                    <tr>
+                        <td class="px-4 py-3">fibonacci (n=35)</td>
+                        <td class="px-4 py-3 text-right font-mono">16 ms</td>
+                        <td class="px-4 py-3 text-right font-mono">28 ms</td>
+                        <td class="px-4 py-3 text-right text-amber-600 font-semibold">1.7×</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3">mandelbrot (800²×50)</td>
+                        <td class="px-4 py-3 text-right font-mono">14 ms</td>
+                        <td class="px-4 py-3 text-right font-mono">17 ms</td>
+                        <td class="px-4 py-3 text-right text-amber-600 font-semibold">1.2×</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3">matmul (400²)</td>
+                        <td class="px-4 py-3 text-right font-mono">10 ms</td>
+                        <td class="px-4 py-3 text-right font-mono">142 ms</td>
+                        <td class="px-4 py-3 text-right text-red-600 font-semibold">14×</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Fibonacci and mandelbrot were already fast after an earlier <code class="bg-stone-100 px-1 rounded text-xs">-O3 -flto</code> optimization pass. Matmul was still 14× C -- each array access was paying for tag checks and deep copies.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The type checker changes everything. It knows that <code class="bg-stone-100 px-1 rounded text-xs">n</code> is an <code class="bg-stone-100 px-1 rounded text-xs">int</code>. It knows that <code class="bg-stone-100 px-1 rounded text-xs">x + y</code> is int + int = int. All of that checking and dispatching is pointless. The tag is known statically. We don't need the union at all.
+        </p>
+    </section>
+
+    <!-- What unboxing does -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Unboxing: emit raw C types instead of tagged unions.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Scalar unboxing is the idea of using <code class="bg-stone-100 px-1 rounded text-xs">int64_t</code>, <code class="bg-stone-100 px-1 rounded text-xs">double</code>, or <code class="bg-stone-100 px-1 rounded text-xs">bool</code> in the generated C instead of <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>, whenever the checker has determined the type statically. The tag is no longer needed at runtime -- so we don't emit one.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">Here's the same Monk function, generated with and without unboxing:</p>
+
+        <p class="text-monk-muted text-sm font-semibold mb-2">Without unboxing (Phase 1–5):</p>
+        <Code code={`static MonkValue _monk_fib(MonkValue mk_n) {
+    if (monk_is_truthy(monk_lte(mk_n, monk_int(1)))) {
+        return mk_n;
+    }
+    MonkValue _t0 = monk_sub(mk_n, monk_int(1));
+    MonkValue _t1 = _monk_fib(_t0);
+    MonkValue _t2 = monk_sub(mk_n, monk_int(2));
+    MonkValue _t3 = _monk_fib(_t2);
+    return monk_add(_t1, _t3);
+}`} lang="c" />
+
+        <p class="text-monk-muted text-sm font-semibold mt-6 mb-2">With unboxing (Phase 6):</p>
+        <Code code={`static int64_t _monk_fib(int64_t mk_n) {
+    if (mk_n <= 1) {
+        return mk_n;
+    }
+    int64_t _t0 = mk_n - 1;
+    int64_t _t1 = _monk_fib(_t0);
+    int64_t _t2 = mk_n - 2;
+    int64_t _t3 = _monk_fib(_t2);
+    return _t1 + _t3;
+}`} lang="c" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            This is identical to what a C programmer would write by hand. Every <code class="bg-stone-100 px-1 rounded text-xs">monk_*</code> call is gone. The raw C operators are back. The C compiler can now optimize this the same way it would optimize native C code -- and it does.
+        </p>
+    </section>
+
+    <!-- storageKind -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The storageKind abstraction.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The unboxing logic lives in <code class="bg-stone-100 px-1 rounded text-xs">src/codegen/unbox.go</code>. Its central concept is <code class="bg-stone-100 px-1 rounded text-xs">storageKind</code> -- a small enum that classifies how a variable should be stored in the generated C:
+        </p>
+
+        <Code code={`type storageKind int
+
+const (
+    storeBoxed  storageKind = iota  // MonkValue (default, the old way)
+    storeInt                         // int64_t
+    storeFloat                       // double
+    storeBool                        // bool (C _Bool)
+)`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            For each variable declaration, the code generator asks: "what storage kind does the checker assign to this?" If the type is <code class="bg-stone-100 px-1 rounded text-xs">KindInt</code>, it uses <code class="bg-stone-100 px-1 rounded text-xs">storeInt</code> and emits <code class="bg-stone-100 px-1 rounded text-xs">int64_t</code>. If it's unknown or compound (array, record), it falls back to <code class="bg-stone-100 px-1 rounded text-xs">storeBoxed</code> and emits <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The same logic applies to expressions. When emitting a binary operation, unbox.go checks both operands' storage kinds. If both are <code class="bg-stone-100 px-1 rounded text-xs">storeInt</code>, it emits <code class="bg-stone-100 px-1 rounded text-xs">a + b</code>. If either is boxed, it falls back to <code class="bg-stone-100 px-1 rounded text-xs">monk_add(a, b)</code>.
+        </p>
+    </section>
+
+    <!-- What gets unboxed -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What gets unboxed.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Scalar unboxing applies to all statically-typed scalar values. Specifically:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">1</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Variables.</p>
+                    <p class="text-monk-muted text-sm"><code class="bg-stone-100 px-1 rounded text-xs">let n int = 5</code> emits <code class="bg-stone-100 px-1 rounded text-xs">int64_t mk_n = 5;</code> instead of <code class="bg-stone-100 px-1 rounded text-xs">MonkValue mk_n = monk_int(5);</code></p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">2</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Arithmetic.</p>
+                    <p class="text-monk-muted text-sm">Binary operations between two scalar operands use raw C operators. <code class="bg-stone-100 px-1 rounded text-xs">a + b * c</code> becomes <code class="bg-stone-100 px-1 rounded text-xs">(a + (b * c))</code>, not nested <code class="bg-stone-100 px-1 rounded text-xs">monk_add</code> calls.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">3</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Function signatures.</p>
+                    <p class="text-monk-muted text-sm">Functions whose parameters and return type are all scalar get unboxed C signatures: <code class="bg-stone-100 px-1 rounded text-xs">static int64_t fib(int64_t n)</code> instead of <code class="bg-stone-100 px-1 rounded text-xs">static MonkValue fib(MonkValue n)</code>.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">4</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Conditions.</p>
+                    <p class="text-monk-muted text-sm"><code class="bg-stone-100 px-1 rounded text-xs">if</code> and <code class="bg-stone-100 px-1 rounded text-xs">while</code> conditions that evaluate to a typed boolean skip the <code class="bg-stone-100 px-1 rounded text-xs">monk_is_truthy()</code> call and emit the C expression directly.</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 bg-white border border-monk-border rounded-xl px-5 py-4">
+                <div class="w-8 h-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0">
+                    <span class="text-sky-600 font-bold text-sm">5</span>
+                </div>
+                <div>
+                    <p class="font-semibold text-sm">Casts.</p>
+                    <p class="text-monk-muted text-sm"><code class="bg-stone-100 px-1 rounded text-xs">to_int(float_var)</code> and <code class="bg-stone-100 px-1 rounded text-xs">to_float(int_var)</code> inline as direct C casts when the argument is already a known scalar, skipping the runtime call.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Benchmark results -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The results: scalar benchmarks hit C parity.</h2>
+
+        <div class="overflow-x-auto mb-6">
+            <table class="w-full text-sm border border-monk-border rounded-xl overflow-hidden">
+                <thead>
+                    <tr class="bg-stone-50 border-b border-monk-border">
+                        <th class="text-left px-4 py-3 font-semibold">Benchmark</th>
+                        <th class="text-right px-4 py-3 font-semibold">C</th>
+                        <th class="text-right px-4 py-3 font-semibold">Before unboxing</th>
+                        <th class="text-right px-4 py-3 font-semibold">After unboxing</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-monk-border">
+                    <tr>
+                        <td class="px-4 py-3">fibonacci (n=35)</td>
+                        <td class="px-4 py-3 text-right font-mono">16 ms</td>
+                        <td class="px-4 py-3 text-right font-mono text-amber-600">28 ms (1.7×)</td>
+                        <td class="px-4 py-3 text-right font-mono text-green-600 font-semibold">17 ms (1.0×)</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3">mandelbrot (800²×50)</td>
+                        <td class="px-4 py-3 text-right font-mono">14 ms</td>
+                        <td class="px-4 py-3 text-right font-mono text-amber-600">17 ms (1.2×)</td>
+                        <td class="px-4 py-3 text-right font-mono text-green-600 font-semibold">15 ms (1.0×)</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3">leibniz π (50M iter)</td>
+                        <td class="px-4 py-3 text-right font-mono">28 ms</td>
+                        <td class="px-4 py-3 text-right font-mono text-monk-muted">—</td>
+                        <td class="px-4 py-3 text-right font-mono text-green-600 font-semibold">29 ms (1.0×)</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3">trial_primes (&lt;200k)</td>
+                        <td class="px-4 py-3 text-right font-mono">6 ms</td>
+                        <td class="px-4 py-3 text-right font-mono text-monk-muted">—</td>
+                        <td class="px-4 py-3 text-right font-mono text-green-600 font-semibold">6 ms (1.0×)</td>
+                    </tr>
+                    <tr>
+                        <td class="px-4 py-3">matmul (400²)</td>
+                        <td class="px-4 py-3 text-right font-mono">10 ms</td>
+                        <td class="px-4 py-3 text-right font-mono text-red-600">142 ms (14×)</td>
+                        <td class="px-4 py-3 text-right font-mono text-amber-600">122 ms (12×)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Fibonacci, mandelbrot, leibniz, trial_primes -- all scalar compute -- hit C parity. The generated code is structurally identical to hand-written C and GCC optimizes it the same way.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Matmul barely moved. The hot path is array indexing -- each <code class="bg-stone-100 px-1 rounded text-xs">matrix[i][j]</code> access still goes through the boxed <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> array representation. Scalar unboxing only helps scalars. Arrays need their own unboxing -- a separate, harder problem involving the C runtime's memory layout.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Arrays stay boxed for now.</strong> Typed array unboxing (backed <code class="bg-stone-100 px-1 rounded text-xs">int[]</code> with <code class="bg-stone-100 px-1 rounded text-xs">int64_t*</code> instead of <code class="bg-stone-100 px-1 rounded text-xs">MonkValue*</code>) is the next performance frontier. It requires a new C struct (<code class="bg-stone-100 px-1 rounded text-xs">MonkIntArray</code>), new codegen paths, and runtime changes. See <code class="bg-stone-100 px-1 rounded text-xs">spec/ARCHITECTURE_DECISIONS.md §4A</code>.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Typed array unboxing context -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What's still in progress: typed arrays.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Scalar unboxing was the first optimization enabled by the type system. Array unboxing is the second. The current state:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-monk-green font-bold text-xs">✓</span>
+                </div>
+                <p class="text-sm"><strong>Inline array element access.</strong> <code class="bg-stone-100 px-1 rounded text-xs">int[]</code> element reads emit <code class="bg-stone-100 px-1 rounded text-xs">.int_val</code> struct-field access instead of <code class="bg-stone-100 px-1 rounded text-xs">monk_array_get</code>. Done.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-monk-green font-bold text-xs">✓</span>
+                </div>
+                <p class="text-sm"><strong>Typed array backing store.</strong> <code class="bg-stone-100 px-1 rounded text-xs">int[]</code> backed by <code class="bg-stone-100 px-1 rounded text-xs">int64_t*</code> instead of <code class="bg-stone-100 px-1 rounded text-xs">MonkValue*</code>. New <code class="bg-stone-100 px-1 rounded text-xs">MONK_INT_ARRAY</code> kind in the runtime. Done.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-monk-green font-bold text-xs">✓</span>
+                </div>
+                <p class="text-sm"><strong>Unboxed for-loop variables.</strong> Loop variable over a typed array (<code class="bg-stone-100 px-1 rounded text-xs">for x in int_arr</code>) uses a raw <code class="bg-stone-100 px-1 rounded text-xs">int64_t</code>, no boxing per element. Done.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-stone-500 font-bold text-xs">○</span>
+                </div>
+                <p class="text-sm"><strong>Copy-on-write for arrays.</strong> Share backing storage on assign, copy only on mutation. Makes <code class="bg-stone-100 px-1 rounded text-xs">let b = a</code> O(1) instead of O(n). Not yet done.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-monk-greenLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span class="text-monk-green font-bold text-xs">✓</span>
+                </div>
+                <p class="text-sm"><strong>Bounds-check elision.</strong> Typed array accesses inside provably-safe loops skip the runtime bounds check. A lightweight static analysis (<code class="bg-stone-100 px-1 rounded text-xs">gen_bounds.go</code>) tracks constant values, array lengths, and loop-counter ranges — if it can prove <code class="bg-stone-100 px-1 rounded text-xs">0 ≤ idx &lt; arr.length</code>, the check is dropped. Done.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            These remaining items are documented in <code class="bg-stone-100 px-1 rounded text-xs">spec/ARCHITECTURE_DECISIONS.md</code> with full design notes. They're not blocked -- they're just the next items in the queue.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">1</span></div>
+                <p class="text-sm">Before unboxing, every value paid the cost of a tagged union -- function calls, tag checks, struct packing -- even when the type was statically known.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">2</span></div>
+                <p class="text-sm">Scalar unboxing uses the checker's <code class="bg-stone-100 px-1 rounded text-xs">Info</code> to emit <code class="bg-stone-100 px-1 rounded text-xs">int64_t</code>, <code class="bg-stone-100 px-1 rounded text-xs">double</code>, or <code class="bg-stone-100 px-1 rounded text-xs">bool</code> instead of <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code> for statically-typed scalars.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">3</span></div>
+                <p class="text-sm">Scalar-heavy benchmarks (fibonacci, mandelbrot, leibniz) hit C parity after unboxing. The generated C is structurally identical to hand-written C.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">4</span></div>
+                <p class="text-sm">Array-heavy benchmarks (matmul) remain slow. Bounds-check elision is done; copy-on-write for arrays is the last open item on this front.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-6-types/building-the-checker"
+        prevLabel="Prev: Building the Checker"
+        nextHref="/phase-6-types/references"
+        nextLabel="Next: References"
+    />
+
+</LessonLayout>

@@ -63,6 +63,7 @@ func (c *checker) inferExprInner(e syntax.Expr) (*Type, error) {
 	return Any, nil
 }
 
+// inferIdent looks up the identifier in the scope chain and returns its type.
 func (c *checker) inferIdent(e *syntax.IdentExpr) (*Type, error) {
 	b := c.scope.lookup(e.Name)
 	if b == nil {
@@ -71,6 +72,8 @@ func (c *checker) inferIdent(e *syntax.IdentExpr) (*Type, error) {
 	return b.Type, nil
 }
 
+// inferUnary infers the type of a unary expression. `-` requires numeric;
+// `not`/`!` accept any type and return bool; `~` requires int and returns int.
 func (c *checker) inferUnary(e *syntax.UnaryExpr) (*Type, error) {
 	t, err := c.inferExpr(e.Operand)
 	if err != nil {
@@ -94,6 +97,9 @@ func (c *checker) inferUnary(e *syntax.UnaryExpr) (*Type, error) {
 	return Any, nil
 }
 
+// inferBinary dispatches to inferArith, inferEquality, or inline logic for
+// comparison, logical, bitwise operators. Returns the result type or an error
+// if the operand types are incompatible.
 func (c *checker) inferBinary(e *syntax.BinaryExpr) (*Type, error) {
 	lt, err := c.inferExpr(e.Left)
 	if err != nil {
@@ -227,6 +233,9 @@ func otherOp(l, r *Type) string {
 	return l.String()
 }
 
+// inferCall checks that the callee is a function, validates argument count
+// (accounting for optional/default params), and verifies each argument type.
+// Returns the function's declared return type.
 func (c *checker) inferCall(e *syntax.CallExpr) (*Type, error) {
 	calleeType, err := c.inferExpr(e.Callee)
 	if err != nil {
@@ -244,15 +253,15 @@ func (c *checker) inferCall(e *syntax.CallExpr) (*Type, error) {
 	if calleeType.Kind != KindFunc {
 		return nil, newTypeError(e.Pos, "cannot call non-function of type %s", calleeType)
 	}
-	// REVIEW-SKIP: default-parameter values are deferred (ROADMAP Phase 4).
-	// When implemented, FuncType should grow a MinParams field and this check
-	// should become: MinParams <= len(args) <= len(Params). Until then, strict
-	// arity is correct — the parser accepts `b int = 0` but codegen doesn't
-	// honor defaults, so accepting a short call would produce wrong runtime.
-	if len(e.Args) != len(calleeType.Params) {
+	if len(e.Args) < calleeType.MinParams || len(e.Args) > len(calleeType.Params) {
+		if calleeType.MinParams == len(calleeType.Params) {
+			return nil, newTypeError(e.Pos,
+				"wrong number of arguments: expected %d, got %d",
+				len(calleeType.Params), len(e.Args))
+		}
 		return nil, newTypeError(e.Pos,
-			"wrong number of arguments: expected %d, got %d",
-			len(calleeType.Params), len(e.Args))
+			"wrong number of arguments: expected %d to %d, got %d",
+			calleeType.MinParams, len(calleeType.Params), len(e.Args))
 	}
 	for i, a := range e.Args {
 		at, err := c.inferExpr(a)
@@ -265,9 +274,22 @@ func (c *checker) inferCall(e *syntax.CallExpr) (*Type, error) {
 				i+1, at, calleeType.Params[i])
 		}
 	}
+	// fill(n, value) → T[] where T is the type of value.
+	// The declaration says (int, any) → any[]; refine to T[] here.
+	// Pass: fill(5, true) → bool[]. fill(3, 0) → int[].
+	if ident, ok := e.Callee.(*syntax.IdentExpr); ok && ident.Name == "fill" && len(e.Args) == 2 {
+		valType, err := c.inferExpr(e.Args[1])
+		if err == nil && valType.Kind != KindAny {
+			return ArrayOf(valType), nil
+		}
+	}
+
 	return calleeType.Return, nil
 }
 
+// inferIndex infers the type of `expr[index]`. For typed arrays (non-Any element),
+// returns the element type directly (OOB panics). For untyped arrays and strings,
+// returns T? (graceful OOB returns none).
 func (c *checker) inferIndex(e *syntax.IndexExpr) (*Type, error) {
 	objType, err := c.inferExpr(e.Object)
 	if err != nil {
@@ -282,7 +304,13 @@ func (c *checker) inferIndex(e *syntax.IndexExpr) (*Type, error) {
 	}
 	switch objType.Kind {
 	case KindArray:
-		// Graceful on reads: element or none.
+		// Typed arrays (element is a concrete type, not Any) use strict
+		// OOB semantics (panic), so the result is always the element type.
+		// Untyped arrays (element is Any) use graceful OOB (returns none),
+		// so the result is T?.
+		if objType.Elem != nil && objType.Elem.Kind != KindAny {
+			return objType.Elem, nil
+		}
 		return OptionalOf(objType.Elem), nil
 	case KindStr:
 		return OptionalOf(Str), nil
@@ -292,6 +320,9 @@ func (c *checker) inferIndex(e *syntax.IndexExpr) (*Type, error) {
 	return nil, newTypeError(e.Pos, "cannot index %s", objType)
 }
 
+// inferProperty infers the type of `expr.field`. For named records, an unknown
+// field is a compile error. For anonymous (untyped) records, returns none (spec:
+// graceful on reads). For Any, returns Any.
 func (c *checker) inferProperty(e *syntax.PropertyExpr) (*Type, error) {
 	objType, err := c.inferExpr(e.Object)
 	if err != nil {
@@ -318,6 +349,9 @@ func (c *checker) inferProperty(e *syntax.PropertyExpr) (*Type, error) {
 		"cannot access property '%s' on %s", e.Property, objType)
 }
 
+// inferArray infers the element type from the literal. Mixed int/float elements
+// are widened to float[]. Heterogeneous elements (e.g. int and string) are a
+// type error — Monk arrays are homogeneous.
 func (c *checker) inferArray(e *syntax.ArrayExpr) (*Type, error) {
 	if len(e.Elements) == 0 {
 		// Empty array — element type unknown, will be inferred from context
@@ -350,6 +384,8 @@ func (c *checker) inferArray(e *syntax.ArrayExpr) (*Type, error) {
 	return ArrayOf(elemType), nil
 }
 
+// inferRecord builds a structural record type from the literal's fields.
+// Duplicate keys in the same literal are a compile error.
 func (c *checker) inferRecord(e *syntax.RecordExpr) (*Type, error) {
 	fields := make([]RecordTypeField, len(e.Fields))
 	seen := make(map[string]bool, len(e.Fields))
@@ -367,6 +403,9 @@ func (c *checker) inferRecord(e *syntax.RecordExpr) (*Type, error) {
 	return &Type{Kind: KindRecord, Fields: fields}, nil
 }
 
+// inferFunc extracts the function signature, checks the body in a new scope
+// with params bound, and runs the all-paths-return check for typed returns.
+// The signature is recorded in c.info.Funcs for codegen's unboxing decision.
 func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 	sig, err := c.funcSignature(fn)
 	if err != nil {
@@ -404,14 +443,17 @@ func (c *checker) inferFunc(fn *syntax.FuncExpr) (*Type, error) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
+// isNumericOrAny reports whether t is int, float, or any (for arithmetic checks).
 func isNumericOrAny(t *Type) bool {
 	return t.Kind == KindInt || t.Kind == KindFloat || t.Kind == KindAny
 }
 
+// isNonComparable reports whether t cannot participate in == (arrays, records, functions).
 func isNonComparable(t *Type) bool {
 	return t.Kind == KindArray || t.Kind == KindRecord || t.Kind == KindFunc
 }
 
+// isIntOrAny reports whether t is int or any (for bitwise-operator checks).
 func isIntOrAny(t *Type) bool {
 	return t.Kind == KindInt || t.Kind == KindAny
 }

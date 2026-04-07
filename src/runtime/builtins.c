@@ -16,7 +16,7 @@ MonkValue monk_typeof(MonkValue v)      { return monk_string(monk_type_name(v));
 MonkValue monk_is_number(MonkValue v)   { return monk_bool(v.kind == MONK_INT || v.kind == MONK_FLOAT); }
 MonkValue monk_is_string(MonkValue v)   { return monk_bool(v.kind == MONK_STRING); }
 MonkValue monk_is_boolean(MonkValue v)  { return monk_bool(v.kind == MONK_BOOL); }
-MonkValue monk_is_array(MonkValue v)    { return monk_bool(v.kind == MONK_ARRAY); }
+MonkValue monk_is_array(MonkValue v)    { return monk_bool(v.kind == MONK_ARRAY || v.kind == MONK_INT_ARRAY || v.kind == MONK_FLOAT_ARRAY || v.kind == MONK_BOOL_ARRAY); }
 MonkValue monk_is_record(MonkValue v)   { return monk_bool(v.kind == MONK_RECORD); }
 MonkValue monk_is_function(MonkValue v) { return monk_bool(v.kind == MONK_FUNCTION); }
 MonkValue monk_is_none(MonkValue v)     { return monk_bool(v.kind == MONK_NONE); }

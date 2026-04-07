@@ -22,6 +22,10 @@ Results are written to `bench/results/{timestamp}-results.md`. Raw hyperfine JSO
 | `leibniz` | 50M iter | Float arithmetic + loop + conditional |
 | `trial_primes` | n < 200,000 | Nested int loops with `break` |
 | `matmul` | 400×400 naive int matmul | Array index hot path |
+| `sieve` | Primes up to 1M | Array alloc + index-write in nested loops |
+| `ackermann` | A(3, 11) | Deep recursion stress test |
+| `collatz` | Longest chain, n ≤ 1M | While-loop + conditional branching |
+| `binary_trees` | Depth 14, pool-based | Array allocation + iteration stress test |
 
 Each benchmark:
 - Prints a single integer checksum (avoids float-formatting mismatches across languages)
@@ -41,6 +45,10 @@ Monk compiles to C, which is then compiled with `cc -O3 -flto` — so Monk inher
 - **leibniz — 1.0× C.** π approximation via float arithmetic.
 - **trial_primes — 1.0× C.** Nested int loops with `break`, counts primes.
 - **matmul — ~12× C.** Hot array indexing. Arrays are still tagged `MonkValue*`. Typed-array unboxing is the next performance frontier.
+- **sieve — array-heavy.** Allocates 1M-element array, writes in nested loops. Measures tagged-array index-write overhead.
+- **ackermann — deep recursion.** A(3,11) = 16381 via millions of recursive calls. Pure function-call overhead.
+- **collatz — while-loop branching.** Longest Collatz chain for n ≤ 1M. Int arithmetic + conditionals in a tight loop.
+- **binary_trees — allocation stress.** Pool-based binary tree build + walk at depth 14. Array alloc, index write/read, iteration.
 
 **The honest story:** Monk matches C on every benchmark that doesn't use arrays. For array-heavy numerics today, write it in C and FFI-call it (Phase 8), or wait for typed-array unboxing.
 

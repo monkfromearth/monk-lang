@@ -64,6 +64,9 @@ func (s *Scanner) next() Token {
 	return s.scanOperator(line, col)
 }
 
+// scanString consumes a double-quoted string literal (handling backslash escapes)
+// and returns a StringLiteral token. The quotes are stripped; the escape
+// character itself is preserved — the runtime interprets escape sequences.
 func (s *Scanner) scanString(line, col int) Token {
 	s.advance() // skip opening "
 	start := s.pos
@@ -80,6 +83,9 @@ func (s *Scanner) scanString(line, col int) Token {
 	return Token{Kind: StringLiteral, Text: text, Line: line, Column: col}
 }
 
+// scanTemplate consumes a backtick-delimited template literal and returns a
+// TemplateLiteral token. Template literals are currently treated as plain
+// strings (no interpolation); the backticks are stripped.
 func (s *Scanner) scanTemplate(line, col int) Token {
 	s.advance() // skip opening `
 	start := s.pos
@@ -93,6 +99,9 @@ func (s *Scanner) scanTemplate(line, col int) Token {
 	return Token{Kind: TemplateLiteral, Text: text, Line: line, Column: col}
 }
 
+// scanNumber consumes an integer or float literal and returns the appropriate
+// token kind. Handles decimal, hex (0x), binary (0b), octal (0o), decimal
+// point, exponent notation, and numeric underscore separators (1_000_000).
 func (s *Scanner) scanNumber(line, col int) Token {
 	start := s.pos
 	kind := IntLiteral
@@ -138,6 +147,8 @@ func (s *Scanner) scanNumber(line, col int) Token {
 	return Token{Kind: kind, Text: string(s.source[start:s.pos]), Line: line, Column: col}
 }
 
+// scanIdentifier consumes an identifier or keyword. LookupIdent decides
+// whether the text maps to a reserved keyword or an Identifier token.
 func (s *Scanner) scanIdentifier(line, col int) Token {
 	start := s.pos
 	for !s.atEnd() && isAlphaNumeric(s.current()) {
@@ -148,6 +159,9 @@ func (s *Scanner) scanIdentifier(line, col int) Token {
 	return Token{Kind: kind, Text: text, Line: line, Column: col}
 }
 
+// scanOperator consumes one or two character operators and delimiters.
+// Two-character forms are checked before single-character fallbacks so that
+// `==` is never mis-tokenized as two separate `=` tokens.
 func (s *Scanner) scanOperator(line, col int) Token {
 	ch := s.current()
 	s.advance()
@@ -257,9 +271,13 @@ func (s *Scanner) scanOperator(line, col int) Token {
 
 // --- helpers ---
 
+// current returns the byte at the current scan position. Must not be called when atEnd.
 func (s *Scanner) current() byte { return s.source[s.pos] }
-func (s *Scanner) atEnd() bool   { return s.pos >= len(s.source) }
 
+// atEnd reports whether the scanner has consumed the entire source.
+func (s *Scanner) atEnd() bool { return s.pos >= len(s.source) }
+
+// advance moves the position forward by one byte, tracking line/column for error reporting.
 func (s *Scanner) advance() {
 	if s.pos < len(s.source) {
 		if s.source[s.pos] == '\n' {
@@ -272,6 +290,7 @@ func (s *Scanner) advance() {
 	}
 }
 
+// skipWhitespace skips spaces, tabs, newlines, and single-line `//` comments.
 func (s *Scanner) skipWhitespace() {
 	for !s.atEnd() {
 		ch := s.current()
@@ -290,6 +309,7 @@ func (s *Scanner) skipWhitespace() {
 	}
 }
 
+// Character classification helpers used during scanning.
 func isDigit(c byte) bool        { return c >= '0' && c <= '9' }
 func isHexDigit(c byte) bool     { return isDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') }
 func isAlpha(c byte) bool        { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' }

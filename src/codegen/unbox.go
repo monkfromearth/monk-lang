@@ -1,33 +1,33 @@
-// Package codegen — scalar unboxing.
+// Package codegen — scalar and typed-array unboxing.
 //
 // The codegen in codegen.go emits MonkValue everywhere: every variable, every
 // operation, every array slot. That's the correct-first path. This file adds
-// an OPTIONAL fast path that emits raw C scalars (int64_t, double, bool) when
-// the type checker can prove a variable only ever holds a scalar of a known
-// kind.
+// OPTIONAL fast paths that emit raw C types when the type checker can prove a
+// variable's kind at compile time.
 //
 // Storage decision (per variable):
 //   - Static type int       → int64_t  storage
 //   - Static type float     → double   storage
 //   - Static type boolean   → bool     storage
+//   - Static type int[]     → MonkValue storage, BUT element accesses inline
+//   - Static type float[]   → MonkValue storage, BUT element accesses inline
+//   - Static type bool[]    → MonkValue storage, BUT element accesses inline
 //   - Anything else         → MonkValue storage
 //
-// When a raw scalar is used in a slot that expects a MonkValue (function
-// call argument, array element, record field, being stored back into a
-// MonkValue variable), the codegen boxes it: monk_int(x), monk_float(x),
-// monk_bool(x). The reverse — unboxing from MonkValue — happens when a
-// MonkValue expression is assigned to a raw-scalar slot; the codegen emits
-// x.int_val, x.float_val, x.bool_val.
+// Scalar variables (storeInt/Float/Bool): the C variable IS the raw value.
+// Boxing/unboxing wraps/unwraps at MonkValue call boundaries.
 //
-// The simplification: we only unbox VARIABLES, not arbitrary expressions.
-// An expression like `arr[0] + 1` still goes through the runtime path unless
-// both operands are scalar vars. This keeps the surface area tight and avoids
-// boxing/unboxing on every intermediate — the C compiler's inliner handles
-// the rest.
+// Typed-array variables (storeIntArray etc.): the C variable is still
+// MonkValue (a pointer to the runtime MonkArray), so boxing is free at
+// function call boundaries. But element reads/writes inline directly as
+// arr.array_val->data[i].int_val instead of calling monk_array_get/set.
+// Out-of-bounds access panics (strict) rather than returning none (graceful),
+// consistent with the spec's "operating on invalid data = error" rule.
 package codegen
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/monkfromearth/monk-lang/syntax"
 	"github.com/monkfromearth/monk-lang/types"
@@ -38,10 +38,13 @@ import (
 type storageKind int
 
 const (
-	storeBoxed storageKind = iota // MonkValue
-	storeInt                      // int64_t
-	storeFloat                    // double
-	storeBool                     // bool
+	storeBoxed      storageKind = iota // MonkValue (generic fallback)
+	storeInt                           // int64_t
+	storeFloat                         // double
+	storeBool                          // bool
+	storeIntArray                      // MonkValue (int[]) — element accesses inlined as int64_t
+	storeFloatArray                    // MonkValue (float[]) — element accesses inlined as double
+	storeBoolArray                     // MonkValue (bool[]) — element accesses inlined as bool
 )
 
 func (s storageKind) String() string {
@@ -54,13 +57,105 @@ func (s storageKind) String() string {
 		return "double"
 	case storeBool:
 		return "bool"
+	case storeIntArray, storeFloatArray, storeBoolArray:
+		// Typed arrays are still MonkValue at the C level; only element
+		// accesses are inlined. The kind tag tells codegen HOW to access them.
+		return "MonkValue"
 	}
 	return "?"
 }
 
-// storageFor picks the storage kind for a given static Monk type. Optional
-// types, arrays, records, and unknown types stay boxed — only the three
-// unconditional scalars qualify for unboxing.
+// isRawScalar reports whether s is a pure C scalar (int64_t / double / bool)
+// with no MonkValue wrapper. Used to gate the All-scalar fast path in
+// function signatures — arrays are MonkValue even when typed.
+func isRawScalar(s storageKind) bool {
+	return s == storeInt || s == storeFloat || s == storeBool
+}
+
+// isArrayStorage reports whether s is one of the typed-array storage kinds.
+func isArrayStorage(s storageKind) bool {
+	return s == storeIntArray || s == storeFloatArray || s == storeBoolArray
+}
+
+// elemStorageFor returns the element's storage kind for a typed-array storage.
+// Returns storeBoxed for non-array or untyped storage (caller should fall back).
+func elemStorageFor(s storageKind) storageKind {
+	switch s {
+	case storeIntArray:
+		return storeInt
+	case storeFloatArray:
+		return storeFloat
+	case storeBoolArray:
+		return storeBool
+	}
+	return storeBoxed
+}
+
+// arrayConvFunc returns the C runtime function name that converts or deep-copies
+// a value into the given typed-array kind (e.g. storeIntArray → "monk_int_array_from").
+func arrayConvFunc(s storageKind) string {
+	switch s {
+	case storeIntArray:
+		return "monk_int_array_from"
+	case storeFloatArray:
+		return "monk_float_array_from"
+	case storeBoolArray:
+		return "monk_bool_array_from"
+	}
+	return "monk_deep_copy"
+}
+
+// arrayPtrField returns the MonkValue union field name for a typed-array storage
+// kind. Used in the backing-store path: arr.{field}->data[i].
+func arrayPtrField(s storageKind) string {
+	switch s {
+	case storeIntArray:
+		return "int_array_val"
+	case storeFloatArray:
+		return "float_array_val"
+	case storeBoolArray:
+		return "bool_array_val"
+	}
+	return "array_val"
+}
+
+// elemZero returns the C zero literal for a typed-array element kind.
+func elemZero(s storageKind) string {
+	switch s {
+	case storeInt:
+		return "(int64_t)0"
+	case storeFloat:
+		return "(double)0.0"
+	case storeBool:
+		return "false"
+	}
+	return "monk_none()"
+}
+
+// recordField looks up a field in a typed record and returns its index (into
+// the runtime fields[] array) and the corresponding storageKind for the field
+// value. Returns (-1, storeBoxed) when the type is unknown, not a record, or
+// the field name is not present.
+//
+// The index is ONLY valid if record literals for this type are emitted with
+// fields in type-declaration order (enforced by emitExpr's RecordExpr branch).
+func recordField(t *types.Type, name string) (int, storageKind) {
+	if t == nil || t.Kind != types.KindRecord {
+		return -1, storeBoxed
+	}
+	for i, f := range t.Fields {
+		if f.Name == name {
+			return i, storageFor(f.Type)
+		}
+	}
+	return -1, storeBoxed
+}
+
+// storageFor picks the storage kind for a given static Monk type.
+//   - Non-optional int/float/bool → raw scalar storage
+//   - Non-optional int[]/float[]/bool[] → typed-array storage (MonkValue
+//     container, but element accesses are inlined)
+//   - Optional types, records, functions, untyped arrays → storeBoxed
 func storageFor(t *types.Type) storageKind {
 	if t == nil || t.Optional {
 		return storeBoxed
@@ -72,6 +167,18 @@ func storageFor(t *types.Type) storageKind {
 		return storeFloat
 	case types.KindBool:
 		return storeBool
+	case types.KindArray:
+		// Only unbox element access for homogeneous scalar arrays.
+		if t.Elem != nil && !t.Elem.Optional {
+			switch t.Elem.Kind {
+			case types.KindInt:
+				return storeIntArray
+			case types.KindFloat:
+				return storeFloatArray
+			case types.KindBool:
+				return storeBoolArray
+			}
+		}
 	}
 	return storeBoxed
 }
@@ -116,16 +223,23 @@ func coerce(code string, src, dst storageKind) string {
 	if src == dst {
 		return code
 	}
+	// Typed-array kinds and storeBoxed both live in MonkValue — no-op.
+	srcIsMonkValue := src == storeBoxed || isArrayStorage(src)
+	dstIsMonkValue := dst == storeBoxed || isArrayStorage(dst)
+	if srcIsMonkValue && dstIsMonkValue {
+		return code
+	}
 	// Widen int → float (valid per spec).
 	if src == storeInt && dst == storeFloat {
 		return "(double)(" + code + ")"
 	}
 	// Box any raw scalar into MonkValue.
-	if dst == storeBoxed {
+	if dstIsMonkValue {
 		return boxExpr(code, src)
 	}
-	// Unbox MonkValue into a raw scalar.
-	if src == storeBoxed {
+	// Unbox MonkValue into a raw scalar — only valid if src could actually
+	// hold the scalar type. Array storage kinds can't be unboxed to scalars.
+	if srcIsMonkValue && !isArrayStorage(src) {
 		return unboxExpr(code, dst)
 	}
 	// Anything else (narrowing float→int, etc.) is a type-checker bug.
@@ -160,11 +274,12 @@ func (g *generator) emitExprTyped(expr syntax.Expr) (string, storageKind) {
 
 	switch e := expr.(type) {
 	case *syntax.NumberExpr:
-		// Raw numeric literals stay raw.
+		// Raw numeric literals stay raw. Strip underscores for C.
+		lit := strings.ReplaceAll(e.Value, "_", "")
 		if e.IsInt {
-			return e.Value, storeInt
+			return lit, storeInt
 		}
-		return e.Value, storeFloat
+		return lit, storeFloat
 	case *syntax.BoolExpr:
 		if e.Value {
 			return "true", storeBool
@@ -180,10 +295,107 @@ func (g *generator) emitExprTyped(expr syntax.Expr) (string, storageKind) {
 		return g.emitUnaryTyped(e)
 	case *syntax.CallExpr:
 		return g.emitCallTyped(e)
+	case *syntax.IndexExpr:
+		return g.emitIndexTyped(e)
+	case *syntax.PropertyExpr:
+		return g.emitPropertyTyped(e)
 	}
 
 	// Fall through — any other expression goes through the classic boxed path.
 	return g.emitExpr(expr), storeBoxed
+}
+
+// emitIndexTyped handles arr[i] when arr is a typed array (storeIntArray etc.).
+// Emits a bounds-checked inline element read returning a raw scalar, using the
+// typed backing-store path: arr.int_array_val->data[i] — a direct pointer
+// dereference with no MonkValue union overhead.
+// Out-of-bounds panics (strict), consistent with "operating on invalid data = error".
+//
+// Falls back to the classic boxed path when the object's storage is unknown.
+func (g *generator) emitIndexTyped(e *syntax.IndexExpr) (string, storageKind) {
+	objCode, objKind := g.emitExprTyped(e.Object)
+	elemSt := elemStorageFor(objKind)
+	if elemSt == storeBoxed {
+		return g.emitExpr(e), storeBoxed
+	}
+
+	ptrField := arrayPtrField(objKind)
+	zero := elemZero(elemSt)
+	idxCode, idxKind := g.emitExprTyped(e.Index)
+	idxC := coerce(idxCode, idxKind, storeInt)
+
+	// Simple ident: use directly — no temp needed for the object.
+	if arrIdent, isIdent := e.Object.(*syntax.IdentExpr); isIdent {
+		// Bounds-check elision: if we can statically prove 0 <= idx < length,
+		// skip the runtime check and emit a direct data[] access.
+		// The index is guaranteed to be a pure arithmetic expression (loop
+		// counters + constants) by isBoundedSafe's range analysis, so we can
+		// inline it directly — no statement-expression wrapper, no temp.
+		// This lets the compiler hoist, CSE, and vectorize freely.
+		if g.constVals != nil && g.isBoundedSafe(arrIdent, e.Index) {
+			return fmt.Sprintf("%s.%s->data[%s]", objCode, ptrField, idxC), elemSt
+		}
+		tidx := g.newTemp()
+		return fmt.Sprintf(
+			"({int64_t %s=%s; (%s<0||%s>=%s.%s->length)?(monk_panic(\"index out of bounds\"),%s):%s.%s->data[%s];})",
+			tidx, idxC, tidx, tidx, objCode, ptrField, zero, objCode, ptrField, tidx,
+		), elemSt
+	}
+	// Complex expression: stash in a MonkValue temp to avoid double evaluation.
+	tobj := g.newTemp()
+	tidx := g.newTemp()
+	return fmt.Sprintf(
+		"({MonkValue %s=%s; int64_t %s=%s; (%s<0||%s>=%s.%s->length)?(monk_panic(\"index out of bounds\"),%s):%s.%s->data[%s];})",
+		tobj, objCode, tidx, idxC, tidx, tidx, tobj, ptrField, zero, tobj, ptrField, tidx,
+	), elemSt
+}
+
+// emitPropertyTyped handles record.field access when the object's type is
+// statically known. For scalar fields (int/float/bool) it extracts the raw C
+// value directly from the fields array by index, avoiding the runtime
+// monk_record_get strcmp loop entirely. For boxed fields it returns the
+// MonkValue via the same index path but with a deep copy (storeBoxed).
+//
+// Falls back to the classic boxed path when type info is unavailable.
+func (g *generator) emitPropertyTyped(e *syntax.PropertyExpr) (string, storageKind) {
+	objType, ok := g.info.Types[e.Object]
+	if !ok || objType == nil {
+		return g.emitExpr(e), storeBoxed
+	}
+	idx, fieldSt := recordField(objType, e.Property)
+	if idx < 0 {
+		return g.emitExpr(e), storeBoxed
+	}
+
+	// Simple ident object: access directly, no temp.
+	if _, isIdent := e.Object.(*syntax.IdentExpr); isIdent {
+		obj := g.emitExpr(e.Object)
+		fieldVal := fmt.Sprintf("%s.record_val->fields[%d].value", obj, idx)
+		switch fieldSt {
+		case storeInt:
+			return fieldVal + ".int_val", storeInt
+		case storeFloat:
+			return fieldVal + ".float_val", storeFloat
+		case storeBool:
+			return fieldVal + ".bool_val", storeBool
+		}
+		// Boxed field: deep copy so caller can free/store safely.
+		return fmt.Sprintf("monk_deep_copy(%s)", fieldVal), storeBoxed
+	}
+
+	// Complex object: stash in a temp to avoid double evaluation.
+	obj := g.emitExpr(e.Object)
+	tobj := g.newTemp()
+	fieldVal := fmt.Sprintf("%s.record_val->fields[%d].value", tobj, idx)
+	switch fieldSt {
+	case storeInt:
+		return fmt.Sprintf("({MonkValue %s=%s; %s.int_val;})", tobj, obj, fieldVal), storeInt
+	case storeFloat:
+		return fmt.Sprintf("({MonkValue %s=%s; %s.float_val;})", tobj, obj, fieldVal), storeFloat
+	case storeBool:
+		return fmt.Sprintf("({MonkValue %s=%s; %s.bool_val;})", tobj, obj, fieldVal), storeBool
+	}
+	return fmt.Sprintf("({MonkValue %s=%s; monk_deep_copy(%s);})", tobj, obj, fieldVal), storeBoxed
 }
 
 // emitCallTyped handles calls where the callee is a fully-unboxed user
@@ -232,7 +444,10 @@ func (g *generator) emitCallTyped(e *syntax.CallExpr) (string, storageKind) {
 	if !ok || !fs.All {
 		return g.emitExpr(e), storeBoxed
 	}
-	return g.emitUnboxedCall(cName, fs, e.Args), fs.Return
+	// Pad defaults before emitting — emitCall does the same; without this,
+	// calls with omitted trailing args generate a C call with too few arguments.
+	fullArgs := g.padDefaults(cName, e.Args)
+	return g.emitUnboxedCall(cName, fs, fullArgs), fs.Return
 }
 
 // emitBinaryTyped emits a binary expression, preserving raw storage when
@@ -249,8 +464,11 @@ func (g *generator) emitCallTyped(e *syntax.CallExpr) (string, storageKind) {
 func (g *generator) emitBinaryTyped(e *syntax.BinaryExpr) (string, storageKind) {
 	lcode, ls := g.emitExprTyped(e.Left)
 	rcode, rs := g.emitExprTyped(e.Right)
-	// If either side is boxed, bail to the classic path.
-	if ls == storeBoxed || rs == storeBoxed {
+	// Bail unless BOTH sides are raw scalars (int64_t / double / bool).
+	// Typed-array storage kinds (storeIntArray etc.) are MonkValue structs —
+	// emitting C arithmetic on them would produce nonsensical code.
+	// Pass: `i + j` (both storeInt). Fail: `arr + arr` (storeIntArray).
+	if !isRawScalar(ls) || !isRawScalar(rs) {
 		return g.emitExpr(e), storeBoxed
 	}
 
@@ -338,4 +556,3 @@ func (g *generator) emitUnaryTyped(e *syntax.UnaryExpr) (string, storageKind) {
 	}
 	return g.emitExpr(e), storeBoxed
 }
-

@@ -120,11 +120,20 @@ let first int? = arr[0]
 let second int? = first`)
 }
 
-func TestCheckIndexReadIsOptional(t *testing.T) {
-	// Array index always returns T? (graceful read — may be none).
-	// Assigning it to a non-optional slot must be rejected.
-	expectErr(t, `let xs = [1, 2, 3]
-let first int = xs[0]`, "cannot assign")
+func TestCheckTypedArrayIndexReturnsElem(t *testing.T) {
+	// Typed array (known element type) index returns T, not T?.
+	// OOB panics at runtime (strict), so the result is always the element type.
+	expectOk(t, `let xs = [1, 2, 3]
+let first int = xs[0]`)
+}
+
+func TestCheckTypedArrayIndexAssignable(t *testing.T) {
+	// Typed array element reads can be used in arithmetic and assignments
+	// without workarounds — no more `+ 0` to unwrap int?.
+	expectOk(t, `let arr = [10, 20, 30]
+let x int = arr[0]
+let y = arr[1] + arr[2]
+let z int = y`)
 }
 
 // ─── Const ─────────────────────────────────────────────────────────────────
@@ -777,4 +786,57 @@ show(to_string(nums))
 show(to_string(length(nums)))
 let doubled = append(nums, 6)
 show(to_string(doubled))`)
+}
+
+// ─── abs/min/max are type-preserving ──────────────────────────────────────
+
+func TestCheckAbsInIntFunction(t *testing.T) {
+	// abs() on int input should be assignable to int (not forced to float).
+	expectOk(t, `let f = (a int, b int) int {
+    return abs(a * b)
+}
+show(to_string(f(3, -7)))`)
+}
+
+func TestCheckAbsFloatStillWorks(t *testing.T) {
+	expectOk(t, `let x float = abs(-3.14)
+show(to_string(x))`)
+}
+
+// ─── Default parameter values ─────────────────────────────────────────────
+
+func TestCheckDefaultParamOmitted(t *testing.T) {
+	expectOk(t, `let greet = (name string, greeting string = "Hello") string {
+    return greeting + ", " + name
+}
+show(greet("Alice"))`)
+}
+
+func TestCheckDefaultParamProvided(t *testing.T) {
+	expectOk(t, `let greet = (name string, greeting string = "Hello") string {
+    return greeting + ", " + name
+}
+show(greet("Alice", "Hey"))`)
+}
+
+func TestCheckDefaultParamTooFewArgs(t *testing.T) {
+	expectErr(t, `let greet = (name string, greeting string = "Hello") string {
+    return greeting + ", " + name
+}
+show(greet())`, "wrong number of arguments")
+}
+
+func TestCheckDefaultParamTooManyArgs(t *testing.T) {
+	expectErr(t, `let greet = (name string, greeting string = "Hello") string {
+    return greeting + ", " + name
+}
+show(greet("a", "b", "c"))`, "wrong number of arguments")
+}
+
+func TestCheckDefaultParamTypeMismatch(t *testing.T) {
+	expectErr(t, `let f = (x int, y int = "oops") int { return x + y }`, "default value")
+}
+
+func TestCheckDefaultAfterRequired(t *testing.T) {
+	expectErr(t, `let f = (x int = 0, y int) int { return x + y }`, "cannot follow")
 }

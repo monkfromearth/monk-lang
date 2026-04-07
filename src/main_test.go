@@ -397,10 +397,18 @@ func TestRunExampleFizzBuzz(t *testing.T) {
 	if len(lines) != 20 {
 		t.Fatalf("expected 20 lines, got %d", len(lines))
 	}
-	if lines[0] != "1" { t.Errorf("line 1: expected '1', got %q", lines[0]) }
-	if lines[2] != "Fizz" { t.Errorf("line 3: expected 'Fizz', got %q", lines[2]) }
-	if lines[4] != "Buzz" { t.Errorf("line 5: expected 'Buzz', got %q", lines[4]) }
-	if lines[14] != "FizzBuzz" { t.Errorf("line 15: expected 'FizzBuzz', got %q", lines[14]) }
+	if lines[0] != "1" {
+		t.Errorf("line 1: expected '1', got %q", lines[0])
+	}
+	if lines[2] != "Fizz" {
+		t.Errorf("line 3: expected 'Fizz', got %q", lines[2])
+	}
+	if lines[4] != "Buzz" {
+		t.Errorf("line 5: expected 'Buzz', got %q", lines[4])
+	}
+	if lines[14] != "FizzBuzz" {
+		t.Errorf("line 15: expected 'FizzBuzz', got %q", lines[14])
+	}
 }
 
 func TestRunExampleErrorHandling(t *testing.T) {

@@ -3,7 +3,7 @@
  * Small colored tag pill.
  */
 interface Props {
-  variant: 'concepts' | 'zig' | 'go' | 'monk' | 'exercise' | 'build' | 'links' | 'c' | 'default';
+  variant: 'concepts' | 'zig' | 'go' | 'monk' | 'exercise' | 'build' | 'links' | 'c' | 'types' | 'default';
 }
 
 const { variant = 'default' } = Astro.props;
@@ -17,6 +17,7 @@ const variantClasses: Record<string, string> = {
   build: 'text-monk-green bg-monk-greenLight',
   links: 'text-monk-muted bg-stone-100',
   c: 'text-monk-amber bg-monk-amberLight',
+  types: 'text-sky-600 bg-sky-50',
   default: 'text-monk-muted bg-stone-100',
 };
 ---

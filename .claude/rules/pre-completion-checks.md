@@ -50,37 +50,54 @@ cache with `go clean -testcache` first.
 
 ### 5. C runtime tests
 ```bash
-cd src/runtime
-cc -std=c11 value.c arith.c string.c container.c math.c builtins.c error.c \
-    runtime_test.c -lm -o /tmp/rt_test
-/tmp/rt_test           # expect: "151/151 tests passed"
+RT_SRCS=$(ls src/runtime/*.c | xargs)
+cc -std=c11 $RT_SRCS -lm -o /tmp/rt_test
+/tmp/rt_test           # expect: "N/N tests passed"
 rm /tmp/rt_test
 ```
-If the runtime file list changes, update this command AND the three sync
-points: `src/embed.go`, `runtimeSources`+`embeddedRuntimeFiles` in
-`src/main.go`, `runtimeTestSources` in `src/codegen/codegen_test.go`.
+All `.c` files are compiled together — `runtime_test.c` provides `main()`,
+the rest are the library. The file list is discovered via glob. When you
+add a runtime `.c` file, it is automatically picked up here — but you
+still must update the three sync points:
+`src/embed.go`, `runtimeSources`+`embeddedRuntimeFiles` in `src/main.go`,
+`runtimeTestSources` in `src/codegen/codegen_test.go`.
 
 ### 6. All examples
 ```bash
+PASS=0; FAIL=0
 for f in examples/*.monk; do
-  ./monk run "$f" > /tmp/monk_out 2>&1 && echo "ok  $f" || echo "FAIL $f"
+  ./monk run "$f" > /tmp/monk_out 2>&1 \
+    && { echo "ok  $f"; PASS=$((PASS+1)); } \
+    || { echo "FAIL $f"; cat /tmp/monk_out; FAIL=$((FAIL+1)); }
 done
+echo "$PASS/$(ls examples/*.monk | wc -l | tr -d ' ') passed, $FAIL failed"
 ```
-All 13 must print `ok`.
+All examples must pass. The count is discovered from the directory.
 
 ### 7. Benchmark smoke test
 ```bash
-for b in fibonacci mandelbrot trial_primes leibniz matmul; do
-  ./monk run bench/benchmarks/$b/$b.monk
+PASS=0; FAIL=0
+for dir in bench/benchmarks/*/; do
+  name=$(basename "$dir")
+  monk_file="$dir$name.monk"
+  expected_file="${dir}expected.txt"
+  [ -f "$monk_file" ] || continue
+  expected=$(cat "$expected_file" 2>/dev/null | tr -d '[:space:]')
+  got=$(./monk run "$monk_file" 2>&1 | tr -d '[:space:]')
+  if [ "$got" = "$expected" ]; then
+    echo "ok  $name"
+    PASS=$((PASS+1))
+  else
+    echo "FAIL $name — got '$got', expected '$expected'"
+    FAIL=$((FAIL+1))
+  fi
 done
+TOTAL=$((PASS+FAIL))
+echo "$PASS/$TOTAL matched expected"
 ```
-Each prints a single integer. Compare with `expected.txt` in that
-benchmark's directory:
-- fibonacci: 9227465
-- mandelbrot: 169799
-- trial_primes: 17984
-- leibniz: 31415926
-- matmul: 21333200
+Each benchmark directory under `bench/benchmarks/` must have an
+`expected.txt` containing the expected output. New benchmarks are
+discovered automatically — just add the directory and `expected.txt`.
 
 ### 8. CodeRabbit review of uncommitted changes
 ```bash
@@ -91,6 +108,10 @@ Apply the `.claude/rules/code-review-workflow.md` protocol to every
 finding: build the verdict table (ACT / SKIP / DISCUSS), present it,
 then implement the ACT items. Add regression tests for every ACT item
 that fixes a real bug.
+
+**If the CLI hangs** (large diffs — >20 files — cause the service to time out
+after several minutes): kill it and use the `coderabbit:code-reviewer` Agent
+instead. Pass the full diff context and the same review protocol applies.
 
 ### 9. Update `INDEX.md` for every touched directory
 If files were added, moved, deleted, or had their public surface
@@ -110,14 +131,24 @@ Checks:
   golangci-lint    0 issues
   govulncheck      clean
   go test ./...    all packages ok
-  C runtime        151/151
-  examples         13/13
-  benchmarks       5/5 matched expected
+  C runtime        N/N
+  examples         N/N
+  benchmarks       N/N matched expected
   coderabbit       N findings → M ACT (fixed) / S SKIP / D DISCUSS
 ```
 
-If any step fails, say so explicitly before declaring done. Never
-silently drop failures.
+The N counts come from running the commands above — never hardcode them.
+
+## Adding New Runtime Files
+
+Runtime `.c` files are auto-discovered — no manual sync required:
+- `src/embed.go` embeds the entire `runtime/` directory via `//go:embed runtime`
+- `src/main.go`'s `runtimeSources()` uses `embeddedRuntime.ReadDir("runtime")` to list files
+- `src/codegen/codegen_test.go` uses `os.ReadDir` for the same
+- Step 5's glob test also auto-picks up new files
+
+When adding a `.c` file to `src/runtime/`, the only required change is:
+- Add a one-line entry to `src/runtime/INDEX.md`
 
 ## Exceptions
 

@@ -1,0 +1,227 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Building the Checker" lessonNumber="6.3" section="Phase 6">
+
+    <LessonHeader lessonNumber="6.3" title="Building the Checker" description="Walking the AST a second time. Scope, inference, all-paths return, and the bugs we found while building it.">
+        <TagBadge variant="go">go</TagBadge>
+        <TagBadge variant="default">15 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Structure -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A second walk over the same tree.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The parser builds an AST. The code generator walks it and emits C. The checker is a third walker -- it traverses the same tree looking for semantic errors instead of generating output.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The checker lives in <code class="bg-stone-100 px-1 rounded text-xs">src/types/</code>. Its public interface is a single function:
+        </p>
+
+        <Code code={`func Check(program *syntax.Program) (*Info, []Error)`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            It takes the parsed AST and returns two things: an <code class="bg-stone-100 px-1 rounded text-xs">Info</code> struct containing the type information it discovered (used by codegen for unboxing), and a slice of errors. If the slice is non-empty, compilation stops.
+        </p>
+    </section>
+
+    <!-- Scope -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Scope: a stack of symbol tables.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The checker tracks what names are in scope using a linked list of symbol tables -- each scope is a map from name to type, with a pointer to its parent scope. This is the standard approach for block-scoped languages.
+        </p>
+
+        <Code code={`type Scope struct {
+    vars   map[string]Type
+    parent *Scope
+}`} lang="go" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            When entering a new block (function body, if branch, for-in body), the checker pushes a new child scope. When leaving, it pops back to the parent. Looking up a name walks up the chain until found or the root is reached.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk allows shadowing -- a <code class="bg-stone-100 px-1 rounded text-xs">let i</code> inside a for-in body can shadow the loop variable -- but not mutation of the loop variable itself. The checker enforces this by marking the loop variable as const in the loop scope, and giving the body its own child scope so any new <code class="bg-stone-100 px-1 rounded text-xs">let i</code> inside it shadows rather than conflicts.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>A bug we found:</strong> the initial implementation gave the loop body the same scope as the loop variable. A <code class="bg-stone-100 px-1 rounded text-xs">let i = ...</code> inside the body would overwrite the const loop binding, bypassing the const check. Giving the body its own child scope fixed it -- Go-style shadowing allowed, direct mutation still rejected.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Hoisting -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Hoisting: two passes over declarations.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Before the main checking pass, the checker does a quick scan over the top-level statements and pre-registers all function declarations. This is called hoisting -- it's what makes mutual recursion work.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Without hoisting, a function that calls another function defined later in the file would produce an "undefined variable" error. With hoisting, all function signatures are known before any function body is checked. The checker knows the type of every function at every call site.
+        </p>
+
+        <Code code={`// Both functions use each other.
+// Hoisting pre-registers both signatures before either body is checked.
+
+let ping = (n int) string {
+    if n == 0 { return "done" }
+    return pong(n - 1)    // pong not defined yet -- but hoisting knows its signature
+}
+
+let pong = (n int) string {
+    return ping(n - 1)
+}`} lang="javascript" />
+    </section>
+
+    <!-- The checks -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The checks: what the checker verifies.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The checker walks each statement and expression, threading a scope and collecting errors. Here's what it enforces at each construct:
+        </p>
+
+        <h3 class="font-bold mb-3 mt-6">Variable declarations</h3>
+        <Code code={`let x int = 42        // annotation present: check RHS assignable to int
+let y = "hello"       // no annotation: infer type from RHS (string)
+y = 99                // error: cannot assign int to string variable 'y'`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            If an annotation is present, the initializer must be assignable to it. If absent, the initializer's type becomes the variable's type from that point forward.
+        </p>
+
+        <h3 class="font-bold mb-3 mt-6">Array element enforcement</h3>
+        <Code code={`let nums int[] = [1, 2, 3]    // ok
+let bad  int[] = [1, "two"]   // error: string not assignable to int[]
+
+nums[0] = 99     // ok
+nums[0] = "hi"   // error: string not assignable to element of int[]`} lang="javascript" />
+
+        <h3 class="font-bold mb-3 mt-6">Record shape</h3>
+        <Code code={`type User { name string, age int }
+
+let u User = { name: "Alice", age: 30 }    // ok
+let v User = { name: "Bob" }               // error: missing field 'age'
+let w User = { name: "Carol", age: 30, x: true }  // error: extra field 'x'`} lang="javascript" />
+
+        <h3 class="font-bold mb-3 mt-6">Function calls</h3>
+        <Code code={`let add = (a int, b int) int { return a + b }
+
+add(1, 2)      // ok
+add(1)         // error: wrong number of arguments (want 2, got 1)
+add(1, "two")  // error: argument 2 has type string, want int`} lang="javascript" />
+
+        <h3 class="font-bold mb-3 mt-6">Compound assignment</h3>
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Compound operators (<code class="bg-stone-100 px-1 rounded text-xs">+=</code>, <code class="bg-stone-100 px-1 rounded text-xs">-=</code>, <code class="bg-stone-100 px-1 rounded text-xs">*=</code>, etc.) are checked as their implied binary operation. This caught a real bug: <code class="bg-stone-100 px-1 rounded text-xs">let s = "hi"; s -= "world"</code> was passing the checker because only the target type was checked, not the operation. Adding <code class="bg-stone-100 px-1 rounded text-xs">checkCompoundOp</code> that validates the implied binary on the actual types fixed it.
+        </p>
+    </section>
+
+    <!-- All-paths return -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">All-paths return analysis.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            A non-none function must return a value on every possible execution path. The checker walks the function body and determines whether a return is guaranteed. The analysis is conservative: it knows about <code class="bg-stone-100 px-1 rounded text-xs">if/else</code> and <code class="bg-stone-100 px-1 rounded text-xs">throw</code>, but conservatively rejects loops as non-guaranteeing (a loop might execute zero times).
+        </p>
+
+        <Code code={`let classify = (n int) string {
+    if n > 0 {
+        return "positive"
+    } else if n < 0 {
+        return "negative"
+    }
+    // error: function 'classify' may not return on all paths
+    // (the else branch -- n == 0 -- falls through)
+}`} lang="javascript" />
+
+        <Code code={`let classify = (n int) string {
+    if n > 0 {
+        return "positive"
+    } else if n < 0 {
+        return "negative"
+    } else {
+        return "zero"         // all paths covered now
+    }
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+            A <code class="bg-stone-100 px-1 rounded text-xs">throw</code> also counts as a terminating path. If every branch either returns or throws, the function passes the check.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Why not loops?</strong> Proving that a loop always executes at least once (so any return inside it is guaranteed) requires knowing the loop bounds. That's a harder problem. The checker takes the conservative approach: if your only return is inside a loop, you need an unconditional return after the loop too.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Info struct -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The Info struct: type data for codegen.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The checker doesn't just reject bad programs -- it also produces information that the code generator uses. <code class="bg-stone-100 px-1 rounded text-xs">types.Check</code> returns an <code class="bg-stone-100 px-1 rounded text-xs">*Info</code> struct containing:
+        </p>
+
+        <div class="space-y-3 mb-6">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Per-expression types.</strong> Every expression in the AST has a type. Codegen uses this to decide whether to emit a raw C scalar or a <code class="bg-stone-100 px-1 rounded text-xs">MonkValue</code>.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong>Per-declaration types.</strong> Each variable declaration is annotated with the type the checker resolved for it. Used when emitting C variable declarations.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Per-function signatures.</strong> The resolved parameter types and return type for each function. Used to decide whether a function gets an unboxed C signature.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            This is what connects the checker to codegen. Without this information, the code generator would have to repeat all the type inference logic itself. Instead, it just asks: "what type did the checker determine for this expression?" and acts accordingly.
+        </p>
+    </section>
+
+    <!-- Key takeaways -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Key takeaways</h2>
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">1</span></div>
+                <p class="text-sm">The checker is a second AST walk -- same tree as codegen, looking for errors instead of generating output.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">2</span></div>
+                <p class="text-sm">Scope is a linked list of symbol tables. Shadowing is allowed; mutating a const loop variable is not.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">3</span></div>
+                <p class="text-sm">Hoisting pre-registers all function signatures before checking bodies. Mutual recursion just works.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-sky-600 font-bold text-xs">4</span></div>
+                <p class="text-sm">The checker returns an <code class="bg-stone-100 px-1 rounded text-xs">Info</code> struct alongside errors. Codegen uses it for scalar unboxing -- no re-inference needed.</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-6-types/monks-type-model"
+        prevLabel="Prev: Monk's Type Model"
+        nextHref="/phase-6-types/scalar-unboxing"
+        nextLabel="Next: Scalar Unboxing"
+    />
+
+</LessonLayout>

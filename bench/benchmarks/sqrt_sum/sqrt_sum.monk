@@ -1,0 +1,12 @@
+// Benchmark: sum of square roots from 1 to N.
+// Tests: math builtin (sqrt) call overhead in a tight loop, float accumulation.
+// Output: truncated integer sum.
+
+let N = 10000000
+let sum = 0.0
+let i = 1
+while i <= N {
+    sum += sqrt(to_float(i))
+    i += 1
+}
+show(to_string(to_int(sum)))

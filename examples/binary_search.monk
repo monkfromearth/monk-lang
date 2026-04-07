@@ -1,0 +1,57 @@
+// Binary search on a sorted array.
+// Demonstrates: while loops, integer arithmetic, array indexing.
+
+let binary_search = (arr array, target int) int {
+    let low = 0
+    let high = length(arr) - 1
+
+    while low <= high {
+        let mid = low + (high - low) / 2
+        let val = arr[mid]
+
+        if val == target {
+            return mid
+        } else if val < target {
+            low = mid + 1
+        } else {
+            high = mid - 1
+        }
+    }
+    return 0 - 1   // not found
+}
+
+// Sorted array
+let numbers = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91]
+
+// Search for various targets
+let targets = [23, 2, 91, 50, 72]
+for t in targets {
+    let idx = binary_search(numbers, t)
+    if idx >= 0 {
+        show("found " + to_string(t) + " at index " + to_string(idx))
+    } else {
+        show(to_string(t) + " not found")
+    }
+}
+
+// ─── Build a sorted array and search it ────────────────────────────────────
+
+let size = 100
+let sorted = range(size)
+let i = 0
+while i < size {
+    sorted[i] = i * 3   // [0, 3, 6, 9, ..., 297]
+    i += 1
+}
+
+// Search for multiples of 3
+let found_count = 0
+let search = 0
+while search < 300 {
+    let idx = binary_search(sorted, search)
+    if idx >= 0 {
+        found_count += 1
+    }
+    search += 7   // 0, 7, 14, 21, ...
+}
+show("found " + to_string(found_count) + " out of 43 searches")

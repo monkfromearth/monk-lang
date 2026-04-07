@@ -31,4 +31,13 @@ double monk_as_c_double(MonkValue v);
 
 char *monk_value_to_cstr(MonkValue v);
 
+/* --- Typed-array to generic conversion (non-consuming) --- */
+
+MonkValue monk_typed_to_generic(MonkValue v);
+
+/* Free a generic MONK_ARRAY created by monk_typed_to_generic.
+ * Frees elements, data pointer, and MonkArray struct.
+ * Shared by container.c (append/pop/etc.) and higher_order.c (map/filter/reduce). */
+void monk_free_generic_intermediate(MonkValue arr);
+
 #endif /* MONK_INTERNAL_H */

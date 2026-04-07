@@ -20,10 +20,12 @@ package syntax
 // Assignment is NOT in this chain — it is handled as a statement.
 // See parseExprOrAssignStmt in parse_stmt.go.
 
+// parseExpr is the top-level expression entry point (precedence 1, or/||).
 func (p *Parser) parseExpr() (Expr, error) {
 	return p.parseOr()
 }
 
+// parseOr handles `or` / `||` at precedence level 1.
 func (p *Parser) parseOr() (Expr, error) {
 	left, err := p.parseAnd()
 	if err != nil {
@@ -43,6 +45,7 @@ func (p *Parser) parseOr() (Expr, error) {
 	return left, nil
 }
 
+// parseAnd handles `and` / `&&` at precedence level 2.
 func (p *Parser) parseAnd() (Expr, error) {
 	left, err := p.parseBitwiseOr()
 	if err != nil {
@@ -62,6 +65,7 @@ func (p *Parser) parseAnd() (Expr, error) {
 	return left, nil
 }
 
+// parseBitwiseOr handles `|` at precedence level 3.
 func (p *Parser) parseBitwiseOr() (Expr, error) {
 	left, err := p.parseBitwiseXor()
 	if err != nil {
@@ -81,6 +85,7 @@ func (p *Parser) parseBitwiseOr() (Expr, error) {
 	return left, nil
 }
 
+// parseBitwiseXor handles `^` at precedence level 4.
 func (p *Parser) parseBitwiseXor() (Expr, error) {
 	left, err := p.parseBitwiseAnd()
 	if err != nil {
@@ -100,6 +105,7 @@ func (p *Parser) parseBitwiseXor() (Expr, error) {
 	return left, nil
 }
 
+// parseBitwiseAnd handles `&` at precedence level 5.
 func (p *Parser) parseBitwiseAnd() (Expr, error) {
 	left, err := p.parseEquality()
 	if err != nil {
@@ -119,6 +125,7 @@ func (p *Parser) parseBitwiseAnd() (Expr, error) {
 	return left, nil
 }
 
+// parseEquality handles `==`, `!=`, `is` at precedence level 6.
 func (p *Parser) parseEquality() (Expr, error) {
 	left, err := p.parseComparison()
 	if err != nil {
@@ -138,6 +145,7 @@ func (p *Parser) parseEquality() (Expr, error) {
 	return left, nil
 }
 
+// parseComparison handles `<`, `>`, `<=`, `>=` at precedence level 7.
 func (p *Parser) parseComparison() (Expr, error) {
 	left, err := p.parseShift()
 	if err != nil {
@@ -158,6 +166,7 @@ func (p *Parser) parseComparison() (Expr, error) {
 	return left, nil
 }
 
+// parseShift handles `<<` and `>>` at precedence level 8.
 func (p *Parser) parseShift() (Expr, error) {
 	left, err := p.parseAddSub()
 	if err != nil {
@@ -177,6 +186,7 @@ func (p *Parser) parseShift() (Expr, error) {
 	return left, nil
 }
 
+// parseAddSub handles `+` and `-` at precedence level 9.
 func (p *Parser) parseAddSub() (Expr, error) {
 	left, err := p.parseMulDiv()
 	if err != nil {
@@ -196,6 +206,7 @@ func (p *Parser) parseAddSub() (Expr, error) {
 	return left, nil
 }
 
+// parseMulDiv handles `*`, `/`, `%` at precedence level 10.
 func (p *Parser) parseMulDiv() (Expr, error) {
 	left, err := p.parseUnary()
 	if err != nil {
@@ -215,6 +226,8 @@ func (p *Parser) parseMulDiv() (Expr, error) {
 	return left, nil
 }
 
+// parseUnary handles prefix `-`, `not`, `!`, `~`, and `throw` at precedence
+// level 11. Unary is right-recursive to support `--x` style chains.
 func (p *Parser) parseUnary() (Expr, error) {
 	if p.current().Kind == Minus || p.current().Kind == Not || p.current().Kind == Bang || p.current().Kind == Tilde {
 		pos := p.currentPos()
@@ -240,6 +253,8 @@ func (p *Parser) parseUnary() (Expr, error) {
 	return p.parsePostfix()
 }
 
+// parsePostfix handles call `(`, index `[`, and property `.` at precedence
+// level 12. All three are left-associative and can chain arbitrarily.
 func (p *Parser) parsePostfix() (Expr, error) {
 	expr, err := p.parsePrimary()
 	if err != nil {
@@ -286,6 +301,9 @@ func (p *Parser) parsePostfix() (Expr, error) {
 	}
 }
 
+// parsePrimary handles literals, identifiers, grouped expressions `(expr)`,
+// array literals `[...]`, and record literals `{key: val, ...}` at
+// precedence level 13 (tightest binding).
 func (p *Parser) parsePrimary() (Expr, error) {
 	tok := p.current()
 	pos := p.currentPos()
@@ -407,6 +425,8 @@ func (p *Parser) parseParenOrFunc() (Expr, error) {
 	return expr, nil
 }
 
+// parseFuncExpr parses a function literal `(params) [returnType] { body }`.
+// Called after parseParenOrFunc has committed to the function form.
 func (p *Parser) parseFuncExpr() (Expr, error) {
 	pos := p.currentPos()
 	p.advance() // skip (
@@ -459,6 +479,7 @@ func (p *Parser) parseFuncExpr() (Expr, error) {
 	return &FuncExpr{Pos: pos, Params: params, ReturnType: returnType, Body: body}, nil
 }
 
+// parseArrayLiteral parses `[elem, ...]` into an ArrayExpr.
 func (p *Parser) parseArrayLiteral() (Expr, error) {
 	pos := p.currentPos()
 	p.advance() // skip [
@@ -483,6 +504,7 @@ func (p *Parser) parseArrayLiteral() (Expr, error) {
 	return &ArrayExpr{Pos: pos, Elements: elements}, nil
 }
 
+// parseRecordLiteral parses `{key: expr, ...}` into a RecordExpr.
 func (p *Parser) parseRecordLiteral() (Expr, error) {
 	pos := p.currentPos()
 	p.advance() // skip {
@@ -520,6 +542,8 @@ func (p *Parser) parseRecordLiteral() (Expr, error) {
 	return &RecordExpr{Pos: pos, Fields: fields}, nil
 }
 
+// parseArgList parses a comma-separated argument list up to the closing `)`.
+// The closing paren is consumed before returning.
 func (p *Parser) parseArgList() ([]Expr, error) {
 	var args []Expr
 	for p.current().Kind != RightParen && !p.atEnd() {

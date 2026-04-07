@@ -116,6 +116,103 @@ MonkValue monk_record(MonkRecordField *fields, int64_t length) {
     return (MonkValue){.kind = MONK_RECORD, .record_val = rec};
 }
 
+MonkValue monk_make_function(MonkFuncPtr fn, MonkValue *captures, int64_t capture_count) {
+    MonkFunction *f = monk_malloc_internal(sizeof(MonkFunction));
+    f->fn = fn;
+    f->capture_count = capture_count;
+    if (capture_count > 0 && captures) {
+        f->captures = monk_malloc_internal(sizeof(MonkValue) * capture_count);
+        for (int64_t i = 0; i < capture_count; i++) {
+            f->captures[i] = monk_deep_copy(captures[i]);
+        }
+    } else {
+        f->captures = NULL;
+    }
+    return (MonkValue){.kind = MONK_FUNCTION, .func_val = f};
+}
+
+MonkValue monk_call(MonkValue fn, MonkValue *args, int64_t argc) {
+    if (fn.kind != MONK_FUNCTION || !fn.func_val || !fn.func_val->fn) {
+        monk_panic("cannot call non-function value");
+    }
+    return fn.func_val->fn(fn.func_val, args, argc);
+}
+
+/* --- Typed array converters --- */
+
+/* monk_int_array_from: produce a MONK_INT_ARRAY from either:
+ *   - MONK_ARRAY:     extract int_val from each element, free input.
+ *   - MONK_INT_ARRAY: deep-copy the int64_t* backing store, leave input intact.
+ * Codegen emits this at every int[] variable declaration. */
+MonkValue monk_int_array_from(MonkValue v) {
+    if (v.kind == MONK_INT_ARRAY) {
+        int64_t len = v.int_array_val->length;
+        int64_t *data = monk_malloc_internal(sizeof(int64_t) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) data[i] = v.int_array_val->data[i];
+        MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
+        arr->data = data; arr->length = len;
+        return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
+    }
+    if (v.kind == MONK_ARRAY) {
+        int64_t len = v.array_val->length;
+        int64_t *data = monk_malloc_internal(sizeof(int64_t) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) data[i] = v.array_val->data[i].int_val;
+        MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
+        arr->data = data; arr->length = len;
+        monk_free_heap(v);
+        return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
+    }
+    monk_panic("int_array_from: expected int[] or array");
+    return monk_none();
+}
+
+MonkValue monk_float_array_from(MonkValue v) {
+    if (v.kind == MONK_FLOAT_ARRAY) {
+        int64_t len = v.float_array_val->length;
+        double *data = monk_malloc_internal(sizeof(double) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) data[i] = v.float_array_val->data[i];
+        MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
+        arr->data = data; arr->length = len;
+        return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
+    }
+    if (v.kind == MONK_ARRAY) {
+        int64_t len = v.array_val->length;
+        double *data = monk_malloc_internal(sizeof(double) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) {
+            MonkValue e = v.array_val->data[i];
+            data[i] = (e.kind == MONK_INT) ? (double)e.int_val : e.float_val;
+        }
+        MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
+        arr->data = data; arr->length = len;
+        monk_free_heap(v);
+        return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
+    }
+    monk_panic("float_array_from: expected float[] or array");
+    return monk_none();
+}
+
+MonkValue monk_bool_array_from(MonkValue v) {
+    if (v.kind == MONK_BOOL_ARRAY) {
+        int64_t len = v.bool_array_val->length;
+        bool *data = monk_malloc_internal(sizeof(bool) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) data[i] = v.bool_array_val->data[i];
+        MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
+        arr->data = data; arr->length = len;
+        return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
+    }
+    if (v.kind == MONK_ARRAY) {
+        int64_t len = v.array_val->length;
+        bool *data = monk_malloc_internal(sizeof(bool) * (len > 0 ? len : 1));
+        for (int64_t i = 0; i < len; i++) data[i] = v.array_val->data[i].bool_val;
+        MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
+        arr->data = data; arr->length = len;
+        monk_free_heap(v);
+        return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
+    }
+    monk_panic("bool_array_from: expected bool[] or array");
+    return monk_none();
+}
+
 /* --- Deep copy (value semantics) --- */
 
 MonkValue monk_deep_copy_heap(MonkValue v) {
@@ -158,6 +255,18 @@ void monk_free_heap(MonkValue v) {
         free(v.array_val->data);
         free(v.array_val);
         break;
+    case MONK_INT_ARRAY:
+        free(v.int_array_val->data);
+        free(v.int_array_val);
+        break;
+    case MONK_FLOAT_ARRAY:
+        free(v.float_array_val->data);
+        free(v.float_array_val);
+        break;
+    case MONK_BOOL_ARRAY:
+        free(v.bool_array_val->data);
+        free(v.bool_array_val);
+        break;
     case MONK_RECORD:
         for (int64_t i = 0; i < v.record_val->length; i++) {
             free((char *)v.record_val->fields[i].key);
@@ -194,15 +303,18 @@ bool monk_is_truthy(MonkValue v) {
 
 const char *monk_type_name(MonkValue v) {
     switch (v.kind) {
-    case MONK_INT:      return "int";
-    case MONK_FLOAT:    return "float";
-    case MONK_STRING:   return "string";
-    case MONK_BOOL:     return "boolean";
-    case MONK_NONE:     return "none";
-    case MONK_ARRAY:    return "array";
-    case MONK_RECORD:   return "record";
-    case MONK_FUNCTION: return "function";
-    default:            return "unknown";
+    case MONK_INT:        return "int";
+    case MONK_FLOAT:      return "float";
+    case MONK_STRING:     return "string";
+    case MONK_BOOL:       return "boolean";
+    case MONK_NONE:       return "none";
+    case MONK_ARRAY:      return "array";
+    case MONK_INT_ARRAY:  return "array";
+    case MONK_FLOAT_ARRAY:return "array";
+    case MONK_BOOL_ARRAY: return "array";
+    case MONK_RECORD:     return "record";
+    case MONK_FUNCTION:   return "function";
+    default:              return "unknown";
     }
 }
 
@@ -245,6 +357,53 @@ char *monk_value_to_cstr(MonkValue v) {
             }
             strcat(result, elem);
             free(elem);
+        }
+        strcat(result, "]");
+        return result;
+    }
+    case MONK_INT_ARRAY: {
+        size_t cap = 64;
+        char *result = monk_malloc_internal(cap);
+        strcpy(result, "[");
+        for (int64_t i = 0; i < v.int_array_val->length; i++) {
+            char buf[32];
+            if (i > 0) strcat(result, ", ");
+            snprintf(buf, sizeof(buf), "%lld", (long long)v.int_array_val->data[i]);
+            while (strlen(result) + strlen(buf) + 4 > cap) {
+                cap *= 2; result = monk_realloc_internal(result, cap);
+            }
+            strcat(result, buf);
+        }
+        strcat(result, "]");
+        return result;
+    }
+    case MONK_FLOAT_ARRAY: {
+        size_t cap = 64;
+        char *result = monk_malloc_internal(cap);
+        strcpy(result, "[");
+        for (int64_t i = 0; i < v.float_array_val->length; i++) {
+            char buf[32];
+            if (i > 0) strcat(result, ", ");
+            snprintf(buf, sizeof(buf), "%g", v.float_array_val->data[i]);
+            while (strlen(result) + strlen(buf) + 4 > cap) {
+                cap *= 2; result = monk_realloc_internal(result, cap);
+            }
+            strcat(result, buf);
+        }
+        strcat(result, "]");
+        return result;
+    }
+    case MONK_BOOL_ARRAY: {
+        size_t cap = 64;
+        char *result = monk_malloc_internal(cap);
+        strcpy(result, "[");
+        for (int64_t i = 0; i < v.bool_array_val->length; i++) {
+            if (i > 0) strcat(result, ", ");
+            const char *s = v.bool_array_val->data[i] ? "true" : "false";
+            while (strlen(result) + strlen(s) + 4 > cap) {
+                cap *= 2; result = monk_realloc_internal(result, cap);
+            }
+            strcat(result, s);
         }
         strcat(result, "]");
         return result;

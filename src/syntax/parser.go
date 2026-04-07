@@ -23,6 +23,9 @@ func Parse(source string) (*Program, error) {
 	return p.parseProgram()
 }
 
+// parseProgram parses statements until EOF, checking the sticky typeErr after
+// each one. typeErr is set by parseTypeExpr (which cannot return an error
+// directly) to propagate type-annotation parse failures up to the caller.
 func (p *Parser) parseProgram() (*Program, error) {
 	prog := &Program{}
 	for !p.atEnd() {
@@ -51,6 +54,7 @@ func (p *Parser) currentPos() Pos {
 	return Pos{Line: tok.Line, Column: tok.Column}
 }
 
+// current returns the token at the current position (Eof if past the end).
 func (p *Parser) current() Token {
 	if p.pos >= len(p.tokens) {
 		return Token{Kind: Eof}
@@ -58,6 +62,7 @@ func (p *Parser) current() Token {
 	return p.tokens[p.pos]
 }
 
+// peek returns the token one position ahead without consuming (Eof if past the end).
 func (p *Parser) peek() Token {
 	if p.pos+1 >= len(p.tokens) {
 		return Token{Kind: Eof}
@@ -65,16 +70,19 @@ func (p *Parser) peek() Token {
 	return p.tokens[p.pos+1]
 }
 
+// advance moves to the next token; no-ops at the end of the stream.
 func (p *Parser) advance() {
 	if p.pos < len(p.tokens) {
 		p.pos++
 	}
 }
 
+// atEnd reports whether all tokens have been consumed (current is Eof).
 func (p *Parser) atEnd() bool {
 	return p.current().Kind == Eof
 }
 
+// error formats a parse error anchored to the current token's line and column.
 func (p *Parser) error(format string, args ...any) error {
 	tok := p.current()
 	return fmt.Errorf("line %d, column %d: %s", tok.Line, tok.Column, fmt.Sprintf(format, args...))

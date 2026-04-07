@@ -34,11 +34,23 @@ typedef enum {
     MONK_NONE,
     MONK_ARRAY,
     MONK_RECORD,
-    MONK_FUNCTION
+    MONK_FUNCTION,
+    /* Typed backing-store arrays: element type is statically known.
+     * Data pointer is int64_t*, double*, or bool* — no MonkValue union overhead.
+     * These are created by monk_int_array_from() / monk_float_array_from() /
+     * monk_bool_array_from() when codegen assigns a value to an int[]/float[]/bool[]
+     * variable. All generic runtime functions (monk_is_array, monk_length, etc.)
+     * treat them identically to MONK_ARRAY from the Monk language perspective. */
+    MONK_INT_ARRAY,
+    MONK_FLOAT_ARRAY,
+    MONK_BOOL_ARRAY
 } MonkValueKind;
 
 /* Forward declarations — pointers only until MonkValue is defined */
 typedef struct MonkArray MonkArray;
+typedef struct MonkIntArray MonkIntArray;
+typedef struct MonkFloatArray MonkFloatArray;
+typedef struct MonkBoolArray MonkBoolArray;
 typedef struct MonkRecord MonkRecord;
 typedef struct MonkRecordField MonkRecordField;
 typedef struct MonkFunction MonkFunction;
@@ -50,16 +62,36 @@ struct MonkValue {
     union {
         int64_t int_val;
         double float_val;
-        char *str_val;          /* heap-allocated, null-terminated */
+        char *str_val;                  /* heap-allocated, null-terminated */
         bool bool_val;
-        MonkArray *array_val;   /* heap-allocated */
-        MonkRecord *record_val; /* heap-allocated */
-        MonkFunction *func_val; /* heap-allocated */
+        MonkArray *array_val;           /* heap-allocated, MonkValue* elements */
+        MonkIntArray *int_array_val;    /* heap-allocated, int64_t* elements */
+        MonkFloatArray *float_array_val;/* heap-allocated, double* elements */
+        MonkBoolArray *bool_array_val;  /* heap-allocated, bool* elements */
+        MonkRecord *record_val;         /* heap-allocated */
+        MonkFunction *func_val;         /* heap-allocated */
     };
 };
 
 struct MonkArray {
     MonkValue *data;
+    int64_t length;
+};
+
+/* Typed backing-store array structs.
+ * Elements are raw C scalars — no MonkValue overhead, cache-friendly. */
+struct MonkIntArray {
+    int64_t *data;
+    int64_t length;
+};
+
+struct MonkFloatArray {
+    double *data;
+    int64_t length;
+};
+
+struct MonkBoolArray {
+    bool *data;
     int64_t length;
 };
 
@@ -73,7 +105,7 @@ struct MonkRecord {
     int64_t length;
 };
 
-typedef MonkValue (*MonkFuncPtr)(MonkValue *args, int64_t argc);
+typedef MonkValue (*MonkFuncPtr)(struct MonkFunction *self, MonkValue *args, int64_t argc);
 
 struct MonkFunction {
     MonkFuncPtr fn;
@@ -90,6 +122,21 @@ MonkValue monk_bool(bool b);
 MonkValue monk_none(void);
 MonkValue monk_array(MonkValue *elements, int64_t length);  /* copies elements */
 MonkValue monk_record(MonkRecordField *fields, int64_t length); /* copies fields */
+MonkValue monk_make_function(MonkFuncPtr fn, MonkValue *captures, int64_t capture_count);
+
+/* Call a MonkValue function with an array of arguments. */
+MonkValue monk_call(MonkValue fn, MonkValue *args, int64_t argc);
+
+/* Typed array converters.
+ * Each function accepts either a MONK_ARRAY (generic) or the matching typed
+ * kind (MONK_INT_ARRAY / MONK_FLOAT_ARRAY / MONK_BOOL_ARRAY) and returns a
+ * new value of the typed kind.
+ * - MONK_ARRAY input: extracts scalar fields from each element, frees input.
+ * - Already-typed input: deep-copies the backing store, leaves input intact.
+ * Codegen emits these at int[]/float[]/bool[] variable declarations. */
+MonkValue monk_int_array_from(MonkValue v);
+MonkValue monk_float_array_from(MonkValue v);
+MonkValue monk_bool_array_from(MonkValue v);
 
 /* Abort with a runtime error message and exit 1. Available to codegen for
  * inline runtime errors (e.g. int division by zero on the unboxed path). */
@@ -113,6 +160,10 @@ static inline MonkValue monk_deep_copy(MonkValue v) {
     case MONK_BOOL:
     case MONK_NONE:
         return v;
+    /* Typed arrays: monk_int_array_from handles same-kind deep copy. */
+    case MONK_INT_ARRAY:   return monk_int_array_from(v);
+    case MONK_FLOAT_ARRAY: return monk_float_array_from(v);
+    case MONK_BOOL_ARRAY:  return monk_bool_array_from(v);
     default:
         return monk_deep_copy_heap(v);
     }
@@ -179,6 +230,17 @@ MonkValue monk_drop(MonkValue arr, MonkValue n);
 MonkValue monk_take(MonkValue arr, MonkValue n);
 MonkValue monk_slice(MonkValue arr, MonkValue start, MonkValue end);
 MonkValue monk_range(MonkValue n);
+MonkValue monk_range_int(int64_t n);
+MonkValue monk_fill(MonkValue n, MonkValue value);
+MonkValue monk_fill_bool(MonkValue n, bool value);
+MonkValue monk_fill_int(MonkValue n, int64_t value);
+MonkValue monk_fill_float(MonkValue n, double value);
+
+/* --- Higher-order array functions --- */
+
+MonkValue monk_map(MonkValue arr, MonkValue fn);
+MonkValue monk_filter(MonkValue arr, MonkValue fn);
+MonkValue monk_reduce(MonkValue arr, MonkValue fn, MonkValue initial);
 
 /* --- String indexing --- */
 

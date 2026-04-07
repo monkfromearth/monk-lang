@@ -1,0 +1,11 @@
+// Benchmark: sum a large typed int[] array via for-in loop.
+// Tests: for-in codegen path, typed array iteration, boxing per element.
+// Output: sum of 0..N-1 (integer checksum).
+
+let N = 10000000
+let arr int[] = range(N)
+let total = 0
+for x in arr {
+    total += x
+}
+show(to_string(total))

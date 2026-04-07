@@ -1,0 +1,15 @@
+// Benchmark: closure creation and invocation overhead.
+// Creates a new closure each iteration that captures a variable.
+// Tests: closure struct allocation, capture-by-copy, invocation.
+// Output: accumulated sum (integer checksum).
+
+let N = 1000000
+let total = 0
+
+let i = 0
+while i < N {
+    let adder = (x int) int { return x + i }
+    total += adder(10)
+    i += 1
+}
+show(to_string(total))

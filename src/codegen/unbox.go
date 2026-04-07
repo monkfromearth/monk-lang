@@ -325,7 +325,16 @@ func (g *generator) emitIndexTyped(e *syntax.IndexExpr) (string, storageKind) {
 	idxC := coerce(idxCode, idxKind, storeInt)
 
 	// Simple ident: use directly — no temp needed for the object.
-	if _, isIdent := e.Object.(*syntax.IdentExpr); isIdent {
+	if arrIdent, isIdent := e.Object.(*syntax.IdentExpr); isIdent {
+		// Bounds-check elision: if we can statically prove 0 <= idx < length,
+		// skip the runtime check and emit a direct data[] access.
+		// The index is guaranteed to be a pure arithmetic expression (loop
+		// counters + constants) by isBoundedSafe's range analysis, so we can
+		// inline it directly — no statement-expression wrapper, no temp.
+		// This lets the compiler hoist, CSE, and vectorize freely.
+		if g.constVals != nil && g.isBoundedSafe(arrIdent, e.Index) {
+			return fmt.Sprintf("%s.%s->data[%s]", objCode, ptrField, idxC), elemSt
+		}
 		tidx := g.newTemp()
 		return fmt.Sprintf(
 			"({int64_t %s=%s; (%s<0||%s>=%s.%s->length)?(monk_panic(\"index out of bounds\"),%s):%s.%s->data[%s];})",
@@ -455,8 +464,11 @@ func (g *generator) emitCallTyped(e *syntax.CallExpr) (string, storageKind) {
 func (g *generator) emitBinaryTyped(e *syntax.BinaryExpr) (string, storageKind) {
 	lcode, ls := g.emitExprTyped(e.Left)
 	rcode, rs := g.emitExprTyped(e.Right)
-	// If either side is boxed, bail to the classic path.
-	if ls == storeBoxed || rs == storeBoxed {
+	// Bail unless BOTH sides are raw scalars (int64_t / double / bool).
+	// Typed-array storage kinds (storeIntArray etc.) are MonkValue structs —
+	// emitting C arithmetic on them would produce nonsensical code.
+	// Pass: `i + j` (both storeInt). Fail: `arr + arr` (storeIntArray).
+	if !isRawScalar(ls) || !isRawScalar(rs) {
 		return g.emitExpr(e), storeBoxed
 	}
 

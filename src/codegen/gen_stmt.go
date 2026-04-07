@@ -79,6 +79,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 		value := g.emitExpr(s.Value)
 		convFn := arrayConvFunc(store)
 		g.emitLine("    MonkValue %s = %s(%s);\n", name, convFn, value)
+		g.recordArrayLen(s.Name, s.Value) // bounds-check elision
 		return
 	}
 
@@ -103,6 +104,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 				store = rhsStore
 				g.storage[name] = store
 				g.emitLine("    %s %s = %s;\n", cTypeName(store), name, rhsCode)
+				g.recordConst(s.Name, s.Value) // bounds-check elision
 				return
 			}
 			// emitExprTyped fell through to emitExpr — rhsCode is already a
@@ -123,15 +125,19 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 	rhsCode, rhsStore := g.emitExprTyped(s.Value)
 	init := coerce(rhsCode, rhsStore, store)
 	g.emitLine("    %s %s = %s;\n", cTypeName(store), name, init)
+	g.recordConst(s.Name, s.Value) // bounds-check elision
 }
 
 func (g *generator) emitAssign(s *syntax.AssignStmt) {
-	// Unboxed-variable fast path: if the target is a plain ident with raw
-	// storage, emit raw C assignment (no deep_copy/free cycle needed — the
-	// value is a plain scalar).
+	// Unboxed scalar fast path: plain ident with raw scalar storage (int64_t,
+	// double, bool). Typed arrays are excluded — they need free+reconvert on
+	// reassignment (e.g. `arr = append(arr, x)` returns MONK_ARRAY, not
+	// MONK_INT_ARRAY). Without this guard, typed arrays get a raw struct copy
+	// that leaks the old backing store and reads the wrong union member.
+	// Pass: `x = x + 1` (storeInt). Fail: `arr = append(arr, 5)` (storeIntArray).
 	if target, ok := s.Target.(*syntax.IdentExpr); ok {
 		name := mangleName(target.Name)
-		if store := g.varStorage(name); store != storeBoxed {
+		if store := g.varStorage(name); isRawScalar(store) {
 			rhsCode, rhsStore := g.emitExprTyped(s.Value)
 			rhs := coerce(rhsCode, rhsStore, store)
 			// Stash RHS in a temp for ops that need to evaluate it twice
@@ -189,9 +195,16 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 					idxC := coerce(idxCode, idxKind, storeInt)
 					rhsCode, rhsSt := g.emitExprTyped(s.Value)
 					elemCode := coerce(rhsCode, rhsSt, elemSt)
-					tidx := g.newTemp()
-					g.emitLine("    { int64_t %s = %s; if (%s < 0 || %s >= %s.%s->length) monk_panic(\"index out of bounds\"); %s.%s->data[%s] = %s; }\n",
-						tidx, idxC, tidx, tidx, objName, ptrField, objName, ptrField, tidx, elemCode)
+					// Bounds-check elision: skip runtime check when statically provable.
+					// idxC is a pure arithmetic expression (range analysis proved it),
+					// so inlining it directly lets the compiler hoist and vectorize.
+					if g.constVals != nil && g.isBoundedSafe(identObj, indexTarget.Index) {
+						g.emitLine("    %s.%s->data[%s] = %s;\n", objName, ptrField, idxC, elemCode)
+					} else {
+						tidx := g.newTemp()
+						g.emitLine("    { int64_t %s = %s; if (%s < 0 || %s >= %s.%s->length) monk_panic(\"index out of bounds\"); %s.%s->data[%s] = %s; }\n",
+							tidx, idxC, tidx, tidx, objName, ptrField, objName, ptrField, tidx, elemCode)
+					}
 					return
 				}
 			}
@@ -408,8 +421,22 @@ func (g *generator) emitIfInline(s *syntax.IfStmt) {
 func (g *generator) emitWhile(s *syntax.WhileStmt) {
 	g.emitLine("    while (%s) {\n", g.emitCondition(s.Condition))
 	snap := g.saveStorage()
+	// Bounds-check elision: track the loop counter's range so that array
+	// accesses inside the body can be proven in-bounds.
+	var boundVar string
+	var boundPrev [2]int64
+	var boundHad bool
+	if g.constVals != nil {
+		if varName, lo, hi, found := g.whileBoundsEntry(s.Condition); found {
+			boundVar = varName
+			boundPrev, boundHad = g.setVarBound(varName, lo, hi)
+		}
+	}
 	for _, stmt := range s.Body.Stmts {
 		g.emitStmt(stmt)
+	}
+	if boundVar != "" {
+		g.restoreVarBound(boundVar, boundPrev, boundHad)
 	}
 	g.restoreStorage(snap)
 	g.emitLine("    }\n")

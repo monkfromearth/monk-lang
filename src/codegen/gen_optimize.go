@@ -1,0 +1,179 @@
+package codegen
+
+import (
+	"fmt"
+
+	"github.com/monkfromearth/monk-lang/syntax"
+	"github.com/monkfromearth/monk-lang/types"
+)
+
+// arrayEnsureFunc returns the runtime COW write-barrier for a typed-array
+// storage kind. Codegen calls it before direct backing-store writes.
+func arrayEnsureFunc(s storageKind) string {
+	switch s {
+	case storeIntArray:
+		return "monk_int_array_ensure_unique"
+	case storeFloatArray:
+		return "monk_float_array_ensure_unique"
+	case storeBoolArray:
+		return "monk_bool_array_ensure_unique"
+	}
+	return ""
+}
+
+// isFreshArrayExpr reports whether expr definitely creates a new array backing
+// store rather than sharing an existing variable. It is deliberately narrow:
+// unknown calls stay "maybe shared" so codegen emits the COW write barrier.
+func isFreshArrayExpr(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.ArrayExpr:
+		return true
+	case *syntax.CallExpr:
+		callee, ok := e.Callee.(*syntax.IdentExpr)
+		if !ok {
+			return false
+		}
+		switch callee.Name {
+		case "range", "fill", "append", "prepend", "pop", "drop", "take", "slice", "map", "filter":
+			return true
+		}
+	}
+	return false
+}
+
+// markArrayUniquenessFromExpr records whether a typed-array variable is proven
+// to be unshared after initialization. Fresh arrays can skip the COW barrier in
+// hot writes; identifier copies mark both variables maybe-shared.
+func (g *generator) markArrayUniquenessFromExpr(name string, store storageKind, expr syntax.Expr) {
+	if !isArrayStorage(store) {
+		delete(g.arrayUnique, name)
+		return
+	}
+	if ident, ok := expr.(*syntax.IdentExpr); ok {
+		source := g.mangledName(ident.Name)
+		if isArrayStorage(g.varStorage(source)) {
+			// `let b = a` makes both variables share until first mutation.
+			// Pass: later writes to either var emit a COW barrier.
+			// Fail: treating a as unique lets `a[0]=...` mutate b too.
+			g.arrayUnique[source] = false
+		}
+		g.arrayUnique[name] = false
+		return
+	}
+	g.arrayUnique[name] = isFreshArrayExpr(expr)
+}
+
+func (g *generator) stringAppendRHS(s *syntax.AssignStmt) syntax.Expr {
+	if g.info == nil {
+		return nil
+	}
+	target, ok := s.Target.(*syntax.IdentExpr)
+	if !ok {
+		return nil
+	}
+	switch s.Op {
+	case syntax.PlusEqual:
+		// Compound string append: checker guarantees target is string when RHS
+		// is string. Pass: `s += "x"`. Fail: `n += "x"` never reaches codegen.
+		targetType := g.info.Types[s.Target]
+		valueType := g.info.Types[s.Value]
+		if targetType != nil && valueType != nil &&
+			targetType.Kind == types.KindStr && valueType.Kind == types.KindStr &&
+			!targetType.Optional && !valueType.Optional {
+			return s.Value
+		}
+	case syntax.Equal:
+		bin, ok := s.Value.(*syntax.BinaryExpr)
+		if !ok || bin.Op != syntax.Plus {
+			return nil
+		}
+		left, ok := bin.Left.(*syntax.IdentExpr)
+		if !ok || left.Name != target.Name {
+			return nil
+		}
+		lt := g.info.Types[bin.Left]
+		rt := g.info.Types[bin.Right]
+		if lt != nil && rt != nil && lt.Kind == types.KindStr && rt.Kind == types.KindStr && !lt.Optional && !rt.Optional {
+			return bin.Right
+		}
+	}
+	return nil
+}
+
+func (g *generator) emitKnownTypeBuiltin(e *syntax.CallExpr) (string, storageKind, bool) {
+	if g.info == nil || len(e.Args) != 1 || !isKnownTypePureExpr(e.Args[0]) {
+		return "", storeBoxed, false
+	}
+	ident, ok := e.Callee.(*syntax.IdentExpr)
+	if !ok {
+		return "", storeBoxed, false
+	}
+	t := g.info.Types[e.Args[0]]
+	if t == nil || t.Optional || t.Kind == types.KindAny {
+		return "", storeBoxed, false
+	}
+	typeName, ok := knownTypeName(t)
+	if !ok {
+		return "", storeBoxed, false
+	}
+	switch ident.Name {
+	case "typeof":
+		// Known-type builtin inline for pure args only.
+		// Pass: `typeof(n)` where n:int -> "int".
+		// Fail: `typeof(f())` must still call f() for its side effects.
+		return fmt.Sprintf("monk_string(%s)", cString(typeName)), storeBoxed, true
+	case "is_number":
+		return boolLiteral(t.Kind == types.KindInt || t.Kind == types.KindFloat), storeBool, true
+	case "is_string":
+		return boolLiteral(t.Kind == types.KindStr), storeBool, true
+	case "is_boolean":
+		return boolLiteral(t.Kind == types.KindBool), storeBool, true
+	case "is_array":
+		return boolLiteral(t.Kind == types.KindArray), storeBool, true
+	case "is_record":
+		return boolLiteral(t.Kind == types.KindRecord), storeBool, true
+	case "is_function":
+		return boolLiteral(t.Kind == types.KindFunc), storeBool, true
+	case "is_none":
+		return boolLiteral(t.Kind == types.KindNone), storeBool, true
+	}
+	return "", storeBoxed, false
+}
+
+func boolLiteral(v bool) string {
+	if v {
+		return "true"
+	}
+	return "false"
+}
+
+func knownTypeName(t *types.Type) (string, bool) {
+	switch t.Kind {
+	case types.KindInt:
+		return "int", true
+	case types.KindFloat:
+		return "float", true
+	case types.KindStr:
+		return "string", true
+	case types.KindBool:
+		return "boolean", true
+	case types.KindNone:
+		return "none", true
+	case types.KindArray:
+		return "array", true
+	case types.KindRecord:
+		return "record", true
+	case types.KindFunc:
+		return "function", true
+	}
+	return "", false
+}
+
+func isKnownTypePureExpr(expr syntax.Expr) bool {
+	switch expr.(type) {
+	case *syntax.NumberExpr, *syntax.StringExpr, *syntax.TemplateExpr,
+		*syntax.BoolExpr, *syntax.NoneExpr, *syntax.IdentExpr:
+		return true
+	}
+	return false
+}

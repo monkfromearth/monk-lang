@@ -77,6 +77,7 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 			funcHasCapture: make(map[string]bool),
 			info:           info,
 			storage:        make(map[string]storageKind),
+			arrayUnique:    make(map[string]bool),
 			fnStorage:      make(map[string]funcStorage),
 			modulePrefix:   modPrefix,
 			importMap:      make(map[string]string),

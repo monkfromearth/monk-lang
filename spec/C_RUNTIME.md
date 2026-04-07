@@ -314,6 +314,7 @@ All take and return `MonkValue`. Numeric types only — runtime error on non-num
 ## Type Checking
 
 All return `MonkValue` of kind `MONK_BOOL`, except `monk_typeof` which returns `MONK_STRING`.
+Codegen may inline these for pure arguments with non-optional static types; effectful or unknown arguments still call the runtime helpers.
 
 | Function | Monk builtin |
 |----------|-------------|

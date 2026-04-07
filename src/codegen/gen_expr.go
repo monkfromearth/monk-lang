@@ -236,6 +236,12 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 			}
 			return fmt.Sprintf("%s(%s)", cName, strings.Join(args, ", "))
 		}
+		if code, store, ok := g.emitKnownTypeBuiltin(e); ok {
+			if store != storeBoxed {
+				return boxExpr(code, store)
+			}
+			return code
+		}
 	}
 
 	args := make([]string, len(e.Args))

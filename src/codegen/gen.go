@@ -8,10 +8,12 @@
 //   - gen_stmt.go    — statement emission (var decls, assignments, control flow)
 //   - gen_expr.go    — expression emission (boxed MonkValue path)
 //   - gen_func.go    — function hoisting + call lowering
-//   - gen_helpers.go — small utilities (mangleName, cString, compoundToArith, builtinMap)
-//   - unbox.go       — scalar-unboxing path (raw int64_t/double/bool codegen)
-//   - gen_bounds.go  — static bounds analysis for bounds-check elision on typed arrays
-//   - capture.go     — free-variable analysis for closure capture
+//   - gen_helpers.go  — small utilities (mangleName, cString, compoundToArith, builtinMap)
+//   - unbox.go        — scalar-unboxing path (raw int64_t/double/bool codegen)
+//   - gen_access.go   — typed-array and record-field access fast paths
+//   - gen_optimize.go — small typed optimization detectors (COW, string append, known-type builtins)
+//   - gen_bounds.go   — static bounds analysis for bounds-check elision on typed arrays
+//   - capture.go      — free-variable analysis for closure capture
 package codegen
 
 import (
@@ -104,22 +106,44 @@ func (g *generator) varStorage(monkName string) storageKind {
 	return storeBoxed
 }
 
-// saveStorage takes a snapshot of g.storage that can be restored later.
+type generatorSnapshot struct {
+	storage     map[string]storageKind
+	arrayUnique map[string]bool
+}
+
+// saveStorage takes a snapshot of g.storage and flow-sensitive optimization
+// facts that can be restored later.
 // Used around scope boundaries (function bodies, loop bodies, if/else
 // branches) so a `let x = ...` inside a nested scope that shadows an outer
 // `x` doesn't leak its storage decision to the outer scope on exit.
 //
 // The returned value is an opaque snapshot; pass it to restoreStorage.
-func (g *generator) saveStorage() map[string]storageKind {
-	snap := make(map[string]storageKind, len(g.storage))
-	maps.Copy(snap, g.storage)
+func (g *generator) saveStorage() generatorSnapshot {
+	snap := generatorSnapshot{
+		storage:     make(map[string]storageKind, len(g.storage)),
+		arrayUnique: make(map[string]bool, len(g.arrayUnique)),
+	}
+	maps.Copy(snap.storage, g.storage)
+	maps.Copy(snap.arrayUnique, g.arrayUnique)
 	return snap
 }
 
 // restoreStorage replaces g.storage with a previously saved snapshot,
 // discarding any storage decisions made since the snapshot was taken.
-func (g *generator) restoreStorage(snap map[string]storageKind) {
-	g.storage = snap
+func (g *generator) restoreStorage(snap generatorSnapshot) {
+	restoredUnique := make(map[string]bool, len(snap.arrayUnique))
+	maps.Copy(restoredUnique, snap.arrayUnique)
+	for name, nowUnique := range g.arrayUnique {
+		thenUnique, existed := snap.arrayUnique[name]
+		if existed && nowUnique != thenUnique {
+			// Restore conservatively for flow-sensitive COW facts.
+			// Pass: shadowed inner `arr` cannot leave stale true on outer `arr`.
+			// Fail: branch assignment from shared array restores old true and skips detach.
+			restoredUnique[name] = false
+		}
+	}
+	g.storage = snap.storage
+	g.arrayUnique = restoredUnique
 }
 
 // newTemp returns a unique C temp variable name.

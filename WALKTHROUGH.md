@@ -82,7 +82,9 @@ Both paths produce one C source string. The rest of `generateC` pipes it through
 | `gen_expr.go` | **Boxed** expression emission: `emitExpr` returns a C expression of type `MonkValue`. Every arithmetic op goes through `monk_add`/`monk_sub`/etc. |
 | `gen_func.go` | Function hoisting, `deriveFuncStorage`, `emitTrampoline`, `emitFuncValueNamed`, `hoistFunctionWithCaptures`. Closure capture save-back on return. |
 | `gen_helpers.go` | `mangleName` (prefixes `mk_`), `cString` (escapes for C), `compoundToArith`, `builtinMap` (Monk name → C name) |
-| `unbox.go` | **Unboxed** expression emission: `emitExprTyped` returns `(string, storageKind)`. When both sides of `+` are `storeInt`, emits raw `a + b` instead of `monk_add(a, b)`. Also handles typed-array element reads/writes and COW uniqueness helpers. |
+| `unbox.go` | **Unboxed** expression emission core: `emitExprTyped` returns `(string, storageKind)`. When both sides of `+` are `storeInt`, emits raw `a + b` instead of `monk_add(a, b)`. |
+| `gen_access.go` | Typed-array element access and typed-record field access fast paths. |
+| `gen_optimize.go` | Small optimization detectors: COW uniqueness helpers, string append assignment, and pure known-type `typeof`/`is_*` inlining. |
 | `capture.go` | `freeVars` — free-variable analysis for closure captures. Walks AST, tracks locals, reports references to outer-scope variables. |
 | `gen_bounds.go` | Bounds-check elision: `constVals`, `arrayLens`, `varBounds` tracking. `isBoundedSafe` proves array accesses are in-bounds at compile time so the runtime check can be skipped. |
 

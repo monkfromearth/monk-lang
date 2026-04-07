@@ -42,7 +42,7 @@ func (g *generator) emitExpr(expr syntax.Expr) string {
 		return "monk_none()"
 
 	case *syntax.IdentExpr:
-		name := mangleName(e.Name)
+		name := g.mangledName(e.Name)
 		// If this variable is stored as a raw scalar, box it up so the
 		// classic emit-path (which assumes MonkValue) stays correct.
 		if store := g.varStorage(name); store != storeBoxed {
@@ -230,7 +230,7 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 				args[i] = g.emitExpr(arg)
 			}
 			if g.funcHasCapture[cName] {
-				mn := mangleName(ident.Name)
+				mn := g.mangledName(ident.Name)
 				return fmt.Sprintf("monk_call(%s, %s)",
 					mn, monkValArray(args, len(args)))
 			}
@@ -251,7 +251,7 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 		}
 
 		// Function value (parameter or variable) — indirect call via monk_call
-		name := mangleName(ident.Name)
+		name := g.mangledName(ident.Name)
 		return fmt.Sprintf("monk_call(%s, %s)", name, monkValArray(args, len(e.Args)))
 	}
 

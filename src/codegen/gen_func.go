@@ -93,7 +93,8 @@ func (g *generator) emitTrampoline(cName string, paramCount int, sig funcStorage
 func (g *generator) emitFuncExpr(e *syntax.FuncExpr) string {
 	// Anonymous function — allocate a fresh cName.
 	g.funcCount++
-	cName := fmt.Sprintf("_monk_func_%d", g.funcCount)
+	// Module prefix ensures unique C names across modules (e.g. _monk_m0_func_1).
+	cName := fmt.Sprintf("_monk_%sfunc_%d", g.modulePrefix, g.funcCount)
 	return g.emitFuncValueNamed(cName, e)
 }
 
@@ -109,7 +110,7 @@ func (g *generator) emitFuncValueNamed(cName string, e *syntax.FuncExpr) string 
 	// and can be called directly or referenced by value.
 	var validCaptures []string
 	for _, name := range captures {
-		mn := mangleName(name)
+		mn := g.mangledName(name)
 		if _, isFunc := g.funcNames[name]; isFunc {
 			continue // hoisted functions are already MonkValue locals, not captures
 		}
@@ -130,7 +131,7 @@ func (g *generator) emitFuncValueNamed(cName string, e *syntax.FuncExpr) string 
 	// Build captures array
 	captureExprs := make([]string, len(validCaptures))
 	for i, name := range validCaptures {
-		mn := mangleName(name)
+		mn := g.mangledName(name)
 		if store := g.varStorage(mn); store != storeBoxed {
 			captureExprs[i] = boxExpr(mn, store)
 		} else {
@@ -174,12 +175,12 @@ func (g *generator) hoistFunctionWithCaptures(cName string, e *syntax.FuncExpr, 
 		if sig.All {
 			store = sig.Params[i]
 		}
-		g.storage[mangleName(p.Name)] = store
-		paramParts = append(paramParts, fmt.Sprintf("%s %s", cTypeName(store), mangleName(p.Name)))
+		g.storage[g.mangledName(p.Name)] = store
+		paramParts = append(paramParts, fmt.Sprintf("%s %s", cTypeName(store), g.mangledName(p.Name)))
 	}
 	// Register captured vars in storage so body emission can use them.
 	for _, name := range captures {
-		g.storage[mangleName(name)] = storeBoxed
+		g.storage[g.mangledName(name)] = storeBoxed
 	}
 
 	paramStr := strings.Join(paramParts, ", ")
@@ -205,13 +206,13 @@ func (g *generator) hoistFunctionWithCaptures(cName string, e *syntax.FuncExpr, 
 
 	// Load captures from _self into local variables at function entry.
 	for i, name := range captures {
-		mn := mangleName(name)
+		mn := g.mangledName(name)
 		fmt.Fprintf(&g.body, "    MonkValue %s = _self->captures[%d];\n", mn, i)
 	}
 
 	if !sig.All {
 		for _, p := range e.Params {
-			mn := mangleName(p.Name)
+			mn := g.mangledName(p.Name)
 			fmt.Fprintf(&g.body, "    %s = monk_deep_copy(%s);\n", mn, mn)
 		}
 	}
@@ -225,7 +226,7 @@ func (g *generator) hoistFunctionWithCaptures(cName string, e *syntax.FuncExpr, 
 	// Explicit returns go through emitReturn → emitCaptureSaveBack which also
 	// writes inside the block, so this is unreachable after them (dead code, harmless).
 	for i, name := range captures {
-		mn := mangleName(name)
+		mn := g.mangledName(name)
 		fmt.Fprintf(&g.body, "    _self->captures[%d] = %s;\n", i, mn)
 	}
 	g.body.WriteString("    }\n")

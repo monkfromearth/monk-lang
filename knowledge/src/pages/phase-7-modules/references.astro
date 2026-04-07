@@ -1,0 +1,123 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+---
+
+<LessonLayout title="References & Further Reading" lessonNumber="7.4" section="Phase 7">
+
+    <LessonHeader lessonNumber="7.4" title="References & Further Reading" description="Module systems, dependency resolution, and topological sort resources.">
+        <TagBadge variant="links">links</TagBadge>
+        <TagBadge variant="default">5 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Module systems -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Module systems: the design space.</h2>
+
+        <div class="space-y-4 mb-6">
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">Crafting Interpreters — "Resolving and Binding"</h3>
+                        <p class="text-monk-muted text-sm mt-1">Robert Nystrom — craftinginterpreters.com</p>
+                        <p class="text-monk-muted text-sm mt-2">The resolver chapter covers a semantic pass over the AST that walks scopes and resolves variable references. While Monk's module resolver operates at the file level rather than the variable level, the architecture is the same: a second pass that validates bindings before the final codegen step. Free to read online.</p>
+                        <a href="https://craftinginterpreters.com/resolving-and-binding.html" class="text-orange-600 text-sm hover:underline mt-2 inline-block">craftinginterpreters.com/resolving-and-binding.html</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-6">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-xl bg-orange-50 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-6 h-6 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/></svg>
+                    </div>
+                    <div>
+                        <h3 class="font-bold">Go Packages and Modules</h3>
+                        <p class="text-monk-muted text-sm mt-1">golang.org/ref/spec — the Go language spec</p>
+                        <p class="text-monk-muted text-sm mt-2">Go's module system (introduced in Go 1.11) is a direct influence on Monk's design. Go separates packages (directory-based namespaces) from modules (versioned dependency units). Monk simplifies this to a single level: one file, one module. Reading Go's package spec shows what Monk chose not to do and why.</p>
+                        <a href="https://go.dev/ref/spec#Packages" class="text-orange-600 text-sm hover:underline mt-2 inline-block">go.dev/ref/spec#Packages</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm"><strong>Monk's module system is intentionally minimal.</strong> No versioning, no package registry, no namespace prefixes. One file = one module. Relative imports only. This covers 95% of real use cases while keeping the resolver under 200 lines.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Graph algorithms -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Graph algorithms: DFS and topological sort.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Topological sorting (Wikipedia)</h3>
+                <p class="text-monk-muted text-sm mt-2">A linear ordering of a directed acyclic graph's vertices such that for every directed edge u → v, vertex u comes before v. The Wikipedia article covers both Kahn's algorithm (BFS-based, builds order incrementally) and the DFS-based approach that Monk uses. The DFS approach is simpler when you're already doing a recursive traversal.</p>
+                <a href="https://en.wikipedia.org/wiki/Topological_sorting" class="text-orange-600 text-sm hover:underline mt-2 inline-block">en.wikipedia.org/wiki/Topological_sorting</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Depth-first search (Wikipedia)</h3>
+                <p class="text-monk-muted text-sm mt-2">DFS with gray/black (or white/gray/black) coloring is the standard algorithm for detecting cycles in a directed graph. The three-color version makes cycle detection explicit: a gray node being re-encountered means there is a back edge, which means a cycle. Monk uses this directly in <code class="bg-stone-100 px-1 rounded text-xs">module.Build</code>.</p>
+                <a href="https://en.wikipedia.org/wiki/Depth-first_search" class="text-orange-600 text-sm hover:underline mt-2 inline-block">en.wikipedia.org/wiki/Depth-first_search</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Other module system designs -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Other module system designs to study.</h2>
+
+        <div class="space-y-4">
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">ECMAScript modules (ESM)</h3>
+                <p class="text-monk-muted text-sm mt-2">JavaScript's native module system uses static <code class="bg-stone-100 px-1 rounded text-xs">import</code>/<code class="bg-stone-100 px-1 rounded text-xs">export</code> syntax that is resolved at parse time. The spec defines the module record, linking, and evaluation phases as separate steps — a more explicit version of what Monk does with Build / CheckModules / GenerateModules. The design choices map almost directly.</p>
+                <a href="https://tc39.es/ecma262/#sec-modules" class="text-orange-600 text-sm hover:underline mt-2 inline-block">tc39.es/ecma262/#sec-modules</a>
+            </div>
+
+            <div class="bg-white border border-monk-border rounded-xl p-5">
+                <h3 class="font-semibold text-sm">Rust's module system</h3>
+                <p class="text-monk-muted text-sm mt-2">Rust uses a module tree declared with <code class="bg-stone-100 px-1 rounded text-xs">mod</code> keywords rather than file-based discovery. Visibility is controlled with <code class="bg-stone-100 px-1 rounded text-xs">pub</code> (Monk's <code class="bg-stone-100 px-1 rounded text-xs">export</code>). Rust's approach is more hierarchical; Monk's is flatter and more like Python or JavaScript. Both systems enforce explicit visibility boundaries.</p>
+                <a href="https://doc.rust-lang.org/reference/items/modules.html" class="text-orange-600 text-sm hover:underline mt-2 inline-block">doc.rust-lang.org/reference/items/modules</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Suggested reading order -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Suggested reading order.</h2>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">1</span></div>
+                <p class="text-sm"><strong>Wikipedia: topological sort</strong> — understand DFS post-order as a sorting algorithm before reading the code.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">2</span></div>
+                <p class="text-sm"><strong><code class="bg-stone-100 px-1 rounded text-xs">src/module/module.go</code></strong> — read the source. It's under 200 lines and the algorithm maps directly to the theory.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">3</span></div>
+                <p class="text-sm"><strong>Crafting Interpreters resolver chapter</strong> — for understanding scope-based binding resolution at the variable level, which is what the type checker does after the module resolver.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">4</span></div>
+                <p class="text-sm"><strong>ESM spec</strong> — for seeing how a production-grade language formalizes the same three-phase approach (resolve / link / evaluate).</p>
+            </div>
+        </div>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-7-modules/building-the-resolver"
+        prevLabel="Prev: Building the Resolver"
+    />
+
+</LessonLayout>

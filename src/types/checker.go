@@ -2,6 +2,10 @@
 package types
 
 import (
+	"fmt"
+	"path/filepath"
+
+	"github.com/monkfromearth/monk-lang/module"
 	"github.com/monkfromearth/monk-lang/syntax"
 )
 
@@ -179,8 +183,17 @@ func (c *checker) checkProgram(prog *syntax.Program) error {
 	// references work, (2) check everything.
 	// We actually need FOUR things declared before any check that might use
 	// them: type definitions, then function signatures, then the rest.
+	// Unwrap export statements for hoisting — exported type defs and
+	// functions must be visible before the main check pass.
+	// unwrapExport returns the inner statement if wrapped in ExportStmt.
+	unwrap := func(s syntax.Stmt) syntax.Stmt {
+		if es, ok := s.(*syntax.ExportStmt); ok {
+			return es.Stmt
+		}
+		return s
+	}
 	for _, stmt := range prog.Stmts {
-		if td, ok := stmt.(*syntax.TypeDeclStmt); ok {
+		if td, ok := unwrap(stmt).(*syntax.TypeDeclStmt); ok {
 			t, err := c.resolveTypeDef(td)
 			if err != nil {
 				return err
@@ -192,7 +205,7 @@ func (c *checker) checkProgram(prog *syntax.Program) error {
 	// forward-references work. (The spec names this as "Self-reference for
 	// recursion" and funcs-as-values; we implement it at type-check time.)
 	for _, stmt := range prog.Stmts {
-		if vd, ok := stmt.(*syntax.VarDeclStmt); ok {
+		if vd, ok := unwrap(stmt).(*syntax.VarDeclStmt); ok {
 			if fn, ok := vd.Value.(*syntax.FuncExpr); ok {
 				sig, err := c.funcSignature(fn)
 				if err != nil {
@@ -244,8 +257,21 @@ func (c *checker) checkStmt(stmt syntax.Stmt) error {
 		return c.checkGuard(s)
 	case *syntax.TypeDeclStmt:
 		return nil // already resolved during hoisting
-	case *syntax.UseStmt, *syntax.ExportStmt:
-		return nil // phase 7
+	case *syntax.UseStmt:
+		return nil // imports injected by CheckModules before checkProgram
+	case *syntax.ExportStmt:
+		// Export is a visibility marker — type-check the inner statement.
+		// Bare "export name" (ExprStmt wrapping IdentExpr) can be a variable
+		// OR a type name. Type names live in typeDefs, not scope, so
+		// inferExpr would fail on them. Check typeDefs first.
+		if es, ok := s.Stmt.(*syntax.ExprStmt); ok {
+			if id, ok := es.Expr.(*syntax.IdentExpr); ok {
+				if _, found := c.typeDefs[id.Name]; found {
+					return nil // exporting a type name — valid, nothing to emit
+				}
+			}
+		}
+		return c.checkStmt(s.Stmt)
 	}
 	return nil
 }
@@ -269,3 +295,140 @@ func (c *checker) checkBlock(b *syntax.BlockStmt, newScope bool) error {
 // newScopeOf is a named alias for newScope used at call sites where the intent
 // ("create a scope OF this parent") aids readability.
 func newScopeOf(parent *scope) *scope { return newScope(parent) }
+
+// ─── Multi-module type checking ───────────────────────────────────────────────
+
+// ModuleInfo carries per-module type-check results for the entire module graph.
+// Codegen uses this to resolve cross-module references and emit correct C types.
+type ModuleInfo struct {
+	// Info maps each module path to its per-module type info (expressions, decls, funcs).
+	Info map[string]*Info
+
+	// Exports maps modulePath -> exportName -> Binding (type + constness).
+	// e.g. Exports["/project/math.monk"]["add"] = &Binding{Type: (int,int)->int, IsConst: true}
+	Exports map[string]map[string]*Binding
+
+	// TypeDefs maps modulePath -> typeName -> Type for exported type definitions.
+	// e.g. TypeDefs["/project/geo.monk"]["Point"] = {x: int, y: int}
+	TypeDefs map[string]map[string]*Type
+}
+
+// CheckModules type-checks a resolved module graph in topological order.
+// Each module gets a fresh checker; imports inject bindings from already-checked
+// dependencies. Returns combined type info for codegen.
+//
+//	graph, _ := module.Build("main.monk")
+//	modInfo, err := types.CheckModules(graph)
+//	// modInfo.Exports["math.monk"]["add"] has the function's type
+func CheckModules(graph *module.Graph) (*ModuleInfo, error) {
+	mi := &ModuleInfo{
+		Info:     make(map[string]*Info),
+		Exports:  make(map[string]map[string]*Binding),
+		TypeDefs: make(map[string]map[string]*Type),
+	}
+
+	for _, modPath := range graph.Order {
+		mod := graph.Modules[modPath]
+		c := newChecker()
+
+		// Inject imported bindings from already-checked dependencies.
+		// Process UseStmts before checkProgram so imported names are in scope.
+		for _, stmt := range mod.AST.Stmts {
+			use, ok := stmt.(*syntax.UseStmt)
+			if !ok {
+				continue
+			}
+			depPath, err := module.ResolvePath(use.Source, modPath)
+			if err != nil {
+				return nil, fmt.Errorf("%s:%d: %w", filepath.Base(modPath), use.Line, err)
+			}
+
+			depExports := mi.Exports[depPath]
+			depTypeDefs := mi.TypeDefs[depPath]
+
+			if use.Star {
+				// use * from "./mod" — import all exports.
+				for name, b := range depExports {
+					c.scope.declare(name, b.Type, b.IsConst)
+				}
+				for name, t := range depTypeDefs {
+					c.typeDefs[name] = t
+				}
+			} else if use.Alias != "" && len(use.Names) == 1 {
+				// use X as Y from "./mod" — import X under alias Y.
+				origName := use.Names[0]
+				b := depExports[origName]
+				if b != nil {
+					c.scope.declare(use.Alias, b.Type, b.IsConst)
+				}
+				if t, ok := depTypeDefs[origName]; ok {
+					c.typeDefs[use.Alias] = t
+				}
+			} else {
+				// use X from "./mod" or use { X, Y } from "./mod".
+				for _, name := range use.Names {
+					b := depExports[name]
+					if b != nil {
+						c.scope.declare(name, b.Type, b.IsConst)
+					}
+					if t, ok := depTypeDefs[name]; ok {
+						c.typeDefs[name] = t
+					}
+				}
+			}
+		}
+
+		// Type-check the module.
+		if err := c.checkProgram(mod.AST); err != nil {
+			return nil, fmt.Errorf("%s: %w", filepath.Base(modPath), err)
+		}
+
+		mi.Info[modPath] = c.info
+
+		// Collect exports: walk ExportStmt nodes and look up their types from
+		// the checker's scope.
+		exports := make(map[string]*Binding)
+		typeDefs := make(map[string]*Type)
+		for _, stmt := range mod.AST.Stmts {
+			es, ok := stmt.(*syntax.ExportStmt)
+			if !ok {
+				continue
+			}
+			name := exportedName(es)
+			if name == "" {
+				continue
+			}
+			b := c.scope.lookup(name)
+			if b != nil {
+				exports[name] = b
+			}
+			if t, ok := c.typeDefs[name]; ok {
+				typeDefs[name] = t
+			}
+		}
+		mi.Exports[modPath] = exports
+		mi.TypeDefs[modPath] = typeDefs
+	}
+
+	return mi, nil
+}
+
+// exportedName extracts the name from an ExportStmt.
+//
+//	export let helper = ... -> "helper"
+//	export helper           -> "helper" (ExprStmt wrapping IdentExpr)
+//	export type Point = ... -> "Point"
+func exportedName(es *syntax.ExportStmt) string {
+	switch inner := es.Stmt.(type) {
+	case *syntax.VarDeclStmt:
+		return inner.Name
+	case *syntax.TypeDeclStmt:
+		return inner.Name
+	case *syntax.ExprStmt:
+		if id, ok := inner.Expr.(*syntax.IdentExpr); ok {
+			return id.Name
+		}
+	}
+	return ""
+}
+

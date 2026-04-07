@@ -101,7 +101,7 @@ Word bank: *Safar* (journey) · *Noor* (light) · *Umeed* (hope) · *Fikr* (thou
 4. C Code Generation ✅
 5. CLI ✅ (monk build, monk run, monk check, -o for C output)
 6. Type System + scalar unboxing codegen ✅
-7. Module System
+7. Module System ✅
 8. C FFI (syntax TBD)
 9. Linter & Formatter
 10. LSP + Editor
@@ -119,6 +119,7 @@ src/                     — Go compiler (module root)
     token.go, scanner.go
     ast.go, ast_expr.go, ast_stmt.go
     parser.go, parse_stmt.go, parse_expr.go, parse_type.go
+  module/                    Module resolver, dependency graph (see INDEX.md)
   types/                     Static type checker
   codegen/                   AST → C emitter + scalar unboxing (see INDEX.md)
     gen.go, gen_stmt.go, gen_expr.go, gen_func.go, gen_helpers.go, unbox.go

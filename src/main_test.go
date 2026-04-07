@@ -751,3 +751,461 @@ func TestEmbeddedRuntimeExtraction(t *testing.T) {
 		t.Errorf("expected 'embedded', got %q", string(out))
 	}
 }
+
+// ─── Module system integration tests ──────────────────────────────────────────
+
+// writeMonkFiles writes multiple .monk files to a temp directory and returns
+// the directory path. Keys are filenames (e.g. "main.monk", "lib/utils.monk").
+func writeMonkFiles(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, source := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestRunModuleBasicImport(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"math.monk": `let add = (a int, b int) int { return a + b }
+export add`,
+		"main.monk": `use add from "./math"
+show(to_string(add(3, 4)))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "7" {
+		t.Errorf("expected '7', got %q", stdout)
+	}
+}
+
+func TestRunModuleMultipleImports(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"math.monk": `let add = (a int, b int) int { return a + b }
+export add`,
+		"str.monk": `let greet = (name string) string { return "Hello, " + name }
+export greet`,
+		"main.monk": `use add from "./math"
+use greet from "./str"
+show(to_string(add(10, 20)))
+show(greet("World"))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "30\nHello, World" {
+		t.Errorf("expected '30\\nHello, World', got %q", stdout)
+	}
+}
+
+func TestRunModuleStarImport(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `let a = 10
+export a
+let b = 20
+export b`,
+		"main.monk": `use * from "./lib"
+show(to_string(a))
+show(to_string(b))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "10\n20" {
+		t.Errorf("expected '10\\n20', got %q", stdout)
+	}
+}
+
+func TestRunModuleAliasImport(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"math.monk": `let multiply = (a int, b int) int { return a * b }
+export multiply`,
+		"main.monk": `use multiply as mul from "./math"
+show(to_string(mul(6, 7)))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "42" {
+		t.Errorf("expected '42', got %q", stdout)
+	}
+}
+
+func TestRunModuleDestructuredImport(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"ops.monk": `let add = (a int, b int) int { return a + b }
+export add
+let sub = (a int, b int) int { return a - b }
+export sub`,
+		"main.monk": `use { add, sub } from "./ops"
+show(to_string(add(10, 3)))
+show(to_string(sub(10, 3)))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "13\n7" {
+		t.Errorf("expected '13\\n7', got %q", stdout)
+	}
+}
+
+func TestRunModuleInitOnce(t *testing.T) {
+	// Module-level side effect (show) should run exactly once even when
+	// imported by multiple modules.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"shared.monk": `show("init")
+let X = 42
+export X`,
+		"a.monk": `use X from "./shared"
+let aval = X
+export aval`,
+		"b.monk": `use X from "./shared"
+let bval = X
+export bval`,
+		"main.monk": `use aval from "./a"
+use bval from "./b"
+show(to_string(aval))
+show(to_string(bval))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	// "init" should appear exactly once.
+	if stdout != "init\n42\n42" {
+		t.Errorf("expected 'init\\n42\\n42', got %q", stdout)
+	}
+}
+
+func TestRunModuleExportConst(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"constants.monk": `const PI = 3
+export PI`,
+		"main.monk": `use PI from "./constants"
+show(to_string(PI))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "3" {
+		t.Errorf("expected '3', got %q", stdout)
+	}
+}
+
+func TestCheckModuleCircularError(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"a.monk": `use y from "./b"`,
+		"b.monk": `use x from "./a"`,
+	})
+	_, stderr, code := runMonkCmd(t, bin, "check", filepath.Join(dir, "a.monk"))
+	if code == 0 {
+		t.Fatal("expected non-zero exit for circular import")
+	}
+	if !strings.Contains(stderr, "circular import") {
+		t.Errorf("expected 'circular import' in error, got %q", stderr)
+	}
+}
+
+func TestCheckModuleMissingExport(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk":  `let x = 1`,
+		"main.monk": `use nope from "./lib"`,
+	})
+	_, stderr, code := runMonkCmd(t, bin, "check", filepath.Join(dir, "main.monk"))
+	if code == 0 {
+		t.Fatal("expected non-zero exit for missing export")
+	}
+	if !strings.Contains(stderr, "does not export") {
+		t.Errorf("expected 'does not export' in error, got %q", stderr)
+	}
+}
+
+func TestRunModuleSubdirectory(t *testing.T) {
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib/utils.monk": `let double = (x int) int { return x * 2 }
+export double`,
+		"main.monk": `use double from "./lib/utils"
+show(to_string(double(21)))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "42" {
+		t.Errorf("expected '42', got %q", stdout)
+	}
+}
+
+func TestRunModuleExportFunction(t *testing.T) {
+	// Test that exported functions with closures work across modules.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"counter.monk": `let make_adder = (base int) (int) -> int {
+	let adder = (x int) int { return base + x }
+	return adder
+}
+export make_adder`,
+		"main.monk": `use make_adder from "./counter"
+let add10 = make_adder(10)
+show(to_string(add10(5)))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "15" {
+		t.Errorf("expected '15', got %q", stdout)
+	}
+}
+
+func TestBuildModuleOutputC(t *testing.T) {
+	// monk build with -o .c should produce valid C source for multi-module programs.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `let greet = () string { return "hello" }
+export greet`,
+		"main.monk": `use greet from "./lib"
+show(greet())`,
+	})
+	outC := filepath.Join(t.TempDir(), "out.c")
+	_, _, code := runMonkCmd(t, bin, "build", filepath.Join(dir, "main.monk"), "-o", outC)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	content, err := os.ReadFile(outC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The C source should contain the module init function and main.
+	if !strings.Contains(string(content), "_mod_0_init") {
+		t.Error("expected _mod_0_init in generated C")
+	}
+	if !strings.Contains(string(content), "int main(void)") {
+		t.Error("expected main() in generated C")
+	}
+}
+
+func TestRunModuleExportInlineDecl(t *testing.T) {
+	// export let x = ... should work (inline export of declaration).
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `export let double = (x int) int { return x * 2 }
+export const MAGIC = 7`,
+		"main.monk": `use { double, MAGIC } from "./lib"
+show(to_string(double(MAGIC)))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "14" {
+		t.Errorf("expected '14', got %q", stdout)
+	}
+}
+
+func TestRunModuleReExport(t *testing.T) {
+	// A imports from B, then re-exports it so C can import from A.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"origin.monk": `let secret = 42
+export secret`,
+		"proxy.monk": `use secret from "./origin"
+export secret`,
+		"main.monk": `use secret from "./proxy"
+show(to_string(secret))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "42" {
+		t.Errorf("expected '42', got %q", stdout)
+	}
+}
+
+func TestRunModuleTransitiveImport(t *testing.T) {
+	// A -> B -> C. A uses C's export that B re-exports.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"base.monk": `let base_val = 100
+export base_val`,
+		"middle.monk": `use base_val from "./base"
+let combined = base_val + 50
+export combined`,
+		"main.monk": `use combined from "./middle"
+show(to_string(combined))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "150" {
+		t.Errorf("expected '150', got %q", stdout)
+	}
+}
+
+func TestRunModuleMultipleUseSameModule(t *testing.T) {
+	// Two use statements from the same module — should not double-init.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `show("lib init")
+let a = 1
+export a
+let b = 2
+export b`,
+		"main.monk": `use a from "./lib"
+use b from "./lib"
+show(to_string(a + b))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	// "lib init" should appear exactly once despite two use statements.
+	if stdout != "lib init\n3" {
+		t.Errorf("expected 'lib init\\n3', got %q", stdout)
+	}
+}
+
+func TestRunModuleSideEffectsOnly(t *testing.T) {
+	// Module imported for side effects only — no exports used.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"setup.monk": `show("setup done")
+let x = 1
+export x`,
+		"main.monk": `use x from "./setup"
+show("after setup")`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "setup done\nafter setup" {
+		t.Errorf("expected 'setup done\\nafter setup', got %q", stdout)
+	}
+}
+
+func TestRunModuleExportType(t *testing.T) {
+	// Export a type definition and use it as an annotation in another module.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"types.monk": `type Point = { x: int, y: int }
+export Point`,
+		"main.monk": `use Point from "./types"
+let p Point = {x: 3, y: 4}
+show(to_string(p.x + p.y))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "7" {
+		t.Errorf("expected '7', got %q", stdout)
+	}
+}
+
+func TestCheckModuleNonRelativePath(t *testing.T) {
+	// Non-relative module path should error.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"main.monk": `use x from "lib"`,
+	})
+	_, stderr, code := runMonkCmd(t, bin, "check", filepath.Join(dir, "main.monk"))
+	if code == 0 {
+		t.Fatal("expected non-zero exit for non-relative path")
+	}
+	if !strings.Contains(stderr, "must be relative") {
+		t.Errorf("expected 'must be relative' in error, got %q", stderr)
+	}
+}
+
+func TestRunModuleParentDirectory(t *testing.T) {
+	// Import from parent directory with ../
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"shared.monk": `let val = 99
+export val`,
+		"sub/main.monk": `use val from "../shared"
+show(to_string(val))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "sub", "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "99" {
+		t.Errorf("expected '99', got %q", stdout)
+	}
+}
+
+func TestRunModuleExportBareAndInline(t *testing.T) {
+	// Mix of inline export (export let) and bare export (export name).
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `export let inline_fn = (x int) int { return x + 1 }
+let bare_fn = (x int) int { return x * 2 }
+export bare_fn`,
+		"main.monk": `use { inline_fn, bare_fn } from "./lib"
+show(to_string(inline_fn(5)))
+show(to_string(bare_fn(5)))`,
+	})
+	stdout, _, code := runMonkCmd(t, bin, "run", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d", code)
+	}
+	if stdout != "6\n10" {
+		t.Errorf("expected '6\\n10', got %q", stdout)
+	}
+}
+
+func TestCheckModuleSingleFile(t *testing.T) {
+	// monk check on a single file with no imports should still work.
+	bin := buildMonk(t)
+	src := writeMonk(t, "solo.monk", `let x = 42
+show(to_string(x))`)
+	_, stderr, code := runMonkCmd(t, bin, "check", src)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+}
+
+func TestCheckModuleValid(t *testing.T) {
+	// monk check on a multi-file program should pass.
+	bin := buildMonk(t)
+	dir := writeMonkFiles(t, map[string]string{
+		"lib.monk": `let add = (a int, b int) int { return a + b }
+export add`,
+		"main.monk": `use add from "./lib"
+show(to_string(add(1, 2)))`,
+	})
+	_, stderr, code := runMonkCmd(t, bin, "check", filepath.Join(dir, "main.monk"))
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d; stderr: %s", code, stderr)
+	}
+	if !strings.Contains(stderr, "ok") {
+		t.Errorf("expected 'ok' in stderr, got %q", stderr)
+	}
+}

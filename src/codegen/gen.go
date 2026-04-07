@@ -74,6 +74,13 @@ type generator struct {
 	constVals map[string]int64    // compile-time constant variable values (e.g. let N = 400)
 	arrayLens map[string]int64    // statically known lengths of typed array variables
 	varBounds map[string][2]int64 // inclusive [lo, hi] bounds for while-loop counters
+	// Module system — populated only when GenerateModules is used.
+	modulePrefix string            // "" for entry module, "m0_"/"m1_" for imports
+	importMap    map[string]string // Monk name -> foreign C variable name (for imported non-function values)
+	// moduleInit is true for non-entry modules: variable declarations are split
+	// into static globals (in g.globals) and assignments (in g.body/init function).
+	moduleInit bool
+	globals    strings.Builder // static global variable declarations (module mode only)
 }
 
 // funcStorage captures the unboxed C signature of a Monk function, so call

@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/monkfromearth/monk-lang/syntax"
 )
@@ -37,6 +38,18 @@ func (g *generator) emitStmt(stmt syntax.Stmt) {
 		for _, inner := range s.Stmts {
 			g.emitStmt(inner)
 		}
+	case *syntax.ExportStmt:
+		// Export is a visibility marker for the module system.
+		// Bare "export name" (ExprStmt(IdentExpr)) emits nothing — the name
+		// was already declared. Otherwise emit the inner declaration.
+		if es, ok := s.Stmt.(*syntax.ExprStmt); ok {
+			if _, ok := es.Expr.(*syntax.IdentExpr); ok {
+				return // export-by-name, no code to emit
+			}
+		}
+		g.emitStmt(s.Stmt)
+	case *syntax.UseStmt:
+		// Imports resolved at generator construction time — nothing to emit.
 	default:
 		g.emitLine("    /* TODO: unhandled statement %T */\n", stmt)
 	}
@@ -49,15 +62,36 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 		// Pre-register the function name so recursive self-references inside
 		// the body can find it during hoisting.
 		g.funcCount++
-		cFuncName := fmt.Sprintf("_monk_func_%d", g.funcCount)
+		cFuncName := fmt.Sprintf("_monk_%sfunc_%d", g.modulePrefix, g.funcCount)
 		g.funcNames[s.Name] = cFuncName
 		// emitFuncValueNamed uses the pre-allocated cName (doesn't increment funcCount again).
 		funcVal := g.emitFuncValueNamed(cFuncName, fnExpr)
-		g.emitLine("    MonkValue %s = %s;\n", mangleName(s.Name), funcVal)
+		name := g.mangledName(s.Name)
+		if g.moduleInit {
+			// Module mode: declare as static global, assign in init body.
+			// static MonkValue mk_m0_add; (at file scope)
+			// mk_m0_add = monk_make_function(...); (in init body)
+			fmt.Fprintf(&g.globals, "static MonkValue %s;\n", name)
+			g.emitLine("    %s = %s;\n", name, funcVal)
+		} else {
+			g.emitLine("    MonkValue %s = %s;\n", name, funcVal)
+		}
 		return
 	}
 
-	name := mangleName(s.Name)
+	// Module mode for non-function variables: declare as static global,
+	// assign in init body. This makes exported variables visible across C
+	// functions (init function + caller's main).
+	//
+	// Strategy: temporarily capture the normal emitVarDecl output, then
+	// split "TYPE name = expr;" into "static TYPE name;" (global) +
+	// "name = expr;" (init body).
+	if g.moduleInit {
+		g.emitModuleVarDecl(s)
+		return
+	}
+
+	name := g.mangledName(s.Name)
 
 	// Decide this variable's storage based on the type checker's verdict.
 	// Absent type info (legacy Generate path), stay boxed.
@@ -176,6 +210,88 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt) {
 	g.recordConst(s.Name, s.Value) // bounds-check elision
 }
 
+// emitModuleVarDecl handles top-level variable declarations in non-entry
+// modules. Variables must be declared as file-scope `static` globals so they're
+// visible from both the init function and the importing module's main().
+//
+// Strategy: run the normal emitVarDecl into a temporary body buffer, then
+// transform each "    TYPE name = expr;\n" into:
+//
+//   - "static TYPE name;\n" in g.globals  (file scope)
+//   - "    name = expr;\n"  in g.body     (init body)
+//
+// Example:
+//
+//	Module code: let x = 42
+//	Globals:     static int64_t mk_m0_x;
+//	Init body:       mk_m0_x = 42;
+//
+// ASSUMPTION: all C type tokens emitted by emitVarDecl are single words
+// (MonkValue, int64_t, double, bool). Multi-word types (e.g. "unsigned long")
+// would confuse the parts[0]/parts[1] split. If that ever changes, replace
+// this text-parsing approach with a forModule bool parameter to emitVarDecl.
+//
+// NOTE: moduleInit is toggled off/on as a stateful side-effect to make
+// emitVarDecl take the normal (non-module) path. This is safe because
+// emitVarDecl is synchronous and non-reentrant. If emitVarDecl ever spawns
+// recursive calls (e.g. for default parameter init), replace the toggle with
+// a forModule bool argument to avoid mid-recursion state corruption.
+// TODO: refactor emitVarDecl to accept forModule bool instead of using g.moduleInit.
+func (g *generator) emitModuleVarDecl(s *syntax.VarDeclStmt) {
+	// Save the real body, swap in a temp buffer.
+	saved := g.body
+	g.body = strings.Builder{}
+
+	// Disable moduleInit temporarily so emitVarDecl takes the normal path.
+	g.moduleInit = false
+	g.emitVarDecl(s)
+	g.moduleInit = true
+
+	output := g.body.String()
+	g.body = saved
+
+	// Transform the captured output. Each line is "    TYPE name = expr;\n".
+	// We split on the first " = " to get the declaration and initializer.
+	for _, line := range strings.Split(strings.TrimRight(output, "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+
+		// Find "TYPE name = expr;" pattern.
+		// Some lines may not be declarations (e.g. intermediate temp vars
+		// or side-effect statements). Those go straight to init body.
+		eqIdx := strings.Index(trimmed, " = ")
+		if eqIdx == -1 || !strings.HasSuffix(trimmed, ";") {
+			g.emitLine("%s\n", line)
+			continue
+		}
+
+		declPart := trimmed[:eqIdx]   // "TYPE name" or just "name" for reassignment
+		exprPart := trimmed[eqIdx+3:] // "expr;" (includes semicolon)
+
+		// Check if this is a declaration (has a type prefix) vs an assignment.
+		// Declarations have format "TYPE name" where TYPE is one of the single-token
+		// C types emitted by Monk codegen: MonkValue, int64_t, double, bool.
+		parts := strings.Fields(declPart)
+		if len(parts) == 2 {
+			typeName := parts[0]
+			varName := parts[1]
+			// Guard: if the type name contains a space, our parsing assumption has
+			// broken. Panic early with a clear message rather than emitting corrupt C.
+			if strings.Contains(typeName, " ") {
+				panic("emitModuleVarDecl: multi-word C type '" + typeName + "' — update parser to use forModule bool")
+			}
+			// Emit as static global + init assignment.
+			fmt.Fprintf(&g.globals, "static %s %s;\n", typeName, varName)
+			g.emitLine("    %s = %s\n", varName, exprPart)
+		} else {
+			// Not a simple declaration — emit as-is in init body.
+			g.emitLine("%s\n", line)
+		}
+	}
+}
+
 func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	// Unboxed scalar fast path: plain ident with raw scalar storage (int64_t,
 	// double, bool). Typed arrays are excluded — they need free+reconvert on
@@ -184,7 +300,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	// that leaks the old backing store and reads the wrong union member.
 	// Pass: `x = x + 1` (storeInt). Fail: `arr = append(arr, 5)` (storeIntArray).
 	if target, ok := s.Target.(*syntax.IdentExpr); ok {
-		name := mangleName(target.Name)
+		name := g.mangledName(target.Name)
 		if store := g.varStorage(name); isRawScalar(store) {
 			rhsCode, rhsStore := g.emitExprTyped(s.Value)
 			rhs := coerce(rhsCode, rhsStore, store)
@@ -234,7 +350,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	if s.Op == syntax.Equal {
 		if indexTarget, ok := s.Target.(*syntax.IndexExpr); ok {
 			if identObj, ok2 := indexTarget.Object.(*syntax.IdentExpr); ok2 {
-				objName := mangleName(identObj.Name)
+				objName := g.mangledName(identObj.Name)
 				objSt := g.varStorage(objName)
 				elemSt := elemStorageFor(objSt)
 				if elemSt != storeBoxed {
@@ -268,7 +384,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 	if s.Op == syntax.Equal && g.info != nil {
 		if propTarget, ok := s.Target.(*syntax.PropertyExpr); ok {
 			if identObj, ok2 := propTarget.Object.(*syntax.IdentExpr); ok2 {
-				objName := mangleName(identObj.Name)
+				objName := g.mangledName(identObj.Name)
 				if objType, ok3 := g.info.Types[propTarget.Object]; ok3 && objType != nil {
 					idx, fieldSt := recordField(objType, propTarget.Property)
 					if idx >= 0 {
@@ -303,7 +419,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 
 	switch target := s.Target.(type) {
 	case *syntax.IdentExpr:
-		name := mangleName(target.Name)
+		name := g.mangledName(target.Name)
 		// Invalidate direct-call optimization on function reassignment.
 		// `let f = (x) { x+1 }; f = (x) { x*2 }; f(5)` — without this,
 		// f(5) still emits `_monk_func_1(5)` (the OLD function) because
@@ -506,7 +622,7 @@ func (g *generator) emitWhile(s *syntax.WhileStmt) {
 }
 
 func (g *generator) emitFor(s *syntax.ForStmt) {
-	varName := mangleName(s.VarName)
+	varName := g.mangledName(s.VarName)
 
 	// Counter-loop fast path: `for x in range(N)` → `for(int64_t x=0; x<N; x++)`.
 	// Avoids allocating an N-element array entirely.
@@ -705,7 +821,7 @@ func (g *generator) emitReturn(s *syntax.ReturnStmt) {
 // so mutations persist across calls. Only emits if the current function has captures.
 func (g *generator) emitCaptureSaveBack() {
 	for i, name := range g.currentCaptures {
-		mn := mangleName(name)
+		mn := g.mangledName(name)
 		g.emitLine("    _self->captures[%d] = %s;\n", i, mn)
 	}
 }
@@ -715,8 +831,8 @@ func (g *generator) emitCaptureSaveBack() {
 // error value bound to errName. The guard variable is pre-initialised to none
 // so it has a safe default even if the against block doesn't assign it.
 func (g *generator) emitGuard(s *syntax.GuardStmt) {
-	varName := mangleName(s.VarName)
-	errName := mangleName(s.ErrorName)
+	varName := g.mangledName(s.VarName)
+	errName := g.mangledName(s.ErrorName)
 
 	g.emitLine("    MonkValue %s = monk_none();\n", varName)
 	g.emitLine("    {\n")

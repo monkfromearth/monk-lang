@@ -135,6 +135,12 @@ Initial choice was Zig for minimal footprint and explicit memory. Revised after 
 Monk source (.monk)
     │
     ▼
+┌──────────────────┐
+│ Module Resolver  │  Go (DFS resolve, cycle detect, topo-sort)
+│ (dependency graph)│  Single-file programs skip this step
+└────────┬─────────┘
+         │ per module:
+         ▼
 ┌──────────┐
 │  Lexer   │  Go
 │  (tokens)│
@@ -149,11 +155,12 @@ Monk source (.monk)
      ▼
 ┌──────────────┐
 │ Type Checker │  Go (annotates AST with types, catches errors)
+│              │  Cross-module imports resolved in dependency order
 └──────┬───────┘
        │
        ▼
 ┌────────────┐
-│ C Codegen  │  Go (AST → .c file)
+│ C Codegen  │  Go (AST → single .c file, all modules inlined)
 └──────┬─────┘
        │
        ▼
@@ -180,7 +187,7 @@ monk format hello.monk      # Code formatting
 
 | Component | Written in | Purpose |
 |-----------|-----------|---------|
-| Monk compiler | Go | Lexer, parser, type checker, C codegen, CLI |
+| Monk compiler | Go | Lexer, parser, type checker, module resolver, C codegen, CLI |
 | Monk runtime library | C | Built-in functions (show, math, string ops, array ops) |
 | Generated code | C | The user's Monk program, compiled to C |
 | Final binary | Native | Linked: generated code + runtime library |
@@ -226,7 +233,7 @@ These are real problems other compile-to-C languages have hit. Our mitigations:
 
 The three remaining gaps between Monk and C performance — in order of impact:
 
-#### A. Typed array backing store (closes matmul 3× → ~1× C)
+#### A. Typed array backing store ✅ SHIPPED (matmul 11× → ~1.6× C)
 
 **Current state:** `int[]` is a `MonkValue` whose `array_val->data` is `MonkValue[]` — a 16-byte struct per element (8 bytes tag + 8 bytes value). A 400×400 matrix uses 2.56 MB. C uses 1.28 MB. Every cache line holds half as many numbers.
 
@@ -260,7 +267,7 @@ The three remaining gaps between Monk and C performance — in order of impact:
 
 **Effort:** Medium. Contained to `runtime.c` + `monk_deep_copy`/`monk_free`. Codegen changes minimal.
 
-#### C. Bounds-check elision for typed arrays (micro-optimization)
+#### C. Bounds-check elision for typed arrays ✅ SHIPPED (matmul ~2× → ~1.6× C)
 
 **Current state:** Every typed-array element access emits an OOB guard: `if (i < 0 || i >= arr.array_val->length) monk_panic(...)`. In a hot inner loop (e.g., matmul), this is 2 branches per access — branch predictor handles it, but it's noise.
 
@@ -286,6 +293,47 @@ The three remaining gaps between Monk and C performance — in order of impact:
 
 ---
 
+## Module System Architecture
+
+Multi-file Monk programs compile to a single `.c` file. This is the simplest approach that works — no linker complexity, no extern declarations, no header generation.
+
+### How it works
+
+```
+entry.monk ─┬─→ module.Build()     DFS resolve, cycle detect, topo-sort
+             │   returns Graph{Order: [leaf.monk, mid.monk, entry.monk]}
+             │
+             ├─→ types.CheckModules()  Check each module in dependency order
+             │   Imports inject bindings from already-checked modules
+             │
+             └─→ codegen.GenerateModules()  Emit single .c with:
+                  - Module-prefixed names (mk_m0_x, _monk_m0_func_1)
+                  - Static globals for non-entry module variables
+                  - Init functions with once-guards
+                  - Entry module code in main()
+```
+
+### Key design decisions
+
+**Single `.c` output (not multiple `.o` files).** Functions are already `static` — making them visible across translation units would require `extern` declarations and header generation. A single file means one `cc` invocation, one set of `#line` directives, and the optimizer sees everything. Multi-`.o` linking can be added later as an incremental compilation optimization if compile times become a problem.
+
+**Module-prefixed name mangling.** Entry module keeps `mk_NAME` (no prefix). Imported modules get `mk_m{N}_NAME` (e.g. `mk_m0_helper`). Prevents C-level name collisions between modules that both define a `helper` function. The numeric ID is assigned by topological order position.
+
+**Static globals for module variables.** Non-entry module variables must be visible from both the init function (where they're assigned) and the entry module's `main()` (where they're used via imports). Declaring them as `static` at file scope solves this. The init function body handles assignment.
+
+**Init functions with once-guards.** Each non-entry module gets `static void _mod_N_init(void)` with a `static int _initialized` flag. Diamond dependencies (A imports B and C, both import D) call D's init from both B and C, but only the first call executes.
+
+**Storage propagation across modules.** When module A exports a scalar variable (e.g. `let x int = 42`, stored as `int64_t`), importing modules need to know it's `int64_t`, not `MonkValue`. The `storageKind` is tracked per-export and propagated to importers so `emitExpr` correctly boxes scalar values when passing to builtin functions.
+
+### What the module system does NOT do
+
+- **No package registry or remote imports.** Paths are always relative (`./`, `../`).
+- **No conditional imports.** All imports are resolved statically at compile time.
+- **No re-export syntax.** Re-exporting works by importing a name and then `export name` — but there's no `export { X } from "./mod"` shorthand.
+- **No namespace objects.** `use * from "./mod"` dumps all exports into the current scope. There's no `mod.X` syntax.
+
+---
+
 ## What Can Change Later
 
 | Decision | Current | Future option | Trigger |
@@ -294,12 +342,14 @@ The three remaining gaps between Monk and C performance — in order of impact:
 | Impl language | Go | Zig/Rust (for native backend) or self-hosted | When adding LLVM or custom codegen |
 | Memory model | Value semantics + COW | Add `ref` parameters | When return-value-only style proves too limiting |
 | String encoding | UTF-8 + O(n) indexing | Cached offsets or rope data structure | When string-heavy workloads show up |
+| Module output | Single `.c` file | Multiple `.o` files | When compile times become a bottleneck for large programs |
+| Module paths | Relative only (`./`, `../`) | Package registry, absolute imports | When ecosystem needs sharing |
 
 ---
 
 ## Summary
 
-**Monk v2 is a compiler, not an interpreter.** It is written in Go, generates C, and produces native binaries with zero runtime dependencies beyond a C compiler. The architecture is minimal, inspectable, and extensible — LLVM can be added later without changing the frontend.
+**Monk v2 is a compiler, not an interpreter.** It is written in Go, generates C, and produces native binaries with zero runtime dependencies beyond a C compiler. Multi-file programs compile to a single `.c` via the module resolver. The architecture is minimal, inspectable, and extensible — LLVM can be added later without changing the frontend.
 
 The stack:
 ```

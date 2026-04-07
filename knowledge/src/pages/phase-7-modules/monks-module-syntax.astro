@@ -1,0 +1,200 @@
+---
+import '../../styles/global.css';
+import LessonLayout from '../../layouts/LessonLayout.astro';
+import LessonHeader from '../../components/LessonHeader.astro';
+import LessonNav from '../../components/LessonNav.astro';
+import InsightBox from '../../components/InsightBox.astro';
+import TagBadge from '../../components/TagBadge.astro';
+import { Code } from 'astro:components';
+---
+
+<LessonLayout title="Monk's Module Syntax" lessonNumber="7.2" section="Phase 7">
+
+    <LessonHeader lessonNumber="7.2" title="Monk's Module Syntax" description="The four import forms, the export statement, and how names cross file boundaries.">
+        <TagBadge variant="monk">monk</TagBadge>
+        <TagBadge variant="default">10 min read</TagBadge>
+    </LessonHeader>
+
+    <!-- Exporting -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Exporting names.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            By default, everything in a <code class="bg-stone-100 px-1 rounded text-xs">.monk</code> file is private. To make a name visible to other files, use <code class="bg-stone-100 px-1 rounded text-xs">export</code>.
+        </p>
+
+        <Code code={`// math.monk
+
+let add = (a int, b int) int &#123; return a + b &#125;
+export add
+
+let mul = (a int, b int) int &#123; return a * b &#125;
+export mul
+
+const PI = 3.14159
+export PI`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            You can export functions, variables, constants, and type declarations. You cannot export a name that isn't declared in the same file.
+        </p>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Trying to import a name that wasn't exported is a compile error — the module resolver validates exports before type-checking begins.
+        </p>
+
+        <InsightBox>
+            <p class="text-sm">Module-level code (top-level statements outside functions) also runs, even if nothing is exported. A module that only has side effects (e.g. initialization, logging) can be valid.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Four import forms -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">The four import forms.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Monk has four ways to import from another module. All four resolve to the same thing at the C level — they only differ in how names are brought into scope.
+        </p>
+
+        <!-- Single import -->
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-4">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Form 1</span>
+                <h3 class="font-semibold text-sm">Single import</h3>
+            </div>
+            <Code code={`use add from "./math"`} lang="javascript" />
+            <p class="text-monk-muted text-sm mt-3">Imports one name. <code class="bg-stone-100 px-1 rounded text-xs">add</code> is now in scope, bound to the function from <code class="bg-stone-100 px-1 rounded text-xs">math.monk</code>.</p>
+        </div>
+
+        <!-- Destructured import -->
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-4">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Form 2</span>
+                <h3 class="font-semibold text-sm">Destructured import</h3>
+            </div>
+            <Code code={`use &#123; add, mul &#125; from "./math"`} lang="javascript" />
+            <p class="text-monk-muted text-sm mt-3">Imports multiple names in one statement. Each name is validated against the module's exports individually.</p>
+        </div>
+
+        <!-- Wildcard import -->
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-4">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Form 3</span>
+                <h3 class="font-semibold text-sm">Wildcard import</h3>
+            </div>
+            <Code code={`use * from "./math"`} lang="javascript" />
+            <p class="text-monk-muted text-sm mt-3">Imports everything the module exports. Skips individual name validation — the type checker handles resolution. Useful for modules with many exports.</p>
+        </div>
+
+        <!-- Alias import -->
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-4">
+            <div class="flex items-center gap-2 mb-3">
+                <span class="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">Form 4</span>
+                <h3 class="font-semibold text-sm">Alias import</h3>
+            </div>
+            <Code code={`use add as plus from "./math"`} lang="javascript" />
+            <p class="text-monk-muted text-sm mt-3">Imports one name under a different local name. <code class="bg-stone-100 px-1 rounded text-xs">plus</code> is in scope; <code class="bg-stone-100 px-1 rounded text-xs">add</code> is not. Useful for resolving name collisions or shortening long names.</p>
+        </div>
+
+        <InsightBox>
+            <p class="text-sm">All four forms are validated at compile time. You cannot import a name that doesn't exist in the module's exports, and you cannot use a module value that wasn't imported. There are no implicit globals from imported modules.</p>
+        </InsightBox>
+    </section>
+
+    <!-- Module paths -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Module paths are always relative.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The source string in a <code class="bg-stone-100 px-1 rounded text-xs">use</code> statement must start with <code class="bg-stone-100 px-1 rounded text-xs">.</code> — it is always a relative path from the importing file. No bare module names, no absolute paths.
+        </p>
+
+        <Code code={`use add from "./math"          // math.monk in the same directory
+use helpers from "./lib/utils" // utils.monk in a subdirectory
+use base from "../shared"      // shared.monk in the parent directory`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            The <code class="bg-stone-100 px-1 rounded text-xs">.monk</code> extension is optional — the resolver adds it automatically if missing.
+        </p>
+
+        <Code code={`use add from "./math"       // same as:
+use add from "./math.monk"  // identical`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            If the file doesn't exist at the resolved path, the compiler reports a specific error at the line where the <code class="bg-stone-100 px-1 rounded text-xs">use</code> statement appears.
+        </p>
+    </section>
+
+    <!-- A complete example -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">A complete example.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The <code class="bg-stone-100 px-1 rounded text-xs">examples/modules/</code> directory has the canonical working example:
+        </p>
+
+        <p class="text-monk-muted text-sm mb-2 font-semibold">math.monk</p>
+        <Code code={`let add = (a int, b int) int &#123; return a + b &#125;
+export add
+
+let mul = (a int, b int) int &#123; return a * b &#125;
+export mul
+
+const PI = 3
+export PI`} lang="javascript" />
+
+        <p class="text-monk-muted text-sm mb-2 font-semibold mt-6">main.monk</p>
+        <Code code={`use &#123; add, mul &#125; from "./math"
+use PI from "./math"
+
+show("add(3, 4) = " + to_string(add(3, 4)))
+show("mul(5, 6) = " + to_string(mul(5, 6)))
+show("PI = " + to_string(PI))
+
+let result = add(mul(3, 4), mul(5, 6))
+show("3*4 + 5*6 = " + to_string(result))`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-6 mb-4">
+            Compile and run: <code class="bg-stone-100 px-1 rounded text-xs">monk run examples/modules/main.monk</code>. The compiler detects the <code class="bg-stone-100 px-1 rounded text-xs">use</code> statements, resolves <code class="bg-stone-100 px-1 rounded text-xs">math.monk</code>, checks types across the boundary, and emits a single binary.
+        </p>
+    </section>
+
+    <!-- What the type checker sees -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">What the type checker sees across the boundary.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            When <code class="bg-stone-100 px-1 rounded text-xs">main.monk</code> calls <code class="bg-stone-100 px-1 rounded text-xs">add(3, 4)</code>, the type checker knows:
+        </p>
+
+        <div class="space-y-3">
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">1</span></div>
+                <p class="text-sm"><code class="bg-stone-100 px-1 rounded text-xs">add</code> was imported from <code class="bg-stone-100 px-1 rounded text-xs">math.monk</code>, which exported it.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">2</span></div>
+                <p class="text-sm"><code class="bg-stone-100 px-1 rounded text-xs">math.monk</code> was type-checked first (dependency order), so <code class="bg-stone-100 px-1 rounded text-xs">add</code>'s signature is already in the type map: <code class="bg-stone-100 px-1 rounded text-xs">(int, int) -> int</code>.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">3</span></div>
+                <p class="text-sm">Passing <code class="bg-stone-100 px-1 rounded text-xs">3, 4</code> (both int) matches the signature. The call is valid.</p>
+            </div>
+            <div class="flex items-start gap-3">
+                <div class="w-6 h-6 rounded-full bg-orange-50 flex items-center justify-center flex-shrink-0 mt-0.5"><span class="text-orange-600 font-bold text-xs">4</span></div>
+                <p class="text-sm">Passing <code class="bg-stone-100 px-1 rounded text-xs">"hello", 4</code> would be a compile error: cannot pass string to int parameter.</p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mt-6">
+            The type boundary is fully enforced. Modules do not relax the type checker.
+        </p>
+    </section>
+
+    <LessonNav
+        prevHref="/phase-7-modules/why-modules"
+        prevLabel="Prev: Why a Module System?"
+        nextHref="/phase-7-modules/building-the-resolver"
+        nextLabel="Next: Building the Resolver"
+    />
+
+</LessonLayout>

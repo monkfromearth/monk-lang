@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-6 complete (all deferred optimizations shipped). 630 tests (467 Go + 163 C runtime). Working end-to-end.**
+**Status: Phases 1-7 complete. 676 tests (510 Go + 166 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -766,25 +766,47 @@ After: `for(int64_t mk_i=0; mk_i < 10000000; mk_i++)` — same semantics, zero h
 
 3 new tests: basic correctness, variable bound, nested counter loops.
 
+### Phase 7 — Module System (2026-04-07)
+
+Multi-file compilation via `use`/`export`. All modules compile into a single `.c` file.
+
+**Architecture:**
+- New `src/module/` package: DFS resolver, cycle detection (gray-node), topological sort, export name validation
+- `types.CheckModules(graph)`: checks modules in dependency order, injects imported bindings (types + constness) into each module's fresh scope
+- `codegen.GenerateModules(graph, modInfo)`: emits one `.c` with module-prefixed names (`mk_m0_`, `_monk_m0_func_`), static globals for non-entry module vars, init functions with once-guards
+- CLI auto-detects imports: single-file path completely untouched, multi-module path triggered by presence of `UseStmt`
+
+**All four import forms work:**
+- `use X from "./path"` — single named import
+- `use { X, Y } from "./path"` — destructured import
+- `use * from "./path"` — wildcard import
+- `use X as Y from "./path"` — alias import
+
+**Module features:**
+- Module-level code runs exactly once (init guard: `static int _initialized`)
+- Diamond dependencies handled (shared module initialized once)
+- Re-exports work (import from A, export for B)
+- Cross-module type exports (`type Point = ...` usable as annotation in importer)
+- Cross-module unboxed calls (scalar storage propagated across module boundaries)
+- Closures work across module boundaries
+- Relative paths including `../` and subdirectories
+
+**Bug fixes found by edge case tests:**
+- Re-export C name resolution: proxy module used its own prefix instead of propagating the origin's C name
+- Export type names: `export Point` failed type check because type names live in `typeDefs`, not `scope`
+
+**Tests:** 13 unit tests (`src/module/module_test.go`), 23 integration tests (12 `TestRunModule*`, 5 `TestCheckModule*`, 1 `TestBuildModule*`, plus module-aware existing tests). All 23 examples pass. All 21 benchmarks match expected.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
 |-------|-------|--------|
-| 6 | Type System (static analysis) | **Complete** ✅ |
-| 6 | Typed array unboxing (inline access) | **Complete** ✅ |
-| 6 | Typed array backing store (`int64_t*`) | **Complete** ✅ — untyped matmul ~13× → typed ~1.6× C |
-| 6 | Unboxed for-in over typed arrays | **Complete** ✅ — raw scalar loop variable |
-| 6 | Typed array index returns T not T? | **Complete** ✅ — removes + 0 workaround |
-| 6 | Record field unboxing | **Complete** ✅ — record_access 25×→1.4× C |
-| 6 | Bounds-check elision for typed arrays | **Complete** ✅ — direct `arr.data[i]` in hot loops |
-| 6 | `fill()` builtin + specialized allocation | **Complete** ✅ — sieve 2.0×→1.15× C |
+| 7 | Module System | **Complete** ✅ |
 | 6 | `restrict` function extraction | Deferred — matmul/nbody 1.8×→~1×, invasive codegen |
-| 6 | `for x in range(N)` → counter loop | **Complete** ✅ — zero allocation, pure C for-loop |
 | 6 | Copy-on-write for arrays | Deferred — binary_trees 57×→~1×, 2-3 sessions |
 | 6 | Closure escape analysis | Deferred — closure_invoke 17×→~1×, 2-3 sessions |
 | 6 | String views / builder | Deferred — string_concat/ops/levenshtein, 1-2 sessions |
 | 6 | Stream fusion (lazy map/filter/reduce) | Deferred — functional_chain 4×→~1×, 3+ sessions |
-| 7 | Module System | Not started |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |
 | 10 | LSP & Editor Support | Partial (extension built, LSP server not started) |

@@ -1,6 +1,7 @@
 # `src/codegen/` — AST → C emitter
 
 Entry: `Generate(prog, filename)` or `GenerateWithTypes(prog, filename, info)`.
+Multi-module: `GenerateModules(graph, modInfo)` — single `.c` from a module graph.
 
 The generator walks the AST twice: functions get **hoisted** above `main()`
 as static C functions, everything else goes into the body of `main()`.
@@ -13,7 +14,8 @@ as static C functions, everything else goes into the body of `main()`.
 | `gen_stmt.go`     | statement emission (var decl, assign, control flow, guard) |
 | `gen_expr.go`     | expression emission (**boxed** MonkValue path)             |
 | `gen_func.go`     | function hoisting, trampolines, closures, capture save-back |
-| `gen_helpers.go`  | `mangleName`, `cString`, `compoundToArith`, `builtinMap`   |
+| `gen_module.go`   | `GenerateModules` — multi-module → single `.c`, init functions, module-prefixed names |
+| `gen_helpers.go`  | `mangledName`, `cString`, `compoundToArith`, `builtinMap`  |
 | `unbox.go`        | scalar and typed-array unboxing (`int64_t`/`double`/`bool`, `storeIntArray` etc.) |
 | `capture.go`      | `freeVars` — free variable analysis for closure captures   |
 | `gen_bounds.go`   | static bounds analysis for bounds-check elision (`constVals`, `arrayLens`, `varBounds`, `isBoundedSafe`) |

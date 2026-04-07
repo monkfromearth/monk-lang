@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/monkfromearth/monk-lang/codegen"
+	"github.com/monkfromearth/monk-lang/module"
 	"github.com/monkfromearth/monk-lang/syntax"
 	"github.com/monkfromearth/monk-lang/types"
 )
@@ -77,6 +78,51 @@ The -o flag controls the output format:
   monk build hello.monk -o hello.c  Output: hello.c (C source, no compilation)`)
 }
 
+// hasImports returns true if the program contains any UseStmt nodes.
+// Used to decide between single-file and multi-module compilation paths.
+func hasImports(prog *syntax.Program) bool {
+	for _, stmt := range prog.Stmts {
+		if _, ok := stmt.(*syntax.UseStmt); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// generateC parses, type-checks, and generates C source for a .monk file.
+// Automatically uses the multi-module pipeline when the entry file has imports.
+func generateC(sourceFile string) string {
+	source, err := os.ReadFile(sourceFile)
+	if err != nil {
+		fatal("monk: %s", err)
+	}
+
+	prog, err := syntax.Parse(string(source))
+	if err != nil {
+		fatal("%s: %s", sourceFile, err)
+	}
+
+	// Multi-module path: entry file has `use` statements.
+	if hasImports(prog) {
+		graph, err := module.Build(sourceFile)
+		if err != nil {
+			fatal("%s", err)
+		}
+		modInfo, err := types.CheckModules(graph)
+		if err != nil {
+			fatal("%s", err)
+		}
+		return codegen.GenerateModules(graph, modInfo)
+	}
+
+	// Single-file path (unchanged from before modules).
+	info, err := types.Check(prog)
+	if err != nil {
+		fatal("%s: %s", sourceFile, err)
+	}
+	return codegen.GenerateWithTypes(prog, sourceFile, info)
+}
+
 // cmdBuild compiles a .monk file to a native binary or emits C source.
 func cmdBuild(args []string) {
 	if len(args) < 1 {
@@ -105,24 +151,7 @@ func cmdBuild(args []string) {
 		}
 	}
 
-	// Read and parse
-	source, err := os.ReadFile(sourceFile)
-	if err != nil {
-		fatal("monk build: %s", err)
-	}
-
-	prog, err := syntax.Parse(string(source))
-	if err != nil {
-		fatal("%s: %s", sourceFile, err)
-	}
-
-	info, err := types.Check(prog)
-	if err != nil {
-		fatal("%s: %s", sourceFile, err)
-	}
-
-	// Generate C (with type info for scalar unboxing)
-	cSource := codegen.GenerateWithTypes(prog, sourceFile, info)
+	cSource := generateC(sourceFile)
 
 	// Ensure the output directory exists (user may pass a nested path via -o)
 	if outDir := filepath.Dir(outputFile); outDir != "" && outDir != "." {
@@ -174,23 +203,7 @@ func cmdRun(args []string) int {
 	}
 
 	sourceFile := args[0]
-
-	source, err := os.ReadFile(sourceFile)
-	if err != nil {
-		fatal("monk run: %s", err)
-	}
-
-	prog, err := syntax.Parse(string(source))
-	if err != nil {
-		fatal("%s: %s", sourceFile, err)
-	}
-
-	info, err := types.Check(prog)
-	if err != nil {
-		fatal("%s: %s", sourceFile, err)
-	}
-
-	cSource := codegen.GenerateWithTypes(prog, sourceFile, info)
+	cSource := generateC(sourceFile)
 
 	dir, err := os.MkdirTemp("", "monk-run-*")
 	if err != nil {
@@ -248,6 +261,21 @@ func cmdCheck(args []string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", sourceFile, err)
 		os.Exit(1)
+	}
+
+	// Multi-module path: resolve + type-check all imported modules.
+	if hasImports(prog) {
+		graph, gErr := module.Build(sourceFile)
+		if gErr != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", gErr)
+			os.Exit(1)
+		}
+		if _, cErr := types.CheckModules(graph); cErr != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", cErr)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "monk: %s ok\n", sourceFile)
+		return
 	}
 
 	if _, err := types.Check(prog); err != nil {

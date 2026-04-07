@@ -1095,6 +1095,22 @@ show(to_string(arr[1]))`)
 	}
 }
 
+func TestBackingStoreWriteDetachesCopyOnWriteArray(t *testing.T) {
+	out, src := runMonkTyped(t, `let a int[] = [1, 2, 3]
+let b = a
+b[0] = 99
+show(to_string(a[0]) + "," + to_string(b[0]))`)
+	if out != "1,99" {
+		t.Errorf("want '1,99', got %q", out)
+	}
+	// COW write barrier for the typed-array fast path.
+	// Pass: `b[0] = 99` first calls monk_int_array_ensure_unique(&b).
+	// Fail: direct `b.int_array_val->data[0] = 99` mutates shared storage.
+	if !strings.Contains(src, "monk_int_array_ensure_unique(&mk_b)") {
+		t.Errorf("expected COW detach before typed-array write, generated:\n%s", src)
+	}
+}
+
 // Verify float[] uses float_array_val and monk_float_array_from.
 func TestBackingStoreFloat(t *testing.T) {
 	out, src := runMonkTyped(t, `let arr float[] = [1.0, 2.0, 4.0]

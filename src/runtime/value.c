@@ -98,6 +98,7 @@ MonkValue monk_none(void) {
 MonkValue monk_array(MonkValue *elements, int64_t length) {
     MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
     arr->length = length;
+    arr->refcount = 1;
     arr->data = monk_malloc_internal(sizeof(MonkValue) * (length > 0 ? length : 1));
     for (int64_t i = 0; i < length; i++) {
         arr->data[i] = monk_deep_copy(elements[i]);
@@ -140,25 +141,43 @@ MonkValue monk_call(MonkValue fn, MonkValue *args, int64_t argc) {
 
 /* --- Typed array converters --- */
 
+static MonkValue monk_array_share(MonkValue v) {
+    /* COW copy: share now, detach on first write.
+     * Pass: `let b = a` increments refcount and stays O(1).
+     * Fail: mutating b without ensure_unique would also mutate a. */
+    if (v.array_val) v.array_val->refcount++;
+    return v;
+}
+
+static MonkValue monk_int_array_share(MonkValue v) {
+    if (v.int_array_val) v.int_array_val->refcount++;
+    return v;
+}
+
+static MonkValue monk_float_array_share(MonkValue v) {
+    if (v.float_array_val) v.float_array_val->refcount++;
+    return v;
+}
+
+static MonkValue monk_bool_array_share(MonkValue v) {
+    if (v.bool_array_val) v.bool_array_val->refcount++;
+    return v;
+}
+
 /* monk_int_array_from: produce a MONK_INT_ARRAY from either:
  *   - MONK_ARRAY:     extract int_val from each element, free input.
- *   - MONK_INT_ARRAY: deep-copy the int64_t* backing store, leave input intact.
+ *   - MONK_INT_ARRAY: share the int64_t* backing store copy-on-write.
  * Codegen emits this at every int[] variable declaration. */
 MonkValue monk_int_array_from(MonkValue v) {
     if (v.kind == MONK_INT_ARRAY) {
-        int64_t len = v.int_array_val->length;
-        int64_t *data = monk_malloc_internal(sizeof(int64_t) * (len > 0 ? len : 1));
-        for (int64_t i = 0; i < len; i++) data[i] = v.int_array_val->data[i];
-        MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
-        arr->data = data; arr->length = len;
-        return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
+        return monk_int_array_share(v);
     }
     if (v.kind == MONK_ARRAY) {
         int64_t len = v.array_val->length;
         int64_t *data = monk_malloc_internal(sizeof(int64_t) * (len > 0 ? len : 1));
         for (int64_t i = 0; i < len; i++) data[i] = v.array_val->data[i].int_val;
         MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
-        arr->data = data; arr->length = len;
+        arr->data = data; arr->length = len; arr->refcount = 1;
         monk_free_heap(v);
         return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
     }
@@ -168,12 +187,7 @@ MonkValue monk_int_array_from(MonkValue v) {
 
 MonkValue monk_float_array_from(MonkValue v) {
     if (v.kind == MONK_FLOAT_ARRAY) {
-        int64_t len = v.float_array_val->length;
-        double *data = monk_malloc_internal(sizeof(double) * (len > 0 ? len : 1));
-        for (int64_t i = 0; i < len; i++) data[i] = v.float_array_val->data[i];
-        MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
-        arr->data = data; arr->length = len;
-        return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
+        return monk_float_array_share(v);
     }
     if (v.kind == MONK_ARRAY) {
         int64_t len = v.array_val->length;
@@ -183,7 +197,7 @@ MonkValue monk_float_array_from(MonkValue v) {
             data[i] = (e.kind == MONK_INT) ? (double)e.int_val : e.float_val;
         }
         MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
-        arr->data = data; arr->length = len;
+        arr->data = data; arr->length = len; arr->refcount = 1;
         monk_free_heap(v);
         return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
     }
@@ -193,19 +207,14 @@ MonkValue monk_float_array_from(MonkValue v) {
 
 MonkValue monk_bool_array_from(MonkValue v) {
     if (v.kind == MONK_BOOL_ARRAY) {
-        int64_t len = v.bool_array_val->length;
-        bool *data = monk_malloc_internal(sizeof(bool) * (len > 0 ? len : 1));
-        for (int64_t i = 0; i < len; i++) data[i] = v.bool_array_val->data[i];
-        MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
-        arr->data = data; arr->length = len;
-        return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
+        return monk_bool_array_share(v);
     }
     if (v.kind == MONK_ARRAY) {
         int64_t len = v.array_val->length;
         bool *data = monk_malloc_internal(sizeof(bool) * (len > 0 ? len : 1));
         for (int64_t i = 0; i < len; i++) data[i] = v.array_val->data[i].bool_val;
         MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
-        arr->data = data; arr->length = len;
+        arr->data = data; arr->length = len; arr->refcount = 1;
         monk_free_heap(v);
         return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
     }
@@ -220,8 +229,16 @@ MonkValue monk_deep_copy_heap(MonkValue v) {
     case MONK_STRING:
         return monk_string(v.str_val);
     case MONK_ARRAY: {
-        MonkArray *src = v.array_val;
-        return monk_array(src->data, src->length);
+        return monk_array_share(v);
+    }
+    case MONK_INT_ARRAY: {
+        return monk_int_array_share(v);
+    }
+    case MONK_FLOAT_ARRAY: {
+        return monk_float_array_share(v);
+    }
+    case MONK_BOOL_ARRAY: {
+        return monk_bool_array_share(v);
     }
     case MONK_RECORD: {
         MonkRecord *src = v.record_val;
@@ -250,20 +267,28 @@ void monk_free_heap(MonkValue v) {
         free(v.str_val);
         break;
     case MONK_ARRAY:
+        v.array_val->refcount--;
+        if (v.array_val->refcount > 0) break;
         for (int64_t i = 0; i < v.array_val->length; i++)
             monk_free(v.array_val->data[i]);
         free(v.array_val->data);
         free(v.array_val);
         break;
     case MONK_INT_ARRAY:
+        v.int_array_val->refcount--;
+        if (v.int_array_val->refcount > 0) break;
         free(v.int_array_val->data);
         free(v.int_array_val);
         break;
     case MONK_FLOAT_ARRAY:
+        v.float_array_val->refcount--;
+        if (v.float_array_val->refcount > 0) break;
         free(v.float_array_val->data);
         free(v.float_array_val);
         break;
     case MONK_BOOL_ARRAY:
+        v.bool_array_val->refcount--;
+        if (v.bool_array_val->refcount > 0) break;
         free(v.bool_array_val->data);
         free(v.bool_array_val);
         break;

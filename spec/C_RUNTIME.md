@@ -7,14 +7,14 @@
 
 ## Overview
 
-The runtime is ~1,000 lines of C11, split across 7 `.c` files and 2 headers (`runtime.h` public API, `internal.h` shared helpers). Every Monk program links all of them. The codegen emits calls to these functions — Monk `+` becomes `monk_add()`, Monk `show` becomes `monk_show()`, etc.
+The runtime is ~1,000 lines of C11, split across 8 library `.c` files plus the standalone `runtime_test.c` harness and 2 headers (`runtime.h` public API, `internal.h` shared helpers). Every Monk program links all library files. The codegen emits calls to these functions — Monk `+` becomes `monk_add()`, Monk `show` becomes `monk_show()`, etc.
 
 **Scalar unboxed fast path (Phase 6).** When the type checker proves a variable is `int`/`float`/`bool`, codegen stores it as a raw `int64_t`/`double`/`bool` and emits raw C arithmetic — skipping the runtime entirely. The runtime is only called at boxing boundaries (`show`, `to_string`, etc.) and for heap types.
 
 **Typed array fast path (Phase 6.5).** `int[]`, `float[]`, `bool[]` variables use `int64_t*`/`double*`/`bool*` backing stores (`MONK_INT_ARRAY`, `MONK_FLOAT_ARRAY`, `MONK_BOOL_ARRAY`). Element access emits direct pointer arithmetic. OOB panics. Typed arrays benchmark at ~2× C; generic arrays at ~12× C.
 
 **Design rules enforced here:**
-- Value semantics via `monk_deep_copy()` on every assignment
+- Value semantics via `monk_deep_copy()` on every assignment; arrays use copy-on-write internally
 - Truthiness: `false`, `none`, `0` are falsy
 - Graceful on reads: out-of-bounds returns `none`
 - Strict on writes: out-of-bounds write is a runtime error
@@ -66,6 +66,7 @@ struct MonkValue {
 struct MonkArray {
     MonkValue *data;       // heap array of MonkValues
     int64_t    length;
+    int32_t    refcount;   // copy-on-write sharing count
 };
 
 // Typed array backing stores — raw element types, no union overhead
@@ -74,14 +75,17 @@ struct MonkArray {
 struct MonkIntArray {
     int64_t *data;
     int64_t  length;
+    int32_t  refcount;
 };
 struct MonkFloatArray {
     double  *data;
     int64_t  length;
+    int32_t  refcount;
 };
 struct MonkBoolArray {
     bool    *data;
     int64_t  length;
+    int32_t  refcount;
 };
 
 struct MonkRecordField {
@@ -125,7 +129,7 @@ All constructors **copy** their inputs. The caller retains ownership of the orig
 
 ### `monk_deep_copy(MonkValue v) -> MonkValue`
 
-Recursively copies a value. Primitives return as-is. Strings are `strdup`'d. Arrays, records, and functions allocate new memory and deep-copy all contents (including closure captures).
+Semantically copies a value. Primitives return as-is. Strings are `strdup`'d. Records and functions allocate new memory and deep-copy all contents. Arrays increment their backing-store refcount and detach on first mutation.
 
 **Called by codegen on:** every boxed `let`/`const` declaration, every boxed reassignment, every boxed loop variable, every closure capture. Scalar-unboxed variables use plain C assignment and skip this function entirely.
 
@@ -248,14 +252,17 @@ All array functions return **new arrays** (value semantics). The original is nev
 ### Typed Array Converters
 
 Convert a generic `MONK_ARRAY` (or same-kind typed array) into a typed
-backing-store array. Consumes the input (taking ownership) or deep-copies
-if the input is already the same typed kind.
+backing-store array. Generic arrays are converted into a new typed backing
+store; same-kind typed arrays share backing storage copy-on-write.
 
 | Function | Purpose |
 |----------|---------|
 | `monk_int_array_from(v)` | → `MONK_INT_ARRAY` with `int64_t*` backing |
 | `monk_float_array_from(v)` | → `MONK_FLOAT_ARRAY` with `double*` backing |
 | `monk_bool_array_from(v)` | → `MONK_BOOL_ARRAY` with `bool*` backing |
+| `monk_int_array_ensure_unique(&v)` | Detach shared int[] backing before direct write |
+| `monk_float_array_ensure_unique(&v)` | Detach shared float[] backing before direct write |
+| `monk_bool_array_ensure_unique(&v)` | Detach shared bool[] backing before direct write |
 
 Codegen calls these at assignment boundaries when the declared type is
 `int[]`, `float[]`, or `bool[]`. Generated element access emits direct

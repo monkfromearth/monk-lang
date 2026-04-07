@@ -183,7 +183,7 @@ copy = append(copy, 4)       // copy is [3, 1, 2, 4]
 // original is still [3, 1, 2]
 ```
 
-No reference types. No shared state. No garbage collector. No refcounting.
+No reference types. No shared mutable state. No garbage collector. The compiler/runtime may use copy-on-write internally, but mutations must still behave as if values were independent copies.
 
 ## Type Annotations
 

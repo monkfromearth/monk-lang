@@ -47,6 +47,7 @@ func GenerateWithTypes(prog *syntax.Program, filename string, info *types.Info) 
 		funcHasCapture: make(map[string]bool),
 		info:           info,
 		storage:        make(map[string]storageKind),
+		arrayUnique:    make(map[string]bool),
 		fnStorage:      make(map[string]funcStorage),
 	}
 	if info != nil {
@@ -67,6 +68,7 @@ type generator struct {
 	// Unboxing support — nil when Generate was called without type info.
 	info            *types.Info            // per-expression types from the checker
 	storage         map[string]storageKind // per-variable storage decision (Monk name → kind)
+	arrayUnique     map[string]bool        // typed-array vars proven unshared; false/absent means emit COW barrier
 	fnStorage       map[string]funcStorage // per-Monk-function storage decision (Monk name → params/ret)
 	retStorage      storageKind            // expected return storage of the current function body
 	currentCaptures []string               // capture variable names for the function being emitted (empty = no closure)

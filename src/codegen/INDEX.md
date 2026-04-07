@@ -17,7 +17,7 @@ as static C functions, everything else goes into the body of `main()`.
 | `gen_func.go`     | function hoisting, trampolines, closures, capture save-back |
 | `gen_module.go`   | `GenerateModules` — multi-module → single `.c`, init functions, module-prefixed names |
 | `gen_helpers.go`  | `mangledName`, `cString`, `compoundToArith`, `builtinMap`  |
-| `unbox.go`        | scalar and typed-array unboxing (`int64_t`/`double`/`bool`, `storeIntArray` etc.) |
+| `unbox.go`        | scalar and typed-array unboxing (`int64_t`/`double`/`bool`, `storeIntArray` etc.), typed-array COW uniqueness tracking |
 | `capture.go`      | `freeVars` — free variable analysis for closure captures   |
 | `gen_bounds.go`   | static bounds analysis for bounds-check elision (`constVals`, `arrayLens`, `varBounds`, `isBoundedSafe`) |
 
@@ -33,6 +33,7 @@ as static C functions, everything else goes into the body of `main()`.
    the array is `int[]`/`float[]`/`bool[]`, the variable holds a `MONK_INT_ARRAY`
    etc. with a raw `int64_t*`/`double*`/`bool*` backing store. Element reads emit
    `arr.int_array_val->data[i]` (no union, no tag, cache-friendly). Writes emit
+   a COW detach barrier only when the array may be shared, then
    `arr.int_array_val->data[i] = rhs`. Declarations call `monk_int_array_from()`
    which converts from generic `MONK_ARRAY` (e.g. `range(N)`) or deep-copies an
    existing typed array. Previous "inline access" path with `.array_val->data[i].int_val`

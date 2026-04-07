@@ -226,6 +226,35 @@ void test_deep_copy(void) {
     ASSERT_INT(monk_array_get(b, monk_int(0)), 99);
 }
 
+void test_array_cow_shares_until_write(void) {
+    MonkValue elems[] = {monk_int(1), monk_int(2), monk_int(3)};
+    MonkValue a = monk_array(elems, 3);
+    MonkValue b = monk_deep_copy(a);
+
+    /* COW optimization: semantic copy, physical share until first write.
+     * Pass: `let b = a` shares data; `b[0] = 99` detaches, so a[0] stays 1.
+     * Fail: mutation leaks through and a[0] becomes 99. */
+    ASSERT(a.array_val == b.array_val, "generic array copy should share before write");
+    monk_array_set(&b, monk_int(0), monk_int(99));
+    ASSERT(a.array_val != b.array_val, "generic array write should detach shared storage");
+    ASSERT_INT(monk_array_get(a, monk_int(0)), 1);
+    ASSERT_INT(monk_array_get(b, monk_int(0)), 99);
+}
+
+void test_typed_array_cow_shares_until_write(void) {
+    MonkValue a = monk_range_int(3);
+    MonkValue b = monk_deep_copy(a);
+
+    /* Typed-array COW must cover direct backing-store writes too.
+     * Pass: `let b int[] = a; b[0] = 99` detaches b before writing.
+     * Fail: a and b keep sharing int64_t* and a[0] becomes 99. */
+    ASSERT(a.int_array_val == b.int_array_val, "typed array copy should share before write");
+    monk_array_set(&b, monk_int(0), monk_int(99));
+    ASSERT(a.int_array_val != b.int_array_val, "typed array write should detach shared storage");
+    ASSERT_INT(monk_array_get(a, monk_int(0)), 0);
+    ASSERT_INT(monk_array_get(b, monk_int(0)), 99);
+}
+
 void test_math(void) {
     ASSERT_INT(monk_abs(monk_int(-5)), 5);
     ASSERT_INT(monk_abs(monk_int(5)), 5);
@@ -487,6 +516,8 @@ int main(void) {
     test_arrays();
     test_records();
     test_deep_copy();
+    test_array_cow_shares_until_write();
+    test_typed_array_cow_shares_until_write();
     test_math();
     test_type_checking();
     test_conversion();

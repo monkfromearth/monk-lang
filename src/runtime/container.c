@@ -24,7 +24,7 @@ MonkValue monk_typed_to_generic(MonkValue v) {
         MonkValue *data = monk_malloc_internal(sizeof(MonkValue) * (len > 0 ? len : 1));
         for (int64_t i = 0; i < len; i++) data[i] = monk_int(v.int_array_val->data[i]);
         MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
-        arr->data = data; arr->length = len;
+        arr->data = data; arr->length = len; arr->refcount = 1;
         return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
     }
     if (v.kind == MONK_FLOAT_ARRAY) {
@@ -32,7 +32,7 @@ MonkValue monk_typed_to_generic(MonkValue v) {
         MonkValue *data = monk_malloc_internal(sizeof(MonkValue) * (len > 0 ? len : 1));
         for (int64_t i = 0; i < len; i++) data[i] = monk_float(v.float_array_val->data[i]);
         MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
-        arr->data = data; arr->length = len;
+        arr->data = data; arr->length = len; arr->refcount = 1;
         return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
     }
     if (v.kind == MONK_BOOL_ARRAY) {
@@ -40,7 +40,7 @@ MonkValue monk_typed_to_generic(MonkValue v) {
         MonkValue *data = monk_malloc_internal(sizeof(MonkValue) * (len > 0 ? len : 1));
         for (int64_t i = 0; i < len; i++) data[i] = monk_bool(v.bool_array_val->data[i]);
         MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
-        arr->data = data; arr->length = len;
+        arr->data = data; arr->length = len; arr->refcount = 1;
         return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
     }
     return v; /* already generic */
@@ -55,6 +55,65 @@ void monk_free_generic_intermediate(MonkValue arr) {
         monk_free(arr.array_val->data[i]);
     free(arr.array_val->data);
     free(arr.array_val);
+}
+
+static void monk_array_ensure_unique(MonkValue *v) {
+    if (v->kind != MONK_ARRAY || !v->array_val) return;
+    if (v->array_val->refcount <= 1) return;
+    MonkArray *old = v->array_val;
+    MonkArray *copy = monk_malloc_internal(sizeof(MonkArray));
+    copy->length = old->length;
+    copy->refcount = 1;
+    copy->data = monk_malloc_internal(sizeof(MonkValue) * (old->length > 0 ? old->length : 1));
+    /* COW detach for generic arrays: clone elements before write.
+     * Pass: `let b = a; b[0] = 99` leaves a[0] unchanged.
+     * Fail: mutating b writes through shared old->data. */
+    for (int64_t i = 0; i < old->length; i++) copy->data[i] = monk_deep_copy(old->data[i]);
+    old->refcount--;
+    v->array_val = copy;
+}
+
+void monk_int_array_detach(MonkValue *v) {
+    if (v->kind != MONK_INT_ARRAY || !v->int_array_val) return;
+    if (v->int_array_val->refcount <= 1) return;
+    MonkIntArray *old = v->int_array_val;
+    MonkIntArray *copy = monk_malloc_internal(sizeof(MonkIntArray));
+    copy->length = old->length;
+    copy->refcount = 1;
+    copy->data = monk_malloc_internal(sizeof(int64_t) * (old->length > 0 ? old->length : 1));
+    /* Typed-array COW detach: copy raw int64_t data before direct writes.
+     * Pass: `let b int[] = a; b[0]=99` detaches b. Fail: a[0] becomes 99. */
+    memcpy(copy->data, old->data, sizeof(int64_t) * old->length);
+    old->refcount--;
+    v->int_array_val = copy;
+}
+
+void monk_float_array_detach(MonkValue *v) {
+    if (v->kind != MONK_FLOAT_ARRAY || !v->float_array_val) return;
+    if (v->float_array_val->refcount <= 1) return;
+    MonkFloatArray *old = v->float_array_val;
+    MonkFloatArray *copy = monk_malloc_internal(sizeof(MonkFloatArray));
+    copy->length = old->length;
+    copy->refcount = 1;
+    copy->data = monk_malloc_internal(sizeof(double) * (old->length > 0 ? old->length : 1));
+    /* Same detach rule for float[]: share on copy, clone before mutation. */
+    memcpy(copy->data, old->data, sizeof(double) * old->length);
+    old->refcount--;
+    v->float_array_val = copy;
+}
+
+void monk_bool_array_detach(MonkValue *v) {
+    if (v->kind != MONK_BOOL_ARRAY || !v->bool_array_val) return;
+    if (v->bool_array_val->refcount <= 1) return;
+    MonkBoolArray *old = v->bool_array_val;
+    MonkBoolArray *copy = monk_malloc_internal(sizeof(MonkBoolArray));
+    copy->length = old->length;
+    copy->refcount = 1;
+    copy->data = monk_malloc_internal(sizeof(bool) * (old->length > 0 ? old->length : 1));
+    /* Same detach rule for bool[]: share on copy, clone before mutation. */
+    memcpy(copy->data, old->data, sizeof(bool) * old->length);
+    old->refcount--;
+    v->bool_array_val = copy;
 }
 
 MonkValue monk_array_get(MonkValue arr, MonkValue index) {
@@ -84,21 +143,25 @@ void monk_array_set(MonkValue *arr, MonkValue index, MonkValue value) {
     int64_t idx = index.int_val;
     if (arr->kind == MONK_INT_ARRAY) {
         if (idx < 0 || idx >= arr->int_array_val->length) monk_panic("array index out of bounds");
+        monk_int_array_ensure_unique(arr);
         arr->int_array_val->data[idx] = value.int_val;
         return;
     }
     if (arr->kind == MONK_FLOAT_ARRAY) {
         if (idx < 0 || idx >= arr->float_array_val->length) monk_panic("array index out of bounds");
+        monk_float_array_ensure_unique(arr);
         arr->float_array_val->data[idx] = (value.kind == MONK_INT) ? (double)value.int_val : value.float_val;
         return;
     }
     if (arr->kind == MONK_BOOL_ARRAY) {
         if (idx < 0 || idx >= arr->bool_array_val->length) monk_panic("array index out of bounds");
+        monk_bool_array_ensure_unique(arr);
         arr->bool_array_val->data[idx] = value.bool_val;
         return;
     }
     if (arr->kind != MONK_ARRAY) monk_panic("cannot index-assign non-array");
     if (idx < 0 || idx >= arr->array_val->length) monk_panic("array index out of bounds");
+    monk_array_ensure_unique(arr);
     monk_free(arr->array_val->data[idx]);
     arr->array_val->data[idx] = monk_deep_copy(value);
 }
@@ -117,6 +180,7 @@ MonkValue monk_append(MonkValue arr, MonkValue elem) {
     MonkArray *new_arr = monk_malloc_internal(sizeof(MonkArray));
     new_arr->data = new_data;
     new_arr->length = new_len;
+    new_arr->refcount = 1;
     if (was_typed) monk_free_generic_intermediate(arr);
     return (MonkValue){.kind = MONK_ARRAY, .array_val = new_arr};
 }
@@ -133,6 +197,7 @@ MonkValue monk_prepend(MonkValue arr, MonkValue elem) {
     MonkArray *new_arr = monk_malloc_internal(sizeof(MonkArray));
     new_arr->data = new_data;
     new_arr->length = new_len;
+    new_arr->refcount = 1;
     if (was_typed) monk_free_generic_intermediate(arr);
     return (MonkValue){.kind = MONK_ARRAY, .array_val = new_arr};
 }
@@ -211,6 +276,7 @@ MonkValue monk_range(MonkValue n_val) {
     MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
     arr->data = data;
     arr->length = n;
+    arr->refcount = 1;
     return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
 }
 
@@ -222,6 +288,7 @@ MonkValue monk_range_int(int64_t n) {
         MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
         arr->data = monk_malloc_internal(sizeof(int64_t));
         arr->length = 0;
+        arr->refcount = 1;
         return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
     }
     int64_t *data = monk_malloc_internal(sizeof(int64_t) * n);
@@ -229,6 +296,7 @@ MonkValue monk_range_int(int64_t n) {
     MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
     arr->data = data;
     arr->length = n;
+    arr->refcount = 1;
     return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
 }
 
@@ -245,6 +313,7 @@ MonkValue monk_fill(MonkValue n_val, MonkValue value) {
     MonkArray *arr = monk_malloc_internal(sizeof(MonkArray));
     arr->data = data;
     arr->length = n;
+    arr->refcount = 1;
     return (MonkValue){.kind = MONK_ARRAY, .array_val = arr};
 }
 
@@ -258,6 +327,7 @@ MonkValue monk_fill_bool(MonkValue n_val, bool value) {
         MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
         arr->data = monk_malloc_internal(sizeof(bool));
         arr->length = 0;
+        arr->refcount = 1;
         return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
     }
     bool *data = monk_malloc_internal(sizeof(bool) * n);
@@ -265,6 +335,7 @@ MonkValue monk_fill_bool(MonkValue n_val, bool value) {
     MonkBoolArray *arr = monk_malloc_internal(sizeof(MonkBoolArray));
     arr->data = data;
     arr->length = n;
+    arr->refcount = 1;
     return (MonkValue){.kind = MONK_BOOL_ARRAY, .bool_array_val = arr};
 }
 
@@ -276,6 +347,7 @@ MonkValue monk_fill_int(MonkValue n_val, int64_t value) {
         MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
         arr->data = monk_malloc_internal(sizeof(int64_t));
         arr->length = 0;
+        arr->refcount = 1;
         return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
     }
     int64_t *data = monk_malloc_internal(sizeof(int64_t) * n);
@@ -287,6 +359,7 @@ MonkValue monk_fill_int(MonkValue n_val, int64_t value) {
     MonkIntArray *arr = monk_malloc_internal(sizeof(MonkIntArray));
     arr->data = data;
     arr->length = n;
+    arr->refcount = 1;
     return (MonkValue){.kind = MONK_INT_ARRAY, .int_array_val = arr};
 }
 
@@ -298,6 +371,7 @@ MonkValue monk_fill_float(MonkValue n_val, double value) {
         MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
         arr->data = monk_malloc_internal(sizeof(double));
         arr->length = 0;
+        arr->refcount = 1;
         return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
     }
     double *data = monk_malloc_internal(sizeof(double) * n);
@@ -309,6 +383,7 @@ MonkValue monk_fill_float(MonkValue n_val, double value) {
     MonkFloatArray *arr = monk_malloc_internal(sizeof(MonkFloatArray));
     arr->data = data;
     arr->length = n;
+    arr->refcount = 1;
     return (MonkValue){.kind = MONK_FLOAT_ARRAY, .float_array_val = arr};
 }
 

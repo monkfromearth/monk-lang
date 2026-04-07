@@ -105,6 +105,62 @@ func arrayConvFunc(s storageKind) string {
 	return "monk_deep_copy"
 }
 
+// arrayEnsureFunc returns the runtime COW write-barrier for a typed-array
+// storage kind. Codegen calls it before direct backing-store writes.
+func arrayEnsureFunc(s storageKind) string {
+	switch s {
+	case storeIntArray:
+		return "monk_int_array_ensure_unique"
+	case storeFloatArray:
+		return "monk_float_array_ensure_unique"
+	case storeBoolArray:
+		return "monk_bool_array_ensure_unique"
+	}
+	return ""
+}
+
+// isFreshArrayExpr reports whether expr definitely creates a new array backing
+// store rather than sharing an existing variable. It is deliberately narrow:
+// unknown calls stay "maybe shared" so codegen emits the COW write barrier.
+func isFreshArrayExpr(expr syntax.Expr) bool {
+	switch e := expr.(type) {
+	case *syntax.ArrayExpr:
+		return true
+	case *syntax.CallExpr:
+		callee, ok := e.Callee.(*syntax.IdentExpr)
+		if !ok {
+			return false
+		}
+		switch callee.Name {
+		case "range", "fill", "append", "prepend", "pop", "drop", "take", "slice", "map", "filter":
+			return true
+		}
+	}
+	return false
+}
+
+// markArrayUniquenessFromExpr records whether a typed-array variable is proven
+// to be unshared after initialization. Fresh arrays can skip the COW barrier in
+// hot writes; identifier copies mark both variables maybe-shared.
+func (g *generator) markArrayUniquenessFromExpr(name string, store storageKind, expr syntax.Expr) {
+	if !isArrayStorage(store) {
+		delete(g.arrayUnique, name)
+		return
+	}
+	if ident, ok := expr.(*syntax.IdentExpr); ok {
+		source := g.mangledName(ident.Name)
+		if isArrayStorage(g.varStorage(source)) {
+			// `let b = a` makes both variables share until first mutation.
+			// Pass: later writes to either var emit a COW barrier.
+			// Fail: treating a as unique lets `a[0]=...` mutate b too.
+			g.arrayUnique[source] = false
+		}
+		g.arrayUnique[name] = false
+		return
+	}
+	g.arrayUnique[name] = isFreshArrayExpr(expr)
+}
+
 // arrayPtrField returns the MonkValue union field name for a typed-array storage
 // kind. Used in the backing-store path: arr.{field}->data[i].
 func arrayPtrField(s storageKind) string {

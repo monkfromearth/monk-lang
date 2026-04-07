@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-7 complete. 676 tests (510 Go + 166 C runtime). Working end-to-end.**
+**Status: Phases 1-7 complete. 691 tests (517 Go + 174 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -814,13 +814,45 @@ Senior review + file-organization cleanup applied after Phase 7 landed.
 - WALKTHROUGH.md: added generator struct module fields (`modulePrefix`, `importMap`, `moduleInit`, `globals`), new "How multi-module codegen works" section with name mangling table, init-once pattern, variable split, and `.c` assembly order diagram.
 - Knowledge site Phase 7 lessons audited — all four accurate, no fixes needed.
 
+### Copy-on-write arrays (2026-04-07)
+
+Implemented copy-on-write for generic arrays and typed backing-store arrays.
+This preserves Monk's value semantics (`let b = a; b[0] = 99` still leaves
+`a[0]` unchanged) while making array assignment O(1) until the first mutation.
+
+**Runtime changes:**
+- `MonkArray`, `MonkIntArray`, `MonkFloatArray`, and `MonkBoolArray` now carry a hidden `refcount`
+- `monk_deep_copy` shares array backing stores by incrementing the refcount instead of eagerly copying the whole array
+- `monk_free` decrements the refcount and only frees backing storage at zero
+- `monk_array_set` detaches shared generic/typed arrays before writing
+- `monk_int_array_from` / `monk_float_array_from` / `monk_bool_array_from` COW-share same-kind typed arrays instead of deep-copying them
+
+**Codegen changes:**
+- Typed-array direct writes (`arr.int_array_val->data[i] = rhs`) now emit a COW barrier when the variable may be shared
+- Fresh typed arrays from literals, `range`, and `fill` are tracked as unique and skip the barrier in hot loops
+- This avoided a regression in `matmul`: always emitting the barrier pushed `matmul` to ~40 ms; uniqueness tracking kept it at ~13 ms on this run
+
+**Benchmarks (Apple M4 Pro, hyperfine, targeted run):**
+
+| Benchmark | Before | After | C ref | Notes |
+|---|---:|---:|---:|---|
+| `binary_trees` | 512.5 ms | 236.2 ms | 7.3 ms | 2.2× faster; still allocation/value-semantics heavy |
+| `functional_chain` | 15.7 ms | 8.2 ms | 1.6 ms | 1.9× faster; still pays intermediate arrays/callbacks |
+| `matmul` | prior range ~19 ms | 13.1 ms | 11.2 ms | no COW-barrier regression; measured run was ~1.17× C |
+| `nbody` | prior range ~17.9 ms | 17.9 ms | 11.4 ms | unchanged |
+| `sieve` | prior range ~2.0 ms | 2.3 ms | 2.3 ms | `--shell=none`; no generated COW barrier in hot loop |
+
+**Tests added:** `TestBackingStoreWriteDetachesCopyOnWriteArray` plus C runtime
+coverage for generic-array and typed-array COW sharing/detach. C runtime
+assertions: 166 → 174.
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
 |-------|-------|--------|
 | 7 | Module System | **Complete** ✅ |
 | 6 | `restrict` function extraction | Deferred — matmul/nbody 1.8×→~1×, invasive codegen |
-| 6 | Copy-on-write for arrays | Deferred — binary_trees 57×→~1×, 2-3 sessions |
+| 6 | Copy-on-write for arrays | **Complete** ✅ — generic + typed arrays, hidden refcount + write barrier |
 | 6 | Closure escape analysis | Deferred — closure_invoke 17×→~1×, 2-3 sessions |
 | 6 | String views / builder | Deferred — string_concat/ops/levenshtein, 1-2 sessions |
 | 6 | Stream fusion (lazy map/filter/reduce) | Deferred — functional_chain 4×→~1×, 3+ sessions |

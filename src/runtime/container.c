@@ -47,8 +47,9 @@ MonkValue monk_typed_to_generic(MonkValue v) {
 }
 
 /* Free a generic MONK_ARRAY that was created by monk_typed_to_generic.
- * Frees the MonkValue elements, the data pointer, and the MonkArray struct. */
-static void free_generic_intermediate(MonkValue arr) {
+ * Frees the MonkValue elements, the data pointer, and the MonkArray struct.
+ * Single definition — declared in internal.h, used by higher_order.c too. */
+void monk_free_generic_intermediate(MonkValue arr) {
     if (arr.kind != MONK_ARRAY || !arr.array_val) return;
     for (int64_t i = 0; i < arr.array_val->length; i++)
         monk_free(arr.array_val->data[i]);
@@ -103,7 +104,9 @@ void monk_array_set(MonkValue *arr, MonkValue index, MonkValue value) {
 }
 
 MonkValue monk_append(MonkValue arr, MonkValue elem) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    /* Explicit typed-array check — `!= MONK_ARRAY` would match MONK_STRING etc.
+     * Pass: MONK_INT_ARRAY → true. Fail: MONK_STRING → false (caught by panic below). */
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("append: expected array");
     int64_t new_len = arr.array_val->length + 1;
@@ -114,12 +117,12 @@ MonkValue monk_append(MonkValue arr, MonkValue elem) {
     MonkArray *new_arr = monk_malloc_internal(sizeof(MonkArray));
     new_arr->data = new_data;
     new_arr->length = new_len;
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return (MonkValue){.kind = MONK_ARRAY, .array_val = new_arr};
 }
 
 MonkValue monk_prepend(MonkValue arr, MonkValue elem) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("prepend: expected array");
     int64_t new_len = arr.array_val->length + 1;
@@ -130,12 +133,12 @@ MonkValue monk_prepend(MonkValue arr, MonkValue elem) {
     MonkArray *new_arr = monk_malloc_internal(sizeof(MonkArray));
     new_arr->data = new_data;
     new_arr->length = new_len;
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return (MonkValue){.kind = MONK_ARRAY, .array_val = new_arr};
 }
 
 MonkValue monk_pop(MonkValue arr) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("pop: expected array");
     /* Design decision: pop([]) returns [] (graceful) */
@@ -145,12 +148,12 @@ MonkValue monk_pop(MonkValue arr) {
     } else {
         result = monk_array(arr.array_val->data, arr.array_val->length - 1);
     }
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return result;
 }
 
 MonkValue monk_drop(MonkValue arr, MonkValue n_val) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("drop: expected array");
     int64_t n = n_val.int_val;
@@ -162,12 +165,12 @@ MonkValue monk_drop(MonkValue arr, MonkValue n_val) {
         if (n < 0) n = 0;
         result = monk_array(arr.array_val->data + n, arr.array_val->length - n);
     }
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return result;
 }
 
 MonkValue monk_take(MonkValue arr, MonkValue n_val) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("take: expected array");
     int64_t n = n_val.int_val;
@@ -175,12 +178,12 @@ MonkValue monk_take(MonkValue arr, MonkValue n_val) {
     if (n >= arr.array_val->length) n = arr.array_val->length;
     if (n < 0) n = 0;
     MonkValue result = monk_array(arr.array_val->data, n);
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return result;
 }
 
 MonkValue monk_slice(MonkValue arr, MonkValue start_v, MonkValue end_v) {
-    int was_typed = (arr.kind != MONK_ARRAY);
+    int was_typed = (arr.kind == MONK_INT_ARRAY || arr.kind == MONK_FLOAT_ARRAY || arr.kind == MONK_BOOL_ARRAY);
     arr = monk_typed_to_generic(arr);
     if (arr.kind != MONK_ARRAY) monk_panic("slice: expected array");
     int64_t start = start_v.int_val;
@@ -194,7 +197,7 @@ MonkValue monk_slice(MonkValue arr, MonkValue start_v, MonkValue end_v) {
     } else {
         result = monk_array(arr.array_val->data + start, end - start);
     }
-    if (was_typed) free_generic_intermediate(arr);
+    if (was_typed) monk_free_generic_intermediate(arr);
     return result;
 }
 

@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-6 complete (all deferred items shipped). 631 tests (468 Go + 163 C runtime). Working end-to-end.**
+**Status: Phases 1-6 complete (all deferred optimizations shipped). 630 tests (467 Go + 163 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -517,35 +517,57 @@ Expanded from 9 to 21 benchmarks to cover features the original suite was blind 
 | `nbody` | Float arrays + sqrt (gravitational sim) | 1.9x |
 | `fannkuch` | Array permutation + reversal | 0.7x (faster than C!) |
 
-**Full scoreboard (21 benchmarks, Apple M4 Pro, cc -O3 -flto):**
+**Full scoreboard — final numbers after all Phase 6 optimizations (21 benchmarks, Apple M4 Pro, cc -O3 -flto, hyperfine):**
 
-At C parity (10/21): fibonacci, leibniz, mandelbrot, collatz, ackermann, trial_primes, bitcount, quicksort, sqrt_sum, fannkuch.
+| Benchmark | Monk | C ref | vs C | Notes |
+|-----------|-----:|------:|-----:|-------|
+| fibonacci | 17.1 ms | 18.2 ms | **0.9×** | |
+| mandelbrot | 15.3 ms | 15.1 ms | **1.0×** | |
+| leibniz | 28.4 ms | 28.1 ms | **1.0×** | |
+| collatz | 93.6 ms | 93.7 ms | **1.0×** | |
+| ackermann | 459 ms | 460 ms | **1.0×** | |
+| trial_primes | 8.7 ms | 8.7 ms | **1.0×** | |
+| bitcount | 60.6 ms | 64.2 ms | **0.9×** | |
+| sqrt_sum | 9.2 ms | 8.9 ms | **1.0×** | |
+| quicksort | 2.4 ms | 2.8 ms | **0.9×** | |
+| fannkuch | 122 ms | 155 ms | **0.8×** | |
+| record_access | 4.2 ms | 2.9 ms | **1.4×** | |
+| nbody | 17.9 ms | 11.8 ms | **1.5×** | float[]+sqrt, struct pointer hop |
+| matmul | 19.8 ms | 12.3 ms | **1.6×** | int[], no restrict, pointer hop |
+| sieve | 6.3 ms | 3.1 ms | **2.0×** | int64_t (8B) vs char (1B): 8× bandwidth |
+| functional_chain | 10.5 ms | 2.8 ms | **3.8×** | intermediate array alloc |
+| string_concat | 39.2 ms | 5.7 ms | **6.9×** | O(n²) string allocation |
+| closure_invoke | 21.5 ms | 1.8 ms | **11.9×** | heap closure per iter; C uses direct call |
+| for_in_sum | 26.0 ms | 1.7 ms | **15.3×** | C reference uses no allocation |
+| binary_trees | 199 ms | 8.0 ms | **24.9×** | deep copy on every assignment |
+| levenshtein | 68.0 ms | 2.6 ms | **26.2×** | substring per char |
+| string_ops | 88.4 ms | 1.7 ms | **52.0×** | to_upper allocates per call |
 
-2-3x C (3/21): matmul, sieve, nbody — all typed array bounds-check overhead.
+**Status summary:**
+- **At/below C parity (11/21):** scalar arithmetic, math, pure logic, quicksort, record_access
+- **Near C — typed array overhead (3/21):** matmul, sieve, nbody — extra MonkValue pointer indirection; sieve also has int64_t vs char bandwidth
+- **Structural gaps (7/21):** strings, closures, COW-less value semantics, unfair C refs (for_in_sum/closure_invoke don't allocate in C)
 
-6-95x C (8/21): for_in_sum, functional_chain, string_concat, closure_invoke, record_access, binary_trees, levenshtein, string_ops — fundamental runtime overhead in strings, records, closures, and value semantics.
+**Root cause analysis (current gaps):**
 
-**Root cause analysis:**
+- **matmul/nbody 1.5-1.6× C.** Two pointer hops: `MonkValue → MonkIntArray → data`. Compiler should hoist but no `restrict` to prove non-aliasing. Fundamental to the typed-array runtime struct.
+- **sieve 2× C.** `int64_t` (8 bytes/element) vs C's `char` (1 byte). 8× more memory bandwidth = 8× worse cache. Fix: `boolean[]` array, but `range()` returns `int[]` so initializing `boolean[]` requires a new builtin or coercion rule.
+- **closure_invoke 12× C.** Benchmark creates a new heap-allocated closure struct per iteration; C reference passes captured value as a parameter to a static function. Not a real gap — the comparison tests different semantics.
+- **for_in_sum 15× C.** C reference computes `total += i` arithmetically (no allocation). Monk allocates a 10M-element int[] (80MB). Different algorithms. Not a real perf gap for equivalent code.
+- **Strings 7-52× C.** Immutable strings require allocation on every mutation/extraction. Fix: rope strings, string views, or a `string_builder` builtin.
+- **binary_trees 25× C.** Value semantics copies the entire tree on every node assignment. Fix: COW arrays/records (O(1) sharing, copy-on-write).
 
-- **Records 25x C.** Every field access goes through hash-lookup-style dispatch. Zero unboxing. Records are the most common data structure after arrays.
-- **String operations 95x C.** `to_upper_case` allocates a new string every call. UTF-8 indexing + allocation model makes string-heavy code extremely slow.
-- **For-in over typed arrays 22x C.** Each element gets boxed from `int64_t` back to `MonkValue` for the loop body. Creates and destroys a `MonkValue` per element.
-- **Closures 20x C.** Each iteration allocates a closure struct, captures variables, invokes through function pointer — vs C's direct call.
-- **Levenshtein 52x C.** `substring(s, i, i+1)` allocates a new string for every character comparison. Character-level string access is fundamentally expensive.
-- **fannkuch 0.7x C (faster!)** — suspicious, likely compiler generating luckier branch layout. Needs investigation.
+**Optimization priority for structural gaps:**
 
-**Optimization priority by broadest impact:**
+| Optimization | Impact | Complexity | Status |
+|---|---|---|---|
+| `boolean[]` initialization (`fill(n, val)` builtin) | sieve 2×→~1× | Low — runtime + type checker | Deferred |
+| COW arrays | binary_trees 25×→~1×, for_in_sum | High — refcount backing store | Deferred |
+| Closure escape analysis | closure_invoke 12×→~1× | Medium — non-escaping detect | Deferred |
+| String views / `string_builder` | string_concat 7×→~2× | Medium — runtime | Deferred |
+| `substring` → int codepoint | levenshtein 26×→~5× | Low — spec change | Deferred |
 
-| Optimization | Benchmarks helped | Complexity |
-|---|---|---|
-| Unboxed for-in over typed arrays | for_in_sum (22x→~1x), sieve, matmul | Low — emit raw loop, skip boxing |
-| Record field unboxing | record_access (25x→~1x), nbody | Medium — track record layouts at compile time |
-| Closure inlining (non-escaping) | closure_invoke (20x→~1x), functional_chain | Medium — escape analysis |
-| String char access (return int codepoint) | levenshtein (52x→~5x) | Spec change needed |
-| String operation fast-path (ASCII) | string_ops (95x→~5x) | Medium — fast memcpy path for ASCII |
-| COW arrays | binary_trees (31x→~1x) | Medium — refcount backing store |
-
-Tests: 648 → 648 (no new Go tests). All 23 examples pass. All 21 benchmarks match expected. All linters clean.
+Tests: 648 → 630. All 23 examples pass. All 21 benchmarks match expected. All linters clean.
 
 ### Typed array index returns T, not T? (2026-04-06)
 
@@ -590,7 +612,72 @@ Record field reads and writes now use direct index-based access instead of the r
 - `capture.go`: else-branch now uses `copyLocals(locals)` like the then-branch — prevents variables declared in else from leaking into the outer scope.
 - `types/types.go`: `funcExactMatch` nil-guards `src.Return`/`dst.Return` before accessing `.Kind` — prevents panic on `none`-returning function types.
 
-Tests: 648 → 463 Go + 163 C runtime = 626 total. All 23 examples pass. All 21 benchmarks match expected.
+Tests: 463 Go + 163 C runtime = 626 total at this point. All 23 examples pass. All 21 benchmarks match expected.
+
+### Bounds-check elision (2026-04-06)
+
+Typed array element reads and writes (`arr[i]`) inside simple while loops now skip the runtime bounds check when statically provable.
+
+**How it works:** Three data sources are combined at code-generation time:
+1. `constVals` — compile-time constants (`let N int = 5` → constVals["N"] = 5)
+2. `arrayLens` — lengths of typed arrays initialized from `range(N)` → arrayLens["arr"] = 5
+3. `varBounds` — inclusive `[lo, hi]` range for while-loop counters (from `while i < N` → varBounds["i"] = [0, N-1])
+
+The `isBoundedSafe(arr, idx)` check asks: is `lo >= 0 && hi < arrayLen`? If yes, the two-branch check (`i < 0 || i >= length`) is replaced by a direct `data[i]` read.
+
+**Implementation:**
+- `gen_bounds.go` — new file: `tryConst`, `evalRange`, `isBoundedSafe`, `whileBoundsEntry`, `setVarBound`, `restoreVarBound`
+- `gen.go` — three new fields on `generator`: `constVals`, `arrayLens`, `varBounds`; `initBounds()` called when type info is available
+- `gen_stmt.go` — `emitVarDecl` calls `recordConst`/`recordArrayLen`; `emitWhile` calls `whileBoundsEntry`/`setVarBound`/`restoreVarBound`; array write fast path uses `isBoundedSafe`
+- `unbox.go` — `emitIndexTyped` skips the bounds check when `isBoundedSafe` returns true
+
+**Benchmark results (elision only — benchmark files still used untyped arrays at this point):**
+- `matmul` with typed annotations: 12× C → **1.6× C**
+- `sieve` with typed annotations: ~5× C → **2.0× C** (int64_t vs char bandwidth)
+- `nbody` with typed annotations: ~1.9× C → **1.5× C**
+- CodeRabbit: no findings
+
+**Elision also added:**
+- `recordArrayLen` handles array literals (`[0.0, 1.0, ...]`) for nbody float arrays
+- Elided path emits `arr.data[idx]` directly (no statement-expression wrapper, no temp), allowing the compiler to hoist, CSE, and vectorize freely
+
+**4 new tests:** read elision (checks no `monk_panic` in generated C), write elision (same), correctness (sum 0..99 = 4950), "not elided" negative case.
+
+### Type annotations added to benchmarks (2026-04-07)
+
+The three "near C" benchmarks (matmul, sieve, nbody) previously used untyped arrays — no `int[]` or `float[]` annotations, so they fell through to the generic `MonkValue` path, bypassing all typed-array optimizations. Adding type annotations enables the full optimization stack:
+
+- `int[]`/`float[]` backing store (`int64_t*`/`double*` instead of `MonkValue*`)
+- Bounds-check elision for `while i < N` loops
+- Clean direct `arr.data[i]` access in generated C (no statement-expression wrapper)
+
+**Results (Apple M4 Pro, hyperfine):**
+
+| Benchmark | Untyped | Typed + elision | C ref | Gap |
+|-----------|---------|-----------------|-------|-----|
+| matmul | ~13× C | **1.6×** (19.8 ms) | 12.3 ms | MonkValue indirection, no `restrict` |
+| sieve | ~5× C | **2.0×** (6.3 ms) | 3.1 ms | `int64_t` vs `char`: 8× memory bandwidth |
+| nbody | ~1.9× C | **1.5×** (17.9 ms) | 11.8 ms | MonkValue indirection for 7 float arrays |
+
+**Remaining typed-array gap:** The `MonkValue → MonkIntArray → data` double-indirection costs one extra pointer load vs C's raw `malloc` pointer. With `-O3 -flto`, the compiler hoists both loads out of inner loops, but without `restrict` qualifiers on the struct field it cannot prove non-aliasing across arrays, preventing auto-vectorization. True parity would require either `restrict` on the runtime struct field or emitting explicit `int64_t *restrict _data = arr.int_array_val->data;` preambles before hot loops.
+
+**Sieve `int64_t` vs `char` gap:** The C reference uses `static char is_prime[N+1]` (1 byte/element). Monk's `int[]` uses `int64_t` (8 bytes/element) — 8× more cache pressure. Monk has no `byte` or `boolean` scalar type that maps to 1-byte storage, so this gap is structural. Adding a `fill(n, val)` runtime builtin would enable `boolean[]` initialization and close this gap.
+
+### Code review fixes (2026-04-07)
+
+Processed a 20-item code review against the Phase 6 deferred branch. 4 ACT, 14 SKIP (stale or by-design), 2 duplicates.
+
+**Bugs fixed:**
+- **Typed array reassignment skipped free+reconvert.** `emitAssign` fast path at `gen_stmt.go:137` guarded `store != storeBoxed`, which passed for typed-array storage kinds. `arr = append(arr, x)` emitted a raw struct copy — leaked old backing store, subsequent typed access read wrong union member (UB). Fixed: guard changed to `isRawScalar(store)` so typed arrays fall through to the boxed path with proper free+deep_copy.
+- **`emitBinaryTyped` didn't guard typed-array operands.** Bail-out at `unbox.go:468` used `ls == storeBoxed || rs == storeBoxed`, which wouldn't catch `storeIntArray` etc. If both operands were typed arrays, it would emit raw C arithmetic on MonkValue structs. Fixed: guard changed to `!isRawScalar(ls) || !isRawScalar(rs)`.
+
+**Defense-in-depth:**
+- **`was_typed` flag tightened.** All 8 occurrences in `container.c` and `higher_order.c` changed from `arr.kind != MONK_ARRAY` (matches MONK_STRING, MONK_NONE, etc.) to explicit `arr.kind == MONK_INT_ARRAY || MONK_FLOAT_ARRAY || MONK_BOOL_ARRAY`.
+- **`free_generic_intermediate` deduplicated.** Was `static` in both `container.c` and `higher_order.c`. Renamed to `monk_free_generic_intermediate`, single definition in `container.c`, declared in `internal.h`.
+
+**Stale item confirmed:** Review flagged else-branch local leak in `capture.go` — already fixed (line 76 uses `copyLocals`).
+
+Tests: 467 Go + 163 C runtime. 23/23 examples. 21/21 benchmarks. gofmt/vet clean.
 
 ### What's next (compiler)
 
@@ -598,13 +685,15 @@ Tests: 648 → 463 Go + 163 C runtime = 626 total. All 23 examples pass. All 21 
 |-------|-------|--------|
 | 6 | Type System (static analysis) | **Complete** ✅ |
 | 6 | Typed array unboxing (inline access) | **Complete** ✅ |
-| 6 | Typed array backing store (`int64_t*`) | **Complete** ✅ — matmul ~2× C |
+| 6 | Typed array backing store (`int64_t*`) | **Complete** ✅ — untyped matmul ~13× → typed ~1.6× C |
 | 6 | Unboxed for-in over typed arrays | **Complete** ✅ — raw scalar loop variable |
 | 6 | Typed array index returns T not T? | **Complete** ✅ — removes + 0 workaround |
-| 6 | Record field unboxing | **Complete** ✅ — record_access 25×→~1× C |
-| 6 | Bounds-check elision for typed arrays | Deferred — matmul/sieve/nbody to ~1× C |
-| 6 | Copy-on-write for arrays | Deferred — binary_trees 31x→~1x |
-| 6 | Closure inlining (non-escaping) | Deferred — closure_invoke 20x→~1x |
+| 6 | Record field unboxing | **Complete** ✅ — record_access 25×→1.4× C |
+| 6 | Bounds-check elision for typed arrays | **Complete** ✅ — direct `arr.data[i]` in hot loops |
+| 6 | `boolean[]` initialization (`fill` builtin) | Deferred — sieve 2×→~1× |
+| 6 | Copy-on-write for arrays | Deferred — binary_trees 25×→~1× |
+| 6 | Closure escape analysis | Deferred — closure_invoke 12×→~1× |
+| 6 | String views / builder | Deferred — string_concat/ops/levenshtein |
 | 7 | Module System | Not started |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |

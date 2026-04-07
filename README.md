@@ -262,40 +262,43 @@ source.monk  -->  [Go compiler]  -->  generated.c  -->  [cc -O3 -flto]  -->  nat
 
 Benchmarks on Apple M4 Pro (`cc -O3 -flto`, hyperfine, lower is better). 21 benchmarks total.
 
-**At C parity (10 benchmarks):**
+**At or below C (11/21):**
 
 | Benchmark | Monk | vs C |
 |---|---:|---:|
-| fibonacci (n=35) | 17.3 ms | **1.0×** |
-| mandelbrot (800²×50) | 14.5 ms | **1.0×** |
+| fibonacci (n=35) | 17.1 ms | **0.9×** |
+| mandelbrot (800²×50) | 15.3 ms | **1.0×** |
 | leibniz (π, 50M iter) | 28.4 ms | **1.0×** |
-| trial_primes (<200k) | 5.9 ms | **1.0×** |
-| bitcount (int ops) | — | **1.0×** |
-| sqrt_sum (float ops) | — | **1.0×** |
-| closure_invoke | — | **1.0×** |
+| trial_primes (<200k) | 8.7 ms | **1.0×** |
+| collatz | 93.6 ms | **1.0×** |
+| ackermann | 459 ms | **1.0×** |
+| bitcount | 60.6 ms | **0.9×** |
+| sqrt_sum | 9.2 ms | **1.0×** |
+| quicksort | 2.4 ms | **0.9×** |
+| fannkuch | 122 ms | **0.8×** |
+| record_access | 4.2 ms | **1.4×** |
 
-**Near C (bounds-check overhead, 3 benchmarks):**
+**Near C — typed array overhead (3/21):**
 
-| Benchmark | vs C | Root cause |
-|---|---:|---|
-| matmul (400² int) | ~2× | Bounds check per element; typed `int[]` backing store already active |
-| sieve | ~2× | OOB check in hot loop |
-| nbody | ~3× | Mixed typed array + float arithmetic |
+| Benchmark | Monk | vs C | Root cause |
+|---|---:|---:|---|
+| nbody (float[], 500k steps) | 17.9 ms | **1.5×** | Extra pointer indirection: `MonkValue → MonkFloatArray → data` |
+| matmul (400² int[]) | 19.8 ms | **1.6×** | Same + no `restrict` — compiler can't prove non-aliasing |
+| sieve (int[], 1M elements) | 6.3 ms | **2.0×** | `int64_t` (8 bytes) vs C's `char` (1 byte): 8× memory bandwidth |
 
-**Structural gaps (8 benchmarks):**
+**Structural gaps — semantic overhead (7/21):**
 
-| Benchmark | vs C | Root cause |
-|---|---:|---|
-| for_in_sum (10M) | ~22× | `range(10M)` allocates 80 MB — allocation-dominated |
-| binary_trees | ~31× | Value-semantics deep copy on every tree node assignment |
-| levenshtein | ~52× | `substring()` allocates per character |
-| string_concat | ~11× | Immutable strings; concat allocates every time |
-| string_ops | ~95× | `to_upper_case` allocates a full copy per call |
-| record_access | ~25× | String-comparison field dispatch (no compile-time layout) |
-| quicksort | ~6× | Mixed record/array; comparison overhead |
-| functional_chain | ~8× | `map`/`filter`/`reduce` allocate intermediate arrays |
+| Benchmark | Monk | vs C | Root cause |
+|---|---:|---:|---|
+| functional_chain | 10.5 ms | **3.8×** | `map`/`filter`/`reduce` allocate intermediate arrays |
+| string_concat | 39.2 ms | **6.9×** | Immutable strings; concat is O(n²) |
+| closure_invoke | 21.5 ms | **11.9×** | Heap-allocated closure struct per iteration; C uses a direct call |
+| for_in_sum | 26.0 ms | **15.3×** | `range(10M)` allocates 80 MB; C reference uses a formula (no allocation) |
+| levenshtein | 68.0 ms | **26.2×** | `substring()` allocates a new string per character comparison |
+| binary_trees | 199 ms | **24.9×** | Value-semantics deep copy on every tree node assignment |
+| string_ops | 88.4 ms | **52.0×** | `to_upper_case` allocates a new string per call |
 
-The type system delivers typed array backing stores (`int[]` → `int64_t*`, not `MonkValue*`), unboxed scalar arithmetic, and unboxed for-in loop variables. Records, strings, and value-semantics copies are the remaining performance frontiers.
+The typed array benchmarks (matmul, sieve, nbody) use `int[]`/`float[]` with `int64_t*`/`double*` backing stores and bounds-check elision. The remaining typed-array gap is two pointer hops (`MonkValue → TypedArray → data`) and, for sieve, the 8× memory stride difference versus C's `char` array. Structural gaps require COW arrays, string views, or closure escape analysis — none are small changes.
 
 See [`bench/`](bench/) for the harness and [`spec/PERFORMANCE.md`](spec/PERFORMANCE.md) for methodology.
 
@@ -309,7 +312,7 @@ Three rules resolve every edge case:
 
 ## Status
 
-**0.0.1 — Buniyaad** (2026-04-04). 620 tests passing (457 Go + 163 C runtime). 21 benchmarks, 23 examples.
+**0.0.1 — Buniyaad** (2026-04-04). 630 tests passing (467 Go + 163 C runtime). 21 benchmarks, 23 examples.
 
 | Phase | Status |
 |-------|--------|

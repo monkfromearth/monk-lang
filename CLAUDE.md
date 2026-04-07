@@ -4,10 +4,35 @@
 
 All guidelines are organized in `.claude/rules/`:
 
+**Always active:**
 - @.claude/rules/persona.md — Conversation style, behavior, concision
-- @.claude/rules/code-review-workflow.md — How to process external review feedback
-- @.claude/rules/pre-completion-checks.md — **MANDATORY** check battery before declaring work done
-- @.claude/rules/comments-with-examples.md — Every non-trivial code change MUST have an inline comment explaining what it does, with concrete examples showing pass/fail or before/after behavior.
+- @.claude/rules/comments-with-examples.md — Every non-trivial code change MUST have an inline comment with concrete pass/fail examples
+- @.claude/rules/pre-completion-checks.md — **MANDATORY** 9-step battery before declaring work done
+- @.claude/rules/spec-doc-sync.md — Propagation chain: REFERENCE.md → code → tests → PROGRESS.md → WALKTHROUGH → knowledge/
+
+**Code quality:**
+- @.claude/rules/code-review-workflow.md — ACT/SKIP/DISCUSS protocol for processing review feedback
+- @.claude/rules/file-organization.md — When/how to split files, naming conventions, INDEX.md discipline
+- @.claude/rules/codegen-c-safety.md — Go→C emission safety: compute-before-free, variable scope, single-eval, #line escaping
+- @.claude/rules/error-message-quality.md — GCC-style error standards: location + user terms + actionable hint
+- @.claude/rules/test-organization.md — Spec-driven test naming, positive+negative per feature, golden files
+
+**Operations:**
+- @.claude/rules/performance.md — Optimization workflow, measurement methodology, when/how to benchmark
+- @.claude/rules/release.md — Release checklist, versioning, naming, binary build, GitHub release
+- @.claude/rules/security.md — Compiler threat model: shell injection, temp files, path traversal, panic prevention
+
+## Skills
+
+Available in `.claude/skills/`:
+
+| Skill | When to use |
+|-------|-------------|
+| `senior-review` | Before merging any branch — full review across architecture, simplicity, security, performance, codegen correctness |
+| `add-feature` | Starting a new language feature — spec-first pipeline through all layers |
+| `knowledge-update` | After a phase lands — update knowledge/ and WALKTHROUGH in the teacher voice |
+| `reader-test` | Validating docs and examples from a new developer's perspective |
+| `release` | Cutting a release — version + name + battery + binaries + GitHub |
 
 Ground-up rewrite of [Monk Lang](https://github.com/monkfromearth/monk-lang). Same language, new implementation.
 The v1 (TypeScript/Bun tree-walking interpreter) is archived at [monk-lang-v1](https://github.com/monkfromearth/monk-lang-v1).
@@ -64,13 +89,10 @@ Do NOT read `spec/MEMORY_MODEL_DISCUSSION.md` unless specifically discussing mem
 - **Design decision comments.** Non-obvious choices must have a comment linking to the spec.
 
 ### File Organization & INDEX.md
-Every source directory (`src/syntax/`, `src/codegen/`, `src/runtime/`) has an `INDEX.md` listing each file and what lives in it. This is a navigation aid, not a spec.
 
-- **Read before searching.** When looking for a function or type, open the directory's `INDEX.md` first. It's faster than grep for "where does this live".
-- **Update when files move.** If you add a new file, delete a file, or move a function from one file to another, update the dir's `INDEX.md` in the same commit.
-- **Keep it one-line-per-file.** Each row: filename → what it contains. Don't duplicate doc comments.
-- **Keep files small and focused.** If a single file exceeds ~500 lines, consider splitting. One topic per file. Go makes this free — same package, multiple files.
-- **Runtime files are auto-discovered.** `src/embed.go` embeds the entire `runtime/` directory; `src/main.go`'s `runtimeSources()` and `src/codegen/codegen_test.go` both auto-discover `.c` files via `os.ReadDir`. Adding a `.c` file to `runtime/` is the only code change needed — just also update `runtime/INDEX.md`.
+Full rule: see `.claude/rules/file-organization.md`.
+
+Short version: one topic per file, ~500 line soft limit, update `INDEX.md` in the same commit as any file add/move/delete. Runtime `.c` files are auto-discovered — adding one only requires an `INDEX.md` entry.
 
 ## Key Decisions
 
@@ -87,11 +109,14 @@ Every source directory (`src/syntax/`, `src/codegen/`, `src/runtime/`) has an `I
 
 ## Versioning
 
-**Semantic versioning:** `MAJOR.MINOR.PATCH`. `0.x.y` = pre-1.0, breaking changes expected.
+**Full release process:** `.claude/rules/release.md` — checklist, binaries, Homebrew, GitHub release.
+**To cut a release:** run `/release` skill.
 
-**Release names:** Urdu/Hindi single words. Chosen when shipping, not planned ahead.
+`MAJOR.MINOR.PATCH` — `0.x.y` = pre-1.0. `0.MINOR.0` for phase completions, `0.MINOR.PATCH` for fixes.
 
-Word bank: *Safar* (journey) · *Noor* (light) · *Umeed* (hope) · *Fikr* (thought) · *Sukoon* (peace) · *Irada* (will) · *Khoj* (discovery) · *Raasta* (path) · *Buniyaad* (foundation) · *Dastak* (arrival) · *Ehsaas* (awareness) · *Amal* (action)
+**Release names:** Urdu/Hindi single words. Chosen when shipping to fit the release's character.
+
+Word bank (unused): *Safar* (journey) · *Noor* (light) · *Umeed* (hope) · *Fikr* (thought) · *Sukoon* (peace) · *Irada* (will) · *Khoj* (discovery) · *Raasta* (path) · *Dastak* (arrival) · *Ehsaas* (awareness) · *Amal* (action)
 
 ## Build Phase Order
 
@@ -161,12 +186,16 @@ If working on `knowledge/`:
 
 - Don't build an interpreter. Monk is a compiler. No REPL.
 - Don't make creative decisions (naming, branding) without presenting options.
-- Compute new values BEFORE freeing old ones in codegen (use-after-free).
 - Don't skip position tracking on AST nodes — codegen needs `#line` directives.
-- Don't double-evaluate expressions in generated C — use GCC/clang statement-expressions `({ int64_t _t=expr; ... _t ...; })` or emit a named temp before the expression. A side-effecting RHS like `a / f()` must call `f()` exactly once.
-- When writing benchmark `.monk` code, use `break` and `continue` explicitly. Setting a loop variable to sentinel values (`d = n` to exit) works but runs extra iterations and changes perf by 3-5×.
-- Don't emit generated C code that references a variable AFTER the closing `}` of the block it was declared in. This bites in codegen when adding fallback code (e.g. save-backs, default returns) after a buffered body block — the variable is out of scope at the C level even though it's visible in Go. Rule: any code that needs a variable must be emitted INSIDE the same `{...}` block, before the closing brace.
-- When benchmarking, compile the binary first (`./monk build`), then time the binary directly with `/usr/bin/time -p`. Don't use bash's `time` builtin and don't use `monk run` — compile overhead (~300ms) will dwarf actual runtime for fast programs.
+
+**Codegen safety** (full rule: `.claude/rules/codegen-c-safety.md`):
+compute before free · no variable refs past `}` · single-eval of RHS · escape filenames in `#line`
+
+**Benchmarking** (full rule: `.claude/rules/performance.md`):
+compile binary first · use `/usr/bin/time -p` not `monk run` · use `break`/`continue` not sentinel values
+
+**Versioning** (full rule: `.claude/rules/release.md`):
+see word bank below · remove used names · follow release checklist
 
 ## Related Repos
 

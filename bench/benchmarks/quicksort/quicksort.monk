@@ -1,0 +1,65 @@
+// Benchmark: iterative quicksort with explicit stack.
+// Tests: array element swap/mutation in tight loops, int arithmetic.
+// Uses pre-allocated stack array (no append/pop overhead).
+// Output: checksum of sorted array (first + middle + last).
+
+let N = 10000
+
+// Pseudo-random array via LCG
+let arr = range(N)
+let seed = 42
+let i = 0
+while i < N {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    arr[i] = seed % 100000
+    i += 1
+}
+
+// Iterative quicksort with explicit stack
+let stack = range(N * 2)
+let sp = 0
+stack[sp] = 0
+sp += 1
+stack[sp] = N - 1
+sp += 1
+
+while sp > 0 {
+    sp -= 1
+    let hi = stack[sp]
+    sp -= 1
+    let lo = stack[sp]
+
+    if lo < hi {
+        let pivot = arr[hi]
+        i = lo
+        let j = lo
+        while j < hi {
+            if arr[j] <= pivot {
+                let tmp = arr[i]
+                arr[i] = arr[j]
+                arr[j] = tmp
+                i += 1
+            }
+            j += 1
+        }
+        let tmp = arr[i]
+        arr[i] = arr[hi]
+        arr[hi] = tmp
+
+        if i + 1 < hi {
+            stack[sp] = i + 1
+            sp += 1
+            stack[sp] = hi
+            sp += 1
+        }
+        if i - 1 > lo {
+            stack[sp] = lo
+            sp += 1
+            stack[sp] = i - 1
+            sp += 1
+        }
+    }
+}
+
+let sum = arr[0] + arr[N / 2] + arr[N - 1]
+show(to_string(sum))

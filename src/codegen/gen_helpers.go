@@ -32,6 +32,19 @@ func cString(s string) string {
 	return "\"" + s + "\""
 }
 
+// monkValArray returns the C argument pair for a MonkValue[] compound literal.
+// Zero elements → "NULL, 0" (C11-conforming). Non-zero → "(MonkValue[]){a,b}, 2".
+// Without this, empty compound literals `(MonkValue[]){}` are a GCC/Clang
+// extension that fails under -pedantic or MSVC.
+// Pass: monkValArray(["x","y"]) → "(MonkValue[]){x, y}, 2"
+// Pass: monkValArray([])         → "NULL, 0"
+func monkValArray(elems []string, count int) string {
+	if count == 0 {
+		return "NULL, 0"
+	}
+	return fmt.Sprintf("(MonkValue[]){%s}, %d", strings.Join(elems, ", "), count)
+}
+
 // compoundToArith maps the compound-assign operators to their monk_* runtime
 // arithmetic functions, used by the boxed-path emitAssign.
 // Fix 3: panic on unknown compound operator instead of silent fallback.
@@ -72,6 +85,7 @@ var builtinMap = map[string]string{
 	"take":          "monk_take",
 	"slice":         "monk_slice",
 	"range":         "monk_range",
+	"fill":          "monk_fill",
 	"abs":           "monk_abs",
 	"floor":         "monk_floor",
 	"ceil":          "monk_ceil",
@@ -102,4 +116,7 @@ var builtinMap = map[string]string{
 	"file_exists":   "monk_file_exists",
 	"env_get":       "monk_env_get",
 	"exit":          "monk_exit",
+	"map":           "monk_map",
+	"filter":        "monk_filter",
+	"reduce":        "monk_reduce",
 }

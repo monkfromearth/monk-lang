@@ -10,6 +10,8 @@
 //   - gen_func.go    — function hoisting + call lowering
 //   - gen_helpers.go — small utilities (mangleName, cString, compoundToArith, builtinMap)
 //   - unbox.go       — scalar-unboxing path (raw int64_t/double/bool codegen)
+//   - gen_bounds.go  — static bounds analysis for bounds-check elision on typed arrays
+//   - capture.go     — free-variable analysis for closure capture
 package codegen
 
 import (
@@ -37,29 +39,41 @@ func Generate(prog *syntax.Program, filename string) string {
 // through so scalar variables can be emitted unboxed.
 func GenerateWithTypes(prog *syntax.Program, filename string, info *types.Info) string {
 	g := &generator{
-		filename:  filename,
-		funcCount: 0,
-		tmpCount:  0,
-		funcNames: make(map[string]string),
-		info:      info,
-		storage:   make(map[string]storageKind),
-		fnStorage: make(map[string]funcStorage),
+		filename:       filename,
+		funcCount:      0,
+		tmpCount:       0,
+		funcNames:      make(map[string]string),
+		funcDefaults:   make(map[string][]syntax.Expr),
+		funcHasCapture: make(map[string]bool),
+		info:           info,
+		storage:        make(map[string]storageKind),
+		fnStorage:      make(map[string]funcStorage),
+	}
+	if info != nil {
+		g.initBounds()
 	}
 	return g.generate(prog)
 }
 
 type generator struct {
-	filename  string
-	funcCount int               // counter for unique function names
-	tmpCount  int               // counter for unique temp variable names
-	funcNames map[string]string // maps Monk variable name → hoisted C function name
-	funcs     strings.Builder   // collected function definitions (hoisted above main)
-	body      strings.Builder   // main body statements
+	filename       string
+	funcCount      int                      // counter for unique function names
+	tmpCount       int                      // counter for unique temp variable names
+	funcNames      map[string]string        // maps Monk variable name → hoisted C function name
+	funcDefaults   map[string][]syntax.Expr // maps C function name → default exprs (nil for required params)
+	funcHasCapture map[string]bool          // true if the C function has captures (needs monk_call)
+	funcs          strings.Builder          // collected function definitions (hoisted above main)
+	body           strings.Builder          // main body statements
 	// Unboxing support — nil when Generate was called without type info.
-	info       *types.Info            // per-expression types from the checker
-	storage    map[string]storageKind // per-variable storage decision (Monk name → kind)
-	fnStorage  map[string]funcStorage // per-Monk-function storage decision (Monk name → params/ret)
-	retStorage storageKind            // expected return storage of the current function body
+	info            *types.Info            // per-expression types from the checker
+	storage         map[string]storageKind // per-variable storage decision (Monk name → kind)
+	fnStorage       map[string]funcStorage // per-Monk-function storage decision (Monk name → params/ret)
+	retStorage      storageKind            // expected return storage of the current function body
+	currentCaptures []string               // capture variable names for the function being emitted (empty = no closure)
+	// Bounds-check elision — populated only when info != nil.
+	constVals map[string]int64    // compile-time constant variable values (e.g. let N = 400)
+	arrayLens map[string]int64    // statically known lengths of typed array variables
+	varBounds map[string][2]int64 // inclusive [lo, hi] bounds for while-loop counters
 }
 
 // funcStorage captures the unboxed C signature of a Monk function, so call
@@ -93,6 +107,8 @@ func (g *generator) saveStorage() map[string]storageKind {
 	return snap
 }
 
+// restoreStorage replaces g.storage with a previously saved snapshot,
+// discarding any storage decisions made since the snapshot was taken.
 func (g *generator) restoreStorage(snap map[string]storageKind) {
 	g.storage = snap
 }

@@ -1,0 +1,63 @@
+// Bitwise operations on integers.
+// Monk integers are 64-bit signed, two's complement.
+
+// ─── Basic bitwise operators ───────────────────────────────────────────────
+
+let a = 0b1100   // 12
+let b = 0b1010   // 10
+
+show("a      = " + to_string(a))            // 12
+show("b      = " + to_string(b))            // 10
+show("a & b  = " + to_string(a & b))        // 8  (0b1000)
+show("a | b  = " + to_string(a | b))        // 14 (0b1110)
+show("a ^ b  = " + to_string(a ^ b))        // 6  (0b0110)
+show("~a     = " + to_string(~a))           // -13
+
+// ─── Shift operators ───────────────────────────────────────────────────────
+
+let x = 1
+show("1 << 0 = " + to_string(x << 0))      // 1
+show("1 << 3 = " + to_string(x << 3))      // 8
+show("1 << 8 = " + to_string(x << 8))      // 256
+
+let y = 256
+show("256 >> 4 = " + to_string(y >> 4))    // 16
+
+// ─── Power of two check ───────────────────────────────────────────────────
+// A positive number n is a power of 2 if (n & (n-1)) == 0.
+
+let is_power_of_two = (n int) boolean {
+    if n <= 0 { return false }
+    return (n & (n - 1)) == 0
+}
+
+let test_values = [0, 1, 2, 3, 4, 7, 8, 16, 31, 32, 64, 100, 128]
+for v in test_values {
+    if is_power_of_two(v) {
+        show(to_string(v) + " is a power of 2")
+    }
+}
+
+// ─── Count set bits (popcount) ─────────────────────────────────────────────
+
+let popcount = (n int) int {
+    let count = 0
+    let val = n
+    while val != 0 {
+        count += val & 1
+        val = val >> 1
+    }
+    return count
+}
+
+show("popcount(0)   = " + to_string(popcount(0)))     // 0
+show("popcount(7)   = " + to_string(popcount(7)))     // 3
+show("popcount(255) = " + to_string(popcount(255)))   // 8
+
+// ─── Hex literals and color extraction ─────────────────────────────────────
+
+let color = 0xFF8000   // orange-ish (no underscores in hex for C compat)
+let red = (color >> 16) & 0xFF
+let green = (color >> 8) & 0xFF
+let blue = color & 0xFF
+show("RGB: " + to_string(red) + ", " + to_string(green) + ", " + to_string(blue))

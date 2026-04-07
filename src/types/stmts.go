@@ -91,19 +91,37 @@ func (c *checker) resolveTypeExpr(te *syntax.TypeExpr, pos syntax.Pos) (*Type, e
 // Used during hoisting so recursive/forward references typecheck.
 func (c *checker) funcSignature(fn *syntax.FuncExpr) (*Type, error) {
 	params := make([]*Type, len(fn.Params))
+	seenDefault := false
 	for i, p := range fn.Params {
 		// Distinguish "missing annotation" (Name == "" AND not a function
 		// type) from a legitimate function-type annotation which has IsFunc
 		// true and Name == "". Untyped params fall back to Any for ergonomics.
 		if p.Type.Name == "" && !p.Type.IsFunc {
 			params[i] = Any
-			continue
+		} else {
+			pt, err := c.resolveTypeExpr(&p.Type, fn.Pos)
+			if err != nil {
+				return nil, err
+			}
+			params[i] = pt
 		}
-		pt, err := c.resolveTypeExpr(&p.Type, fn.Pos)
-		if err != nil {
-			return nil, err
+		// Validate defaults: must be trailing (no required param after a default).
+		if p.Default != nil {
+			seenDefault = true
+			dt, err := c.inferExpr(p.Default)
+			if err != nil {
+				return nil, err
+			}
+			if !AssignableTo(dt, params[i]) {
+				return nil, newTypeError(fn.Pos,
+					"default value for parameter '%s': cannot assign %s to %s",
+					p.Name, dt, params[i])
+			}
+		} else if seenDefault {
+			return nil, newTypeError(fn.Pos,
+				"required parameter '%s' cannot follow a parameter with a default value",
+				p.Name)
 		}
-		params[i] = pt
 	}
 	var ret *Type
 	if fn.ReturnType.Name == "" && !fn.ReturnType.IsFunc {
@@ -115,11 +133,24 @@ func (c *checker) funcSignature(fn *syntax.FuncExpr) (*Type, error) {
 			return nil, err
 		}
 	}
-	return FuncType(params, ret), nil
+	ft := FuncType(params, ret)
+	// Compute MinParams: count leading required (non-default) params.
+	ft.MinParams = len(params)
+	for i := len(fn.Params) - 1; i >= 0; i-- {
+		if fn.Params[i].Default != nil {
+			ft.MinParams = i
+		} else {
+			break
+		}
+	}
+	return ft, nil
 }
 
 // ─── Var decl & assignment ────────────────────────────────────────────────
 
+// checkVarDecl infers the RHS type, validates it against any explicit annotation,
+// and declares the binding in the current scope. The resolved type is stored in
+// c.info.Decls for codegen's storage-kind decision.
 func (c *checker) checkVarDecl(s *syntax.VarDeclStmt) error {
 	valueType, err := c.inferExpr(s.Value)
 	if err != nil {
@@ -148,6 +179,9 @@ func (c *checker) checkVarDecl(s *syntax.VarDeclStmt) error {
 	return nil
 }
 
+// checkAssign validates an assignment statement. Supports three target forms:
+// plain identifier, index expression (array element), and property expression
+// (record field). Checks compound operators via checkCompoundOp.
 func (c *checker) checkAssign(s *syntax.AssignStmt) error {
 	switch target := s.Target.(type) {
 	case *syntax.IdentExpr:
@@ -304,6 +338,8 @@ func otherNonStr(a, b *Type) string {
 
 // ─── Control flow ──────────────────────────────────────────────────────────
 
+// checkIf type-checks the condition and both branches of an if statement.
+// Any type is legal as a condition — truthiness is a runtime property.
 func (c *checker) checkIf(s *syntax.IfStmt) error {
 	condType, err := c.inferExpr(s.Condition)
 	if err != nil {
@@ -320,6 +356,8 @@ func (c *checker) checkIf(s *syntax.IfStmt) error {
 	return nil
 }
 
+// checkWhile type-checks the condition and body. Bumps inLoop so break/continue
+// inside the body are legal.
 func (c *checker) checkWhile(s *syntax.WhileStmt) error {
 	if _, err := c.inferExpr(s.Condition); err != nil {
 		return err
@@ -329,6 +367,10 @@ func (c *checker) checkWhile(s *syntax.WhileStmt) error {
 	return c.checkBlock(s.Body, true)
 }
 
+// checkFor type-checks `for varName in iterable { body }`. The loop variable
+// is declared const in its own scope (parent of the body), so body-level
+// `let i = ...` cannot shadow and reassign it — matching the spec guarantee
+// that the for-loop variable is immutable.
 func (c *checker) checkFor(s *syntax.ForStmt) error {
 	iterType, err := c.inferExpr(s.Iterable)
 	if err != nil {
@@ -357,6 +399,9 @@ func (c *checker) checkFor(s *syntax.ForStmt) error {
 	return c.checkBlock(s.Body, true)
 }
 
+// checkReturn verifies that the returned type is compatible with the enclosing
+// function's declared return type. A bare return is only valid when the
+// function returns none or any.
 func (c *checker) checkReturn(s *syntax.ReturnStmt) error {
 	if c.returnType == nil {
 		return newTypeError(s.Pos, "return outside of function")
@@ -379,6 +424,9 @@ func (c *checker) checkReturn(s *syntax.ReturnStmt) error {
 	return nil
 }
 
+// checkGuard type-checks a guard statement. The guarded variable is declared
+// in the enclosing scope (so it's accessible after the guard block). The error
+// variable is bound as Any inside the against block only.
 func (c *checker) checkGuard(s *syntax.GuardStmt) error {
 	rt, err := c.inferExpr(s.Expr)
 	if err != nil {

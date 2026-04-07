@@ -1,0 +1,77 @@
+// Value semantics: assignment copies. Your data is yours.
+// This is Monk's core design principle. No references, no aliasing.
+
+// ─── Arrays copy on assignment ─────────────────────────────────────────────
+
+let original = [1, 2, 3]
+let copy = original
+copy[0] = 999
+
+show("original: " + to_string(original))   // [1, 2, 3] — unchanged
+show("copy:     " + to_string(copy))       // [999, 2, 3]
+
+// ─── Records copy on assignment ────────────────────────────────────────────
+
+let alice = {name: "Alice", age: 30}
+let bob = alice
+bob.name = "Bob"
+bob.age = 25
+
+show("alice: " + to_string(alice))   // {name: "Alice", age: 30}
+show("bob:   " + to_string(bob))     // {name: "Bob", age: 25}
+
+// ─── Nested structures copy deeply ─────────────────────────────────────────
+
+let inner = [100, 200]
+let outer = [inner, inner]   // two independent copies of inner
+show("outer: " + to_string(outer))
+
+// ─── Const is deeply frozen ────────────────────────────────────────────────
+// const prevents both reassignment AND element mutation.
+
+const frozen = [1, 2, 3]
+// frozen[0] = 99       // compile error: cannot mutate const
+// frozen = [4, 5, 6]   // compile error: cannot reassign const
+show("frozen: " + to_string(frozen))
+
+const person = {name: "Doc", age: 42}
+// person.age = 43      // compile error: cannot mutate const
+show("person: " + to_string(person))
+
+// ─── Return new data instead of mutating ───────────────────────────────────
+
+let add_element = (arr array, elem int) array {
+    return append(arr, elem)
+}
+
+let items = [1, 2, 3]
+let more = add_element(items, 4)
+
+show("items: " + to_string(items))   // [1, 2, 3] — original intact
+show("more:  " + to_string(more))    // [1, 2, 3, 4]
+
+// ─── Sort returns a new array, original unchanged ──────────────────────────
+
+let bubble_sort = (arr array) array {
+    let sorted = arr
+    let n = length(sorted)
+    let i = 0
+    while i < n {
+        let j = 0
+        while j < n - 1 - i {
+            if sorted[j] > sorted[j + 1] {
+                let temp = sorted[j]
+                sorted[j] = sorted[j + 1]
+                sorted[j + 1] = temp
+            }
+            j += 1
+        }
+        i += 1
+    }
+    return sorted
+}
+
+let unsorted = [5, 3, 1, 4, 2]
+let sorted = bubble_sort(unsorted)
+show("unsorted: " + to_string(unsorted))   // [5, 3, 1, 4, 2] — unchanged
+show("sorted:   " + to_string(sorted))     // [1, 2, 3, 4, 5]

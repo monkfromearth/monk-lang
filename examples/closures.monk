@@ -1,0 +1,49 @@
+// Closures capture by COPY — consistent with value semantics.
+// The closure gets its own snapshot of every variable it references.
+// No sharing, no aliasing.
+
+// ─── Counter ───────────────────────────────────────────────────────────────
+
+let make_counter = (start int) () -> int {
+    let count = start
+    return () int {
+        count = count + 1
+        return count
+    }
+}
+
+let c1 = make_counter(0)
+let c2 = make_counter(100)
+
+show("c1: " + to_string(c1()))   // 1
+show("c1: " + to_string(c1()))   // 2
+show("c1: " + to_string(c1()))   // 3
+show("c2: " + to_string(c2()))   // 101
+show("c2: " + to_string(c2()))   // 102
+
+// c1 and c2 are independent — each has its own copy of count.
+
+// ─── Accumulator ───────────────────────────────────────────────────────────
+
+let make_accumulator = (initial float) (float) -> float {
+    let total = initial
+    return (amount float) float {
+        total = total + amount
+        return total
+    }
+}
+
+let wallet = make_accumulator(0.0)
+show("balance: " + to_string(wallet(50.0)))    // 50.0
+show("balance: " + to_string(wallet(25.5)))    // 75.5
+show("balance: " + to_string(wallet(100.0)))   // 175.5
+
+// ─── Capture-by-copy proof ─────────────────────────────────────────────────
+// Mutating the outer variable after creating the closure has no effect.
+
+let x = 10
+let snapshot = () int { return x }
+
+show("before: " + to_string(snapshot()))   // 10
+x = 999
+show("after:  " + to_string(snapshot()))   // 10 (closure's copy, not 999)

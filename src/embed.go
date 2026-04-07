@@ -1,36 +1,10 @@
 package main
 
-import _ "embed"
+import "embed"
 
-// Embedded runtime files. When `monk` is installed somewhere without an
-// adjacent runtime/ directory, these bytes are extracted to
-// ~/.cache/monk/runtime/ and cc compiles from there.
+// embeddedRuntime contains the entire runtime/ directory embedded at compile
+// time. When monk is installed without an adjacent runtime/ directory, these
+// files are extracted to ~/.cache/monk/runtime/ by extractEmbeddedRuntime.
 //
-// Keep this list in sync with runtimeFiles in main.go.
-
-//go:embed runtime/runtime.h
-var embeddedRuntimeH []byte
-
-//go:embed runtime/internal.h
-var embeddedInternalH []byte
-
-//go:embed runtime/value.c
-var embeddedValueC []byte
-
-//go:embed runtime/arith.c
-var embeddedArithC []byte
-
-//go:embed runtime/string.c
-var embeddedStringC []byte
-
-//go:embed runtime/container.c
-var embeddedContainerC []byte
-
-//go:embed runtime/math.c
-var embeddedMathC []byte
-
-//go:embed runtime/builtins.c
-var embeddedBuiltinsC []byte
-
-//go:embed runtime/error.c
-var embeddedErrorC []byte
+//go:embed runtime
+var embeddedRuntime embed.FS

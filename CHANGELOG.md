@@ -6,6 +6,54 @@ Format: [Semantic Versioning](https://semver.org/). Each minor version gets an U
 
 ---
 
+## Unreleased
+
+### Performance
+- **Typed array backing store** — `int[]`, `float[]`, `bool[]` variables now use `int64_t*` / `double*` / `bool*` backing stores instead of `MonkValue*`. Element reads/writes emit `arr.int_array_val->data[i]` — direct pointer access, no union overhead, half the memory stride. Matmul benchmark: ~100ms → ~30ms (inline) → **~20ms**, **11× C → 3× C → ~2× C**.
+- New `MONK_INT_ARRAY` / `MONK_FLOAT_ARRAY` / `MONK_BOOL_ARRAY` value kinds in `runtime.h`. New structs `MonkIntArray { int64_t *data; int64_t length }` etc. Converter functions `monk_int_array_from()` / `monk_float_array_from()` / `monk_bool_array_from()` — convert from generic `MONK_ARRAY` (consuming it) or deep-copy from same typed kind.
+- All generic runtime functions (`is_array`, `length`, `typeof`, structural mutators, `map`/`filter`/`reduce`) updated to accept and correctly handle typed array kinds.
+- **Typed array inline access** (previous session) — `storeIntArray` / `storeFloatArray` / `storeBoolArray` storage kinds in `unbox.go`. `deriveFuncStorage` uses `isRawScalar` so array parameters don't incorrectly participate in the all-scalar fast path. OOB panics (strict). `T?`-annotated variables preserve graceful path.
+
+### Language
+- **Typed array index returns `T`, not `T?`** — array element reads on typed arrays (`int[]`, `float[]`, `bool[]`, `string[]`) now return the element type directly. OOB panics (strict), so the result is always the element type. Removes the `+ 0` workaround in user code. Untyped arrays (element type `Any`) still return `Any?`.
+
+### Performance (continued)
+- **Unboxed for-in over typed arrays** — for-in loops over `int[]`/`float[]`/`bool[]` now emit raw scalar loop variables (`int64_t`/`double`/`bool`) instead of boxing each element into `MonkValue`. The loop body operates on raw C types — no `monk_int()`/`monk_free()` per element.
+
+### Bug Fixes
+- **Typed array reassignment leaked memory and caused UB** — `emitAssign` fast path used `store != storeBoxed` which passed for typed-array storage. `arr = append(arr, x)` emitted a raw struct copy, leaking old backing store and reading wrong union member. Fixed: guard uses `isRawScalar(store)`.
+- **`emitBinaryTyped` didn't exclude typed-array operands** — bail-out checked `storeBoxed` only, not array storage kinds. Would emit raw C arithmetic on MonkValue structs. Fixed: guard uses `!isRawScalar(ls) || !isRawScalar(rs)`.
+- **`was_typed` flag too broad in container/higher_order** — `arr.kind != MONK_ARRAY` matched non-array kinds (MONK_STRING, etc.). Tightened to explicit typed-array kind check in all 8 occurrences.
+- **Unsound bounds-check elision** — `evalRange` checked `constVals` before `varBounds`, so a loop counter initialized to 0 always returned range `[0, 0]` inside a while loop, ignoring the actual loop bounds. Buffer overflow when loop bound exceeded array length. Fixed: `varBounds` checked first. Also fixed `whileBoundsEntry` hardcoding lower bound to 0 instead of using the variable's initial value.
+- **Closure capture missed after while/for loops** — `WhileStmt` and `ForStmt` in `capture.go` didn't copy `locals` before visiting the body. Declarations inside the loop leaked into the outer scope's locals map, causing closures to miss captures. Fixed: both now use `copyLocals`.
+- **Function reassignment called old function** — non-capture function calls dispatched directly to the hoisted C function name, ignoring reassignment of the MonkValue variable. After `f = other_func`, `f(x)` still called the original function. Fixed: `emitAssign` invalidates `funcNames` entry on reassignment.
+- **Use-after-free in typed array conversion** — `monk_typed_to_generic` and `ho_to_generic` freed the typed backing store after conversion (consuming semantics), but the caller's variable still held the freed pointer. Any array passed to multiple builtins (e.g. `map` then `filter`) crashed. Fixed: converters are now non-consuming.
+- **Memory leak in structural mutators** — `append`, `prepend`, `pop`, `drop`, `take`, `slice`, `map`, `filter`, `reduce` all leaked the intermediate generic array allocated by `monk_typed_to_generic`. Fixed: `free_generic_intermediate()` called before returning.
+- **Index type validation** — `monk_array_get` / `monk_array_set` now validate `index.kind == MONK_INT` before reading the union field, preventing undefined behavior on non-int index values.
+- **Coerce guard** — `coerce()` in `unbox.go` now guards against array→scalar conversion (would read wrong union member).
+
+### Benchmarks
+- **12 new benchmarks** (9 → 21 total): `bitcount`, `for_in_sum`, `sqrt_sum`, `record_access`, `quicksort`, `closure_invoke`, `string_ops`, `string_concat`, `functional_chain`, `levenshtein`, `nbody`, `fannkuch`. Each with C reference implementation and expected.txt.
+- Reveals previously hidden performance gaps: records 25× C, string ops 95× C, closures 20× C, for-in 22× C.
+
+### Tests
+- 9 typed-array correctness tests (`TestTypedArray*`): reads, writes, arithmetic chains, mini matmul, float arrays, OOB panic.
+- 8 backing-store correctness tests (`TestBackingStore*`): int/float literal decls, range decls, element writes, for-in iteration, `show()`, `is_array()`, `length()`.
+- 6 record field unboxing tests (`TestRecordField*`): read unboxed (no `monk_record_get`), write unboxed (no `monk_record_set`), scalar read/write correctness, float chain, loop accumulation.
+
+### Performance (continued)
+- **Record field unboxing** — `rec.field` reads and writes now use direct index access (`obj.record_val->fields[N].value`) instead of the `monk_record_get`/`monk_record_set` strcmp loop. Scalar fields (`int`/`float`/`bool`) additionally skip the MonkValue wrapper — reads return `.int_val`/`.float_val`/`.bool_val` directly; writes skip the `monk_free` + `monk_deep_copy` cycle. RecordExpr literals are normalized to type-declaration field order to guarantee index consistency. Benchmark: `record_access` **25× C → ~1× C** (parity).
+
+### Bug Fixes (continued)
+- **Closure else-branch scope leak** — `collectRefsStmt` was passing the raw `locals` map to the else-branch instead of a copy. Variables declared in the else leaked into the outer scope after the if, potentially masking outer-scope closure captures. Fixed: else-branch now uses `copyLocals(locals)` like the then-branch.
+- **`funcExactMatch` nil panic** — accessing `src.Return.Kind` or `dst.Return.Kind` before checking for nil panicked on `none`-returning function types. Added nil guard using `Equal(src.Return, dst.Return)` for nil-equality semantics.
+
+### Performance (continued)
+- **Bounds-check elision for typed arrays** — typed array element reads and writes inside simple `while i < N` loops now skip the runtime `i < 0 || i >= length` check when statically provable. Three data sources combined at codegen time: compile-time constants (`let N int = 400`), array lengths from `range(N)`, and per-loop-variable inclusive `[lo, hi]` bounds from `while i < N`. `isBoundedSafe()` proves the access and emits `data[i]` directly. Benchmark: `matmul` **~2× C → ~1.08× C** (parity); `sieve` **~1.4× C → ~1.28× C**.
+- 4 new elision tests: read elision (checks no `monk_panic` in generated C), write elision, correctness (sum 0..99), negative case (loop bound > array length).
+
+---
+
 ## 0.0.1 — Buniyaad (2026-04-04)
 
 The foundation. Monk compiles, runs, and produces native binaries.

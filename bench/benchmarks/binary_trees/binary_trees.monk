@@ -1,0 +1,100 @@
+// Benchmark: binary trees — allocation stress test.
+// Build balanced binary trees, walk them to compute a checksum, discard.
+// Classic from the Computer Language Benchmarks Game.
+// Stresses: array allocation, deep copy (value semantics), recursion.
+// Output: a single integer (checksum).
+//
+// Tree representation: flat array pool.
+// Node i has: value at pool[3*i], left child at pool[3*i+1], right child at pool[3*i+2].
+// -1 = no child (leaf). Pool grows via append.
+
+let MAX_DEPTH = 14
+
+// Build a complete binary tree of given depth, return root index.
+// Pool is rebuilt for each tree (value semantics = no shared state).
+let tree_size = (depth int) int {
+    // Complete binary tree of depth d has 2^(d+1)-1 nodes
+    let size = 1
+    let i = 0
+    while i <= depth {
+        size = size * 2
+        i += 1
+    }
+    return size - 1
+}
+
+let build_and_check = (depth int) int {
+    // Allocate pool: 3 ints per node
+    let num_nodes = tree_size(depth)
+    let pool = range(num_nodes * 3)
+
+    // Build bottom-up: leaves first, then parents
+    // For a complete tree, nodes at indices [num_nodes/2 .. num_nodes-1] are leaves
+    let half = num_nodes / 2
+    let i = num_nodes - 1
+    while i >= half {
+        let base = i * 3
+        pool[base] = 1       // leaf value
+        pool[base + 1] = 0 - 1  // no left child
+        pool[base + 2] = 0 - 1  // no right child
+        i -= 1
+    }
+
+    // Internal nodes: node i has left=2i+1, right=2i+2
+    i = half - 1
+    while i >= 0 {
+        let base = i * 3
+        pool[base] = 0       // internal value
+        pool[base + 1] = 2 * i + 1  // left child index
+        pool[base + 2] = 2 * i + 2  // right child index
+        i -= 1
+    }
+
+    // Walk tree and compute checksum (iterative with explicit stack)
+    let stack = [0]  // start with root
+    let check = 0
+    while length(stack) > 0 {
+        let top = length(stack) - 1
+        let node_idx int? = stack[top]
+        stack = pop(stack)
+
+        let base = to_int(node_idx) * 3
+        let val int? = pool[base]
+        let left int? = pool[base + 1]
+        check += to_int(val)
+
+        if to_int(left) >= 0 {
+            let right int? = pool[base + 2]
+            stack = append(stack, to_int(left))
+            stack = append(stack, to_int(right))
+        }
+    }
+    return check
+}
+
+// Stretch tree
+let total = build_and_check(MAX_DEPTH + 1)
+
+// Long-lived tree
+let long_lived = build_and_check(MAX_DEPTH)
+
+// Iteratively create and destroy trees at various depths
+let depth = 4
+while depth <= MAX_DEPTH {
+    let iterations = 1
+    let d = 0
+    while d < MAX_DEPTH - depth + 4 {
+        iterations = iterations * 2
+        d += 1
+    }
+
+    let i = 0
+    while i < iterations {
+        total += build_and_check(depth)
+        i += 1
+    }
+    depth += 2
+}
+
+total += long_lived
+show(to_string(total))

@@ -24,9 +24,12 @@ MonkValue monk_string_concat(MonkValue a, MonkValue b) {
 
 MonkValue monk_length(MonkValue v) {
     switch (v.kind) {
-    case MONK_STRING: return monk_int(monk_utf8_strlen(v.str_val));
-    case MONK_ARRAY:  return monk_int(v.array_val->length);
-    case MONK_RECORD: return monk_int(v.record_val->length);
+    case MONK_STRING:      return monk_int(monk_utf8_strlen(v.str_val));
+    case MONK_ARRAY:       return monk_int(v.array_val->length);
+    case MONK_INT_ARRAY:   return monk_int(v.int_array_val->length);
+    case MONK_FLOAT_ARRAY: return monk_int(v.float_array_val->length);
+    case MONK_BOOL_ARRAY:  return monk_int(v.bool_array_val->length);
+    case MONK_RECORD:      return monk_int(v.record_val->length);
     default: monk_panic("length: expected string, array, or record"); return monk_none();
     }
 }

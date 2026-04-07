@@ -1,0 +1,57 @@
+// Math and trigonometry builtins.
+// All trig functions work in radians.
+
+// ─── Basic math ────────────────────────────────────────────────────────────
+
+show("abs(-42)    = " + to_string(abs(-42)))
+show("abs(3.14)   = " + to_string(abs(3.14)))
+show("floor(3.7)  = " + to_string(floor(3.7)))
+show("ceil(3.2)   = " + to_string(ceil(3.2)))
+show("round(3.5)  = " + to_string(round(3.5)))
+show("round(3.4)  = " + to_string(round(3.4)))
+
+// ─── Powers and roots ──────────────────────────────────────────────────────
+
+show("pow(2, 10)  = " + to_string(pow(2, 10)))    // 1024
+show("pow(3, 3)   = " + to_string(pow(3, 3)))     // 27
+show("sqrt(144)   = " + to_string(sqrt(144)))      // 12
+show("sqrt(2)     = " + to_string(sqrt(2)))
+
+// ─── Logarithms ────────────────────────────────────────────────────────────
+
+show("log(1)      = " + to_string(log(1)))         // 0
+show("exp(1)      = " + to_string(exp(1)))         // ~2.718
+show("log10(1000) = " + to_string(log10(1000)))    // 3
+
+// ─── Trigonometry ──────────────────────────────────────────────────────────
+
+let pi = acos(0.0 - 1.0)   // pi = acos(-1)
+show("pi          = " + to_string(pi))
+
+show("sin(0)      = " + to_string(sin(0)))         // 0
+show("cos(0)      = " + to_string(cos(0)))         // 1
+show("sin(pi/2)   = " + to_string(sin(pi / 2.0)))  // 1
+show("cos(pi)     = " + to_string(cos(pi)))        // -1
+show("tan(pi/4)   = " + to_string(tan(pi / 4.0)))  // ~1
+
+// ─── Inverse trig ──────────────────────────────────────────────────────────
+
+show("asin(1)     = " + to_string(asin(1)))        // pi/2
+show("acos(0)     = " + to_string(acos(0)))        // pi/2
+show("atan(1)     = " + to_string(atan(1)))        // pi/4
+
+// ─── Min and max ───────────────────────────────────────────────────────────
+
+show("min(3, 7)   = " + to_string(min(3, 7)))
+show("max(3, 7)   = " + to_string(max(3, 7)))
+show("min(-1, 1)  = " + to_string(min(-1, 1)))
+
+// ─── Distance between two points ──────────────────────────────────────────
+
+let distance = (x1 float, y1 float, x2 float, y2 float) float {
+    let dx = x2 - x1
+    let dy = y2 - y1
+    return sqrt(dx * dx + dy * dy)
+}
+
+show("distance(0,0 to 3,4) = " + to_string(distance(0.0, 0.0, 3.0, 4.0)))   // 5

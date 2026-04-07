@@ -1,0 +1,13 @@
+// Benchmark: string concatenation in a loop.
+// Builds a large string by appending "hello" 10000 times.
+// O(n^2) total work — each concat copies the growing string.
+// Tests: string allocation, memcpy overhead, value semantics on strings.
+// Output: length of final string.
+
+let s = ""
+let i = 0
+while i < 10000 {
+    s = s + "hello"
+    i += 1
+}
+show(to_string(length(s)))

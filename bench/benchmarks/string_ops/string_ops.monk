@@ -1,0 +1,15 @@
+// Benchmark: string operation throughput.
+// Tests: to_upper_case, to_lower_case, length — repeated on a fixed string.
+// Each call allocates a new string (no mutation). Measures allocation pressure.
+// Output: accumulated length checksum.
+
+let base = "the Quick Brown fox Jumps Over The Lazy Dog"
+let total = 0
+let i = 0
+while i < 500000 {
+    let upper = to_upper_case(base)
+    let lower = to_lower_case(base)
+    total += length(upper) + length(lower)
+    i += 1
+}
+show(to_string(total))

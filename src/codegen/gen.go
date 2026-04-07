@@ -10,6 +10,8 @@
 //   - gen_func.go    — function hoisting + call lowering
 //   - gen_helpers.go — small utilities (mangleName, cString, compoundToArith, builtinMap)
 //   - unbox.go       — scalar-unboxing path (raw int64_t/double/bool codegen)
+//   - gen_bounds.go  — static bounds analysis for bounds-check elision on typed arrays
+//   - capture.go     — free-variable analysis for closure capture
 package codegen
 
 import (
@@ -47,6 +49,9 @@ func GenerateWithTypes(prog *syntax.Program, filename string, info *types.Info) 
 		storage:        make(map[string]storageKind),
 		fnStorage:      make(map[string]funcStorage),
 	}
+	if info != nil {
+		g.initBounds()
+	}
 	return g.generate(prog)
 }
 
@@ -65,6 +70,10 @@ type generator struct {
 	fnStorage       map[string]funcStorage // per-Monk-function storage decision (Monk name → params/ret)
 	retStorage      storageKind            // expected return storage of the current function body
 	currentCaptures []string               // capture variable names for the function being emitted (empty = no closure)
+	// Bounds-check elision — populated only when info != nil.
+	constVals map[string]int64    // compile-time constant variable values (e.g. let N = 400)
+	arrayLens map[string]int64    // statically known lengths of typed array variables
+	varBounds map[string][2]int64 // inclusive [lo, hi] bounds for while-loop counters
 }
 
 // funcStorage captures the unboxed C signature of a Monk function, so call
@@ -98,6 +107,8 @@ func (g *generator) saveStorage() map[string]storageKind {
 	return snap
 }
 
+// restoreStorage replaces g.storage with a previously saved snapshot,
+// discarding any storage decisions made since the snapshot was taken.
 func (g *generator) restoreStorage(snap map[string]storageKind) {
 	g.storage = snap
 }

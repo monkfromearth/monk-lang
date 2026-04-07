@@ -16,6 +16,7 @@ as static C functions, everything else goes into the body of `main()`.
 | `gen_helpers.go`  | `mangleName`, `cString`, `compoundToArith`, `builtinMap`   |
 | `unbox.go`        | scalar and typed-array unboxing (`int64_t`/`double`/`bool`, `storeIntArray` etc.) |
 | `capture.go`      | `freeVars` — free variable analysis for closure captures   |
+| `gen_bounds.go`   | static bounds analysis for bounds-check elision (`constVals`, `arrayLens`, `varBounds`, `isBoundedSafe`) |
 
 ## Two emission paths
 

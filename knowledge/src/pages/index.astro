@@ -29,7 +29,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
             <div class="flex items-center gap-4 text-sm text-monk-muted">
                 <span>7 units</span>
                 <span class="text-monk-border">|</span>
-                <span>30 lessons</span>
+                <span>31 lessons</span>
             </div>
         </div>
     </header>
@@ -110,7 +110,7 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                                 <h3 class="font-bold text-xl">Unit 0 — The Ground Floor</h3>
                                 <p class="text-monk-muted mt-1">How compilers work. Project setup. Then we build.</p>
                             </div>
-                            <span class="tag text-monk-accent bg-white px-2 py-0.5 rounded-full border border-monk-accent/20">2 lessons</span>
+                            <span class="tag text-monk-accent bg-white px-2 py-0.5 rounded-full border border-monk-accent/20">3 lessons</span>
                         </div>
                     </div>
                     <div class="divide-y divide-monk-border">
@@ -133,6 +133,16 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
                                 <p class="text-monk-muted text-xs mt-0.5">Install Go, create the project, run your first test.</p>
                             </div>
                             <TagBadge variant="exercise">exercise</TagBadge>
+                        </a>
+                        <a href={base + "/foundations/reading-the-source"} class="lesson-item flex items-center gap-4 px-6 py-4 cursor-pointer">
+                            <div class="w-8 h-8 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0">
+                                <span class="text-monk-accent font-semibold text-sm">0.3</span>
+                            </div>
+                            <div class="flex-1">
+                                <h4 class="font-semibold text-sm">Reading the Source</h4>
+                                <p class="text-monk-muted text-xs mt-0.5">Developer's tour: the pipeline in Go code, key structs, and where to start reading.</p>
+                            </div>
+                            <TagBadge variant="go">go</TagBadge>
                         </a>
                     </div>
                 </div>

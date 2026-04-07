@@ -69,7 +69,11 @@ func Build(entryPath string) (*Graph, error) {
 					break
 				}
 			}
-			cycle := append(chain[start:], path)
+			// Use append([]string(nil), ...) to make a clean copy of the slice
+			// before appending. chain[start:] shares the backing array with chain,
+			// so a plain append could overwrite chain past its logical end if
+			// capacity exists — safe here (we return immediately), but misleading.
+			cycle := append(append([]string(nil), chain[start:]...), path)
 			names := make([]string, len(cycle))
 			for i, p := range cycle {
 				names[i] = filepath.Base(p)

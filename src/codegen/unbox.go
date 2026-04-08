@@ -270,7 +270,30 @@ func (g *generator) emitCallTyped(e *syntax.CallExpr) (string, storageKind) {
 		return g.emitExpr(e), storeBoxed
 	}
 
-	// Scalar coercion builtins: to_int / to_float.
+	// User-defined stack closure — check first; these are specifically identified
+	// CallExpr pointers, not builtin name matches, so shadowing is irrelevant.
+	if code, store, ok := g.emitStackFuncCall(e); ok {
+		return code, store
+	}
+
+	// User-defined function — MUST check before any builtin optimizations so that
+	// a user who shadows a builtin name (e.g. `let length = (s string) int { ... }`)
+	// gets their function called instead of the inlined/fused builtin version.
+	// Pass: `let typeof = () string { return "custom" }; typeof()` → user call.
+	// Fail (before fix): typeof() inlined to monk_string("int") even with user override.
+	if cName, ok := g.funcNames[ident.Name]; ok {
+		fs, ok := g.fnStorage[cName]
+		if !ok || !fs.All {
+			return g.emitExpr(e), storeBoxed
+		}
+		// Pad defaults before emitting — emitCall does the same; without this,
+		// calls with omitted trailing args generate a C call with too few arguments.
+		fullArgs := g.padDefaults(cName, e.Args)
+		return g.emitUnboxedCall(cName, fs, fullArgs), fs.Return
+	}
+
+	// Builtin scalar coercion shortcuts: to_int / to_float.
+	// Only reached if the callee is NOT a user-defined function.
 	// If the argument is already a raw scalar int or float, inline the
 	// coercion with no runtime call. This keeps chains like
 	// `y / to_float(H) * 2.0` fully raw.
@@ -305,22 +328,7 @@ func (g *generator) emitCallTyped(e *syntax.CallExpr) (string, storageKind) {
 		return code, store
 	}
 
-	if code, store, ok := g.emitStackFuncCall(e); ok {
-		return code, store
-	}
-
-	cName, ok := g.funcNames[ident.Name]
-	if !ok {
-		return g.emitExpr(e), storeBoxed
-	}
-	fs, ok := g.fnStorage[cName]
-	if !ok || !fs.All {
-		return g.emitExpr(e), storeBoxed
-	}
-	// Pad defaults before emitting — emitCall does the same; without this,
-	// calls with omitted trailing args generate a C call with too few arguments.
-	fullArgs := g.padDefaults(cName, e.Args)
-	return g.emitUnboxedCall(cName, fs, fullArgs), fs.Return
+	return g.emitExpr(e), storeBoxed
 }
 
 // emitBinaryTyped emits a binary expression, preserving raw storage when

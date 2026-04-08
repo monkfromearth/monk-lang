@@ -8,7 +8,7 @@ What's been built, what pivots happened, what's next.
 
 ## The compiler
 
-**Status: Phases 1-7 complete. 676 tests (510 Go + 166 C runtime). Working end-to-end.**
+**Status: Phases 1-7 complete. 691 tests (517 Go + 174 C runtime). Working end-to-end.**
 
 `monk build hello.monk` compiles to a native binary via C. `monk run` compiles and runs in one step. `monk check` validates syntax. `monk version` prints `monk 0.0.1 — Buniyaad`.
 
@@ -814,15 +814,209 @@ Senior review + file-organization cleanup applied after Phase 7 landed.
 - WALKTHROUGH.md: added generator struct module fields (`modulePrefix`, `importMap`, `moduleInit`, `globals`), new "How multi-module codegen works" section with name mangling table, init-once pattern, variable split, and `.c` assembly order diagram.
 - Knowledge site Phase 7 lessons audited — all four accurate, no fixes needed.
 
+### Copy-on-write arrays (2026-04-07)
+
+Implemented copy-on-write for generic arrays and typed backing-store arrays.
+This preserves Monk's value semantics (`let b = a; b[0] = 99` still leaves
+`a[0]` unchanged) while making array assignment O(1) until the first mutation.
+
+**Runtime changes:**
+- `MonkArray`, `MonkIntArray`, `MonkFloatArray`, and `MonkBoolArray` now carry a hidden `refcount`
+- `monk_deep_copy` shares array backing stores by incrementing the refcount instead of eagerly copying the whole array
+- `monk_free` decrements the refcount and only frees backing storage at zero
+- `monk_array_set` detaches shared generic/typed arrays before writing
+- `monk_int_array_from` / `monk_float_array_from` / `monk_bool_array_from` COW-share same-kind typed arrays instead of deep-copying them
+
+**Codegen changes:**
+- Typed-array direct writes (`arr.int_array_val->data[i] = rhs`) now emit a COW barrier when the variable may be shared
+- Fresh typed arrays from literals, `range`, and `fill` are tracked as unique and skip the barrier in hot loops
+- This avoided a regression in `matmul`: always emitting the barrier pushed `matmul` to ~40 ms; uniqueness tracking kept it at ~13 ms on this run
+
+**Benchmarks (Apple M4 Pro, hyperfine, targeted run):**
+
+| Benchmark | Before | After | C ref | Notes |
+|---|---:|---:|---:|---|
+| `binary_trees` | 512.5 ms | 236.2 ms | 7.3 ms | 2.2× faster; still allocation/value-semantics heavy |
+| `functional_chain` | 15.7 ms | 8.2 ms | 1.6 ms | 1.9× faster; still pays intermediate arrays/callbacks |
+| `matmul` | prior range ~19 ms | 13.1 ms | 11.2 ms | no COW-barrier regression; measured run was ~1.17× C |
+| `nbody` | prior range ~17.9 ms | 17.9 ms | 11.4 ms | unchanged |
+| `sieve` | prior range ~2.0 ms | 2.3 ms | 2.3 ms | `--shell=none`; no generated COW barrier in hot loop |
+
+**Tests added:** `TestBackingStoreWriteDetachesCopyOnWriteArray` plus C runtime
+coverage for generic-array and typed-array COW sharing/detach. C runtime
+assertions: 166 → 174.
+
+### String concat assignment fast path (2026-04-08)
+
+Implemented the first string optimization slice without changing the language
+spec: codegen now recognizes `s = s + rhs` and `s += rhs` when both sides are
+statically strings, then emits `monk_string_append_in_place(&s, rhs)` instead
+of allocating a whole replacement string via `monk_string_concat`.
+
+This preserves user-visible value semantics because only assignment back into
+the same variable takes the in-place path; ordinary `a + b` still returns a new
+string. The runtime helper handles `s += s` safely by checking for self-append
+before `realloc`.
+
+**Benchmarks (Apple M4 Pro, hyperfine, targeted run):**
+
+| Benchmark | Before | After | C ref | Notes |
+|---|---:|---:|---:|---|
+| `string_concat` | 43.6 ms | 6.5 ms | 4.8 ms | 6.7× faster; now ~1.36× C |
+| `string_ops` | 100.1 ms | 102.4 ms | 1.7 ms | unchanged; dominated by `to_upper_case`/`to_lower_case` allocation |
+| `levenshtein` | 74.3 ms | 75.5 ms | 2.0 ms | unchanged; dominated by per-character `substring` allocation |
+
+**Overfitting audit:** A broader test caught that `s += rhs` was documented as
+optimized but did not actually take the fast path; the original benchmark only
+used `s = s + "hello"`. Fixed by recording assignment-lvalue type info in
+`types.Info`, then added coverage for variable RHS, computed RHS, non-self
+concat assignment, and numeric `+=` fallback.
+
+**Tests added:** `TestCodegenStringAppendAssignmentUsesInPlaceHelper`,
+`TestCodegenStringAppendAssignmentCoversGeneralForms`,
+`TestCodegenStringAppendAssignmentDoesNotOvermatch`, plus C runtime coverage
+for alias-safe self-append. C runtime assertions: 174 → 176.
+
+### Known-type builtin inlining (2026-04-08)
+
+Implemented the ROADMAP item for inlining `typeof` / `is_*` when codegen can
+prove the argument's type without evaluating an effectful expression. This is
+deliberately conservative:
+
+- Inlines identifiers and literals with non-optional, non-`Any` static types
+  (`typeof(n int)` → `monk_string("int")`, `is_array(arr int[])` → `true`)
+- Leaves calls, index expressions, property reads, optional values, and `Any`
+  on the runtime path so side effects, bounds behavior, and dynamic checks
+  remain observable
+- Works in both boxed and typed emission paths; typed conditions like
+  `if is_number(n)` can use a raw C `true`/`false`
+
+This is not benchmark-specific and no benchmark source changed for it.
+
+**Tests added:** `TestCodegenKnownTypePredicatesInlinePureKnownTypes` and
+`TestCodegenKnownTypePredicatesDoNotSkipEffects`.
+
+### Review hardening for optimization state (2026-04-08)
+
+Processed the pasted review for the performance branch. Three real
+`arrayUnique` issues were fixed:
+
+- `GenerateModules` now initializes `arrayUnique`, so typed-array declarations
+  in modules no longer panic with "assignment to entry in nil map"
+- Typed-array reassignment updates COW uniqueness facts, so `arr = source`
+  cannot leave a stale "unique" bit from an earlier `range()` initializer
+- Scope snapshots now include `arrayUnique`; restore is conservative and turns
+  changed outer keys into "maybe shared" rather than restoring stale `true`
+
+Also split `unbox.go` after it crossed the file-size soft limit:
+`gen_access.go` owns typed array / record access fast paths, and
+`gen_optimize.go` owns COW uniqueness, string append detection, and known-type
+builtin inlining. `unbox.go` is back under 500 lines.
+
+Review items intentionally skipped: string append old-value free (handled by
+`realloc`), self-append `memmove` (already correct and tested), and nested
+array COW sharing (intentional; mutation barriers preserve value semantics).
+
+**Tests added:** module typed-array generation, typed-array reassignment COW
+tracking, and scope-shadowed COW uniqueness restore.
+
+### Closure escape analysis, direct-call slice (2026-04-08)
+
+Added a conservative escape analysis for function literals assigned to local
+variables. If the variable is only used as a direct callee in its lexical
+lifetime, codegen now hoists the function but skips `monk_make_function` and
+`monk_call`:
+
+- Capturing closures emit a stack `MonkValue captures[]` snapshot plus a stack
+  `MonkFunction` frame and call the hoisted function directly with `&self`
+- Non-capturing direct-only helpers skip the unused function-value wrapper too
+- Any value use still stays on the heap path: storing in arrays/records,
+  passing as an argument, returning, nested-function capture, reassignment, or
+  other non-callee references all keep `monk_make_function`
+
+This is a broad closure optimization, not a benchmark-name special case. It
+preserves "closures capture by copy" by deep-copying stack captures at the
+function declaration point, mirroring `monk_make_function`.
+
+**Targeted benchmark:** prebuilt `closure_invoke` binary, `hyperfine -N
+--warmup 10 --runs 50`, before compiler from commit `1b994e7`, after current
+working tree:
+
+| Benchmark | Before | After | C ref | Result |
+|-----------|--------|-------|-------|--------|
+| `closure_invoke` | 22.9 ms ± 2.6 | 1.4 ms ± 0.1 | 1.4 ms ± 0.2 | ~16.6× faster; startup-noise floor / C-parity |
+
+**Tests added:** `TestCodegenNonEscapingClosureUsesStackFrame` and
+`TestCodegenEscapingClosureStaysHeapAllocated`. Updated the older RHS-once
+test to expect no thunk for direct-only helpers.
+
+### Fresh-result copy elision and string length fusion (2026-04-08)
+
+Added a conservative boxed `let` move path for expressions that definitely
+produce a newly-owned value. Examples: literals, array/record literals,
+arithmetic/comparison results, indexed/property reads that already return
+copies, and known fresh builtins such as `to_upper_case`, `to_lower_case`,
+`substring`, `trim`, `append`, `slice`, `map`, and `filter`.
+
+Identifier bindings still deep-copy/share as before:
+
+- `let upper = to_upper_case(base)` now emits `MonkValue upper =
+  monk_to_upper_case(base)` instead of immediately deep-copying the fresh
+  return value
+- `let b = a` still emits `monk_deep_copy(a)`, so string append and COW array
+  mutation preserve value semantics
+
+Also added a small algebraic fusion for `length(to_upper_case(s))` /
+`length(to_lower_case(s))` when `s` is a pure, statically known, non-optional
+string. Effectful calls stay on the runtime path.
+
+**Targeted benchmark:** prebuilt `string_ops` binary, `hyperfine -N --warmup 5
+--runs 20`, before compiler from commit `1b994e7`, after current working tree:
+
+| Benchmark | Before | After | C ref | Result |
+|-----------|--------|-------|-------|--------|
+| `string_ops` | 100.2 ms ± 2.0 | 80.8 ms ± 2.3 | 1.4 ms ± 0.4 | ~1.24× faster; still allocation-dominated |
+
+This is not a full string-view/string-builder implementation. The benchmark
+still allocates one uppercase and one lowercase string per iteration; this pass
+only removes the duplicate copy after a fresh return value.
+
+**Tests added:** `TestCodegenLengthOfCaseConversionFusesForKnownStrings`,
+`TestCodegenLengthCaseFusionPreservesEffects`,
+`TestCodegenFreshBuiltinVarDeclAvoidsDeepCopy`, and
+`TestCodegenIdentifierVarDeclStillCopies`.
+
+### Performance optimization backlog (2026-04-08)
+
+Current ranked backlog from the Phase 6 performance discussion:
+
+| Optimization | Status |
+|--------------|--------|
+| Copy-on-write arrays | Complete — generic + typed arrays share backing storage and detach on mutation |
+| String builder / views | Partial — concat assignment fast path shipped; remaining string work is views/fusion/cached access |
+| `restrict` function extraction | Deferred — proven for matmul/nbody, but invasive and easy to overfit |
+| Closure escape analysis | Partial — direct-call-only closures stack-allocated; broader escape/lifetime analysis remains |
+| Stream fusion for `map`/`filter`/`reduce` | Deferred — likely needs lazy/fused pipeline lowering |
+| Arena allocator | Deferred — depends on escape/lifetime analysis |
+| Inline `typeof` / `is_*` for known types | Complete — pure known-type values inline to constants |
+| Copy elision / move analysis | Partial — fresh-result `let` bindings move directly; last-use move analysis still deferred |
+| String cached offsets / ropes | Deferred — improves repeated UTF-8 indexing/slicing, adds runtime complexity |
+| PGO experiment | Later — not ideal as default build flow |
+| `monk run` binary cache | Later — compiler-throughput optimization, not runtime |
+| Incremental multi-module compilation | Later — compile-time optimization if single-C-file flow becomes a bottleneck |
+| LLVM / Cranelift backend | Long-term — larger backend strategy, not a Phase 6 patch |
+
 ### What's next (compiler)
 
 | Phase | Topic | Status |
 |-------|-------|--------|
 | 7 | Module System | **Complete** ✅ |
 | 6 | `restrict` function extraction | Deferred — matmul/nbody 1.8×→~1×, invasive codegen |
-| 6 | Copy-on-write for arrays | Deferred — binary_trees 57×→~1×, 2-3 sessions |
-| 6 | Closure escape analysis | Deferred — closure_invoke 17×→~1×, 2-3 sessions |
-| 6 | String views / builder | Deferred — string_concat/ops/levenshtein, 1-2 sessions |
+| 6 | Copy-on-write for arrays | **Complete** ✅ — generic + typed arrays, hidden refcount + write barrier |
+| 6 | Runtime `typeof`/`is_*` inlining | **Complete** ✅ — pure known-type args only; effectful/unknown args stay runtime |
+| 6 | Closure escape analysis | Partial ✅ — direct-call-only closures stack-allocated; escaped function values stay heap |
+| 6 | String views / builder | Partial — string_concat fast path complete; string_ops/levenshtein still need views/cached strings |
+| 6 | Copy elision / move analysis | Partial ✅ — fresh-result `let` bindings skip duplicate deep copy; last-use analysis deferred |
 | 6 | Stream fusion (lazy map/filter/reduce) | Deferred — functional_chain 4×→~1×, 3+ sessions |
 | 8 | C FFI | Not started |
 | 9 | Linter & Formatter | Not started |

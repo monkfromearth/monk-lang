@@ -98,16 +98,8 @@ func (g *generator) emitFuncExpr(e *syntax.FuncExpr) string {
 	return g.emitFuncValueNamed(cName, e)
 }
 
-// emitFuncValueNamed hoists a function under the given cName, emits its
-// trampoline, and returns a C expression creating a MonkFunction value.
-// The caller must have already allocated cName (and possibly pre-registered
-// it in funcNames for recursive self-reference).
-func (g *generator) emitFuncValueNamed(cName string, e *syntax.FuncExpr) string {
-	// Compute captures — free variables referenced but not declared locally.
+func (g *generator) validCaptures(e *syntax.FuncExpr) []string {
 	captures := freeVars(e)
-	// Filter to only regular variables in the current scope. Hoisted function
-	// names are NOT captures — they're available as MonkValue locals (mk_name)
-	// and can be called directly or referenced by value.
 	var validCaptures []string
 	for _, name := range captures {
 		mn := g.mangledName(name)
@@ -118,6 +110,19 @@ func (g *generator) emitFuncValueNamed(cName string, e *syntax.FuncExpr) string 
 			validCaptures = append(validCaptures, name)
 		}
 	}
+	return validCaptures
+}
+
+// emitFuncValueNamed hoists a function under the given cName, emits its
+// trampoline, and returns a C expression creating a MonkFunction value.
+// The caller must have already allocated cName (and possibly pre-registered
+// it in funcNames for recursive self-reference).
+func (g *generator) emitFuncValueNamed(cName string, e *syntax.FuncExpr) string {
+	// Compute captures — free variables referenced but not declared locally.
+	// Filter to only regular variables in the current scope. Hoisted function
+	// names are NOT captures — they're available as MonkValue locals (mk_name)
+	// and can be called directly or referenced by value.
+	validCaptures := g.validCaptures(e)
 
 	g.hoistFunctionWithCaptures(cName, e, validCaptures)
 	sig := g.fnStorage[cName]
@@ -140,6 +145,72 @@ func (g *generator) emitFuncValueNamed(cName string, e *syntax.FuncExpr) string 
 	}
 	return fmt.Sprintf("monk_make_function(%s, %s)",
 		thunkName, monkValArray(captureExprs, len(validCaptures)))
+}
+
+func (g *generator) emitStackFuncValueNamed(cName string, e *syntax.FuncExpr) stackFuncInfo {
+	validCaptures := g.validCaptures(e)
+	g.hoistFunctionWithCaptures(cName, e, validCaptures)
+
+	if len(validCaptures) == 0 {
+		return stackFuncInfo{cName: cName}
+	}
+
+	capName := g.newClosureTemp("caps")
+	selfName := g.newClosureTemp("self")
+	captureExprs := make([]string, len(validCaptures))
+	for i, name := range validCaptures {
+		mn := g.mangledName(name)
+		capture := mn
+		if store := g.varStorage(mn); store != storeBoxed {
+			capture = boxExpr(mn, store)
+		}
+		captureExprs[i] = "monk_deep_copy(" + capture + ")"
+	}
+	g.emitLine("    MonkValue %s[%d] = {%s};\n", capName, len(validCaptures), strings.Join(captureExprs, ", "))
+	// Stack closure for non-escaping direct calls. The capture array mirrors
+	// monk_make_function's deep-copy snapshot but stays scoped to the variable.
+	// Pass: `let f=(x){return x+n}; f(1)` uses &self. Fail: escaped f stays heap.
+	g.emitLine("    MonkFunction %s = {.fn = NULL, .captures = %s, .capture_count = %d};\n",
+		selfName, capName, len(validCaptures))
+	return stackFuncInfo{cName: cName, selfName: selfName, capArrayName: capName, capCount: len(validCaptures)}
+}
+
+func (g *generator) newClosureTemp(kind string) string {
+	g.tmpCount++
+	return fmt.Sprintf("_closure_%s_%d", kind, g.tmpCount)
+}
+
+func (g *generator) emitStackFuncCall(e *syntax.CallExpr) (string, storageKind, bool) {
+	decl, ok := g.stackFuncCalls[e]
+	if !ok {
+		return "", storeBoxed, false
+	}
+	info, ok := g.stackFuncValues[decl]
+	if !ok {
+		return "", storeBoxed, false
+	}
+	fs := g.fnStorage[info.cName]
+	fullArgs := g.padDefaults(info.cName, e.Args)
+	if info.selfName == "" && fs.All {
+		return g.emitUnboxedCall(info.cName, fs, fullArgs), fs.Return, true
+	}
+
+	args := make([]string, len(fullArgs))
+	for i, arg := range fullArgs {
+		args[i] = g.emitExpr(arg)
+	}
+	if info.selfName != "" {
+		allArgs := append([]string{"&" + info.selfName}, args...)
+		return fmt.Sprintf("%s(%s)", info.cName, strings.Join(allArgs, ", ")), storeBoxed, true
+	}
+	// If params or return stayed boxed, the C function returns MonkValue even
+	// when the Monk return type is scalar.
+	// Pass: `(arr array) int` call reports storeBoxed, then caller unboxes.
+	// Fail: reporting storeInt makes C assign a MonkValue to int64_t.
+	if !fs.All {
+		return fmt.Sprintf("%s(%s)", info.cName, strings.Join(args, ", ")), storeBoxed, true
+	}
+	return fmt.Sprintf("%s(%s)", info.cName, strings.Join(args, ", ")), fs.Return, true
 }
 
 // hoistFunctionWithCaptures is like hoistFunction but adds extra MonkValue

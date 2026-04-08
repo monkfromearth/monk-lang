@@ -223,11 +223,10 @@ These are real problems other compile-to-C languages have hit. Our mitigations:
 
 ### 4. Value semantics (copy on assign) performance
 **Problem:** Deep-copying a 10,000 element array on every `let b = a` is expensive.
-**Our approach for v1:** Eager deep copy. Simple, correct, zero refcounting.
-**Future optimizations (not in v1):**
+**Our approach:** Copy-on-write for arrays; eager deep copy remains for records/strings/functions. Simple semantics, avoids O(n) array copies on assignment.
+**Future optimizations:**
 - **Copy elision:** When the source value is never used after assignment, turn the copy into a move at the Monk→C level.
 - **Escape analysis:** If a value never leaves its scope, skip the heap allocation entirely.
-- **Copy-on-write (COW):** Share backing storage, copy only on mutation. Can be added as an invisible optimization later.
 
 ### Performance Optimization Roadmap
 
@@ -250,22 +249,20 @@ The three remaining gaps between Monk and C performance — in order of impact:
 
 **Effort:** Medium. Touches runtime struct definition, 3-4 codegen paths, and array builtins (`append`, `prepend`, `range`, `slice`).
 
-#### B. Copy-on-write for arrays (closes value semantics overhead)
+#### B. Copy-on-write for arrays ✅ SHIPPED (binary_trees ~63× → ~32× C)
 
-**Current state:** `let b = a` deep-copies every element. A 10,000-element array costs 160 KB of memcpy. This is spec-correct but wasteful when the copy is never mutated.
+**Previous state:** `let b = a` deep-copied every element. A 10,000-element array cost 160 KB of memcpy. This was spec-correct but wasteful when the copy was never mutated.
 
-**The fix:** Reference-count the backing `data` pointer. On assign, increment refcount — no copy yet. On first mutation (write to element, append, pop), check refcount > 1; if so, copy-then-write. If refcount == 1, write in place.
+**The fix:** Reference-count the backing `data` pointer. On assign, increment refcount — no copy yet. On first mutation, check refcount > 1; if so, copy-then-write. If refcount == 1, write in place.
 
-**What changes:**
-- `MonkArray` grows a `refcount` field: `struct { MonkValue* data; int64_t length; int64_t capacity; int32_t refcount; }`
-- `monk_deep_copy` becomes `monk_array_share` (increment refcount, O(1))
+**What changed:**
+- `MonkArray`, `MonkIntArray`, `MonkFloatArray`, and `MonkBoolArray` grew a `refcount` field.
+- `monk_deep_copy` shares array backing stores (increment refcount, O(1)).
 - `monk_free` decrements refcount; frees only when refcount hits 0
-- Mutation paths (`monk_array_set`, `append`) check-and-copy before writing
-- Generated C assignment uses `monk_array_share` instead of `monk_deep_copy`
+- `monk_array_set` and typed-array direct writes detach before mutation when needed.
+- Codegen tracks typed arrays that are provably fresh (`range`, `fill`, literals) and skips the COW barrier in hot loops.
 
 **Spec impact:** None. Value semantics are preserved — mutations don't bleed across copies. The spec says "assignment copies"; COW is an invisible optimization.
-
-**Effort:** Medium. Contained to `runtime.c` + `monk_deep_copy`/`monk_free`. Codegen changes minimal.
 
 #### C. Bounds-check elision for typed arrays ✅ SHIPPED (matmul ~2× → ~1.6× C)
 
@@ -282,6 +279,7 @@ The three remaining gaps between Monk and C performance — in order of impact:
 ### 5. Unicode strings
 **Problem:** C's `char*` is bytes, not Unicode.
 **Our approach:** Store strings as UTF-8 byte arrays internally. `length()` iterates UTF-8 sequences to count Unicode scalar values. String indexing is O(n) — acceptable for a first implementation, optimize with cached offsets later if needed.
+**Shipped optimization:** Codegen lowers `s = s + rhs` and `s += rhs` to `monk_string_append_in_place(&s, rhs)`, which reallocates the target buffer directly. This is invisible at the language level: `+` still produces a new string, and only assignment back into the same variable takes the fast path. Full string views/builders remain future work for `substring`, `to_upper_case`, and `to_lower_case`-heavy workloads.
 
 ### 6. Two-phase compile time
 **Problem:** Monk→C is fast, but C→binary adds 500ms-1s.

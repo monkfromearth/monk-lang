@@ -153,12 +153,15 @@ Static analysis pass over the AST, before code generation.
 **Deferred (follow-up work, not a separate phase):**
 - [x] Typed array inline access — `int[]`/`float[]`/`bool[]` element reads/writes emit direct `.int_val` struct-field access instead of `monk_array_get`/`monk_array_set`. Matmul: 11× C → 3× C. `storeIntArray` etc. in `unbox.go`.
 - [x] Typed array backing store — back `int[]` with `int64_t*` instead of `MonkValue*`. New `MONK_INT_ARRAY` kind + `MonkIntArray { int64_t* data; int64_t length }` struct in runtime. `monk_int_array_from()` converts/copies. Matmul: 3× C → ~2× C. See `spec/ARCHITECTURE_DECISIONS.md §4A`.
-- [ ] Copy-on-write for arrays — share backing storage on assign, copy only on mutation. Makes `let b = a` O(1) instead of O(n). No spec change needed. See `spec/ARCHITECTURE_DECISIONS.md §4B`.
+- [x] Copy-on-write for arrays — share backing storage on assign, copy only on mutation. Makes `let b = a` O(1) instead of O(n). `refcount` on generic + typed arrays; typed-array direct writes use COW barriers only when codegen cannot prove uniqueness. See `spec/ARCHITECTURE_DECISIONS.md §4B`.
 - [x] Bounds-check elision for typed arrays in provably-safe loops (`while i < N` where arr has length N). Compile-time constants + array lengths + loop variable bounds → `isBoundedSafe()` skips the runtime check. Matmul: ~2× C → ~1× C. See `spec/ARCHITECTURE_DECISIONS.md §4C`.
 - [x] Unboxed for-loop variables over typed iterables — raw `int64_t`/`double`/`bool` loop variable, no boxing per element.
 - [x] Typed array index returns T not T? — strict OOB semantics, removes `+ 0` workaround.
 - [x] Record field unboxing — `rec.field` reads/writes emit `obj.record_val->fields[N].value` (index-based, no strcmp). Scalar fields extract `.int_val`/`.float_val`/`.bool_val` directly. record_access: 25× C → ~1× C.
-- [ ] Runtime typeof/is_* inlined for known-type values
+- [x] String concat assignment fast path — `s = s + rhs` / `s += rhs` emits `monk_string_append_in_place(&s, rhs)` instead of allocating a whole replacement string. string_concat: ~43.6 ms → ~6.5 ms in targeted run.
+- [x] Runtime `typeof`/`is_*` inlined for pure known-type values — identifiers/literals with non-optional static types emit constants; calls/indexes keep runtime evaluation.
+- [x] Non-escaping closure stack frames — direct-call-only function variables skip `monk_make_function`/`monk_call`; escaped function values still use heap closures. closure_invoke: ~22.9 ms → ~1.4 ms in targeted run.
+- [x] Fresh-result copy elision — boxed `let` bindings move newly-owned literals/builtin results directly instead of `monk_deep_copy`ing them again. Identifier copies still deep-copy/share for value semantics. string_ops: ~100.2 ms → ~80.8 ms in targeted run.
 - [x] Default parameter values — arity-range check in type checker; `padDefaults()` fills defaults at call site in codegen.
 - [x] First-class function values in codegen — closures, trampolines, `monk_make_function`, capture-by-copy with save-back.
 - [x] Higher-order builtins wired into type checker — `map`, `filter`, `reduce` recognized as builtins; `funcExactMatch` accepts `Any` wildcard for callbacks.

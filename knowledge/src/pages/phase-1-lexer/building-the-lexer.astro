@@ -81,6 +81,34 @@ import { Code } from 'astro:components';
     }
 }`} lang="go" />
 
+        <p class="text-monk-muted leading-relaxed mt-4 mb-3">
+            Calling <code class="bg-stone-100 px-1 rounded text-xs">NextToken()</code> repeatedly on this Monk source:
+        </p>
+
+        <Code code={`let x = 42 + 1`} lang="javascript" />
+
+        <p class="text-monk-muted text-sm mt-3 mb-3">Produces this token stream:</p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6 text-sm">
+            <div class="divide-y divide-monk-border font-mono text-xs">
+                {[
+                    ['LET',    'let',  'keyword — isLetter() → readIdentifier() → lookupKeyword()'],
+                    ['IDENT',  'x',    'identifier — isLetter() → readIdentifier(), "x" not in keyword table'],
+                    ['ASSIGN', '=',    'ch == \'=\', next char is not \'=\' → ASSIGN (not EQUAL_EQUAL)'],
+                    ['NUMBER', '42',   'isDigit() → readNumber()'],
+                    ['PLUS',   '+',    'ch == \'+\''],
+                    ['NUMBER', '1',    'isDigit() → readNumber()'],
+                    ['EOF',    '',     'ch == 0'],
+                ].map(([kind, lit, note]) => (
+                    <div class="flex items-center px-5 py-2.5 gap-4">
+                        <code class="text-monk-accent font-semibold w-24 flex-shrink-0">{kind}</code>
+                        <code class="text-monk-blue w-12 flex-shrink-0">{lit}</code>
+                        <span class="text-monk-muted font-sans">{note}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+
         <InsightBox>
             <p class="text-sm"><strong>Test-first.</strong> Before writing any of this, write a test: feed in <code class="bg-stone-100 px-1 rounded text-xs">"("</code>, expect one LPAREN token followed by EOF. Make it pass. Then add <code class="bg-stone-100 px-1 rounded text-xs">")"</code>. Then <code class="bg-stone-100 px-1 rounded text-xs">"()"</code>. Build up one test at a time.</p>
         </InsightBox>
@@ -160,7 +188,29 @@ import { Code } from 'astro:components';
     return token(kind, word)
 }`} lang="go" />
 
-        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
+        <p class="text-monk-muted leading-relaxed mt-4 mb-3">
+            The same <code class="bg-stone-100 px-1 rounded text-xs">readIdentifier()</code> call handles all three cases — it reads the characters, then the keyword table decides the kind:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-4 text-sm">
+            <div class="divide-y divide-monk-border font-mono text-xs">
+                {[
+                    ['let',         'LET',   'In keyword table → keyword token'],
+                    ['x',           'IDENT', 'Not in table → identifier'],
+                    ['fibonacci42',  'IDENT', 'Letters + digits, not in table → identifier'],
+                    ['return',      'RETURN','In keyword table → keyword token'],
+                    ['returnValue', 'IDENT', 'Starts with "return" but not equal to it → identifier'],
+                ].map(([source, kind, note]) => (
+                    <div class="flex items-center px-5 py-2.5 gap-4">
+                        <code class="text-monk-blue w-28 flex-shrink-0">{source}</code>
+                        <code class="text-monk-accent font-semibold w-20 flex-shrink-0">{kind}</code>
+                        <span class="text-monk-muted font-sans">{note}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
             The keyword lookup is a map from string to token type. 27 entries. No special logic — just a table lookup.
         </p>
 

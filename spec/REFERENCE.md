@@ -1093,13 +1093,15 @@ typeof(some_function)   // "function"
 
 ## Memory Management
 
-Monk uses **value semantics everywhere**. No garbage collection. No reference counting. No shared state.
+Monk uses **value semantics everywhere**. No garbage collection. No user-visible references. No shared mutable state.
 
-- Assignment copies values (eager deep copy).
+- Assignment semantically copies values.
 - Function arguments are copies.
 - Closures capture by copy.
 - `const` is deeply frozen.
 - `let` values are freed when they go out of scope.
+
+The implementation may use copy-on-write internally to avoid unnecessary eager copies. That optimization is invisible: `let b = a; b[0] = 99` must still leave `a[0]` unchanged.
 
 There is no `ref` keyword in the current spec. The `ref` keyword is reserved for a future revision that may add pass-by-reference parameters. See `spec/MEMORY_MODEL_DISCUSSION.md` for design history.
 

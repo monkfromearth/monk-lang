@@ -8,10 +8,13 @@
 //   - gen_stmt.go    — statement emission (var decls, assignments, control flow)
 //   - gen_expr.go    — expression emission (boxed MonkValue path)
 //   - gen_func.go    — function hoisting + call lowering
-//   - gen_helpers.go — small utilities (mangleName, cString, compoundToArith, builtinMap)
-//   - unbox.go       — scalar-unboxing path (raw int64_t/double/bool codegen)
-//   - gen_bounds.go  — static bounds analysis for bounds-check elision on typed arrays
-//   - capture.go     — free-variable analysis for closure capture
+//   - gen_helpers.go  — small utilities (mangleName, cString, compoundToArith, builtinMap)
+//   - unbox.go        — scalar-unboxing path (raw int64_t/double/bool codegen)
+//   - gen_access.go   — typed-array and record-field access fast paths
+//   - gen_optimize.go — small typed optimization detectors (COW, string append, known-type builtins)
+//   - gen_escape.go   — conservative escape analysis for stack-allocated closures
+//   - gen_bounds.go   — static bounds analysis for bounds-check elision on typed arrays
+//   - capture.go      — free-variable analysis for closure capture
 package codegen
 
 import (
@@ -39,19 +42,22 @@ func Generate(prog *syntax.Program, filename string) string {
 // through so scalar variables can be emitted unboxed.
 func GenerateWithTypes(prog *syntax.Program, filename string, info *types.Info) string {
 	g := &generator{
-		filename:       filename,
-		funcCount:      0,
-		tmpCount:       0,
-		funcNames:      make(map[string]string),
-		funcDefaults:   make(map[string][]syntax.Expr),
-		funcHasCapture: make(map[string]bool),
-		info:           info,
-		storage:        make(map[string]storageKind),
-		fnStorage:      make(map[string]funcStorage),
+		filename:        filename,
+		funcCount:       0,
+		tmpCount:        0,
+		funcNames:       make(map[string]string),
+		funcDefaults:    make(map[string][]syntax.Expr),
+		funcHasCapture:  make(map[string]bool),
+		info:            info,
+		storage:         make(map[string]storageKind),
+		arrayUnique:     make(map[string]bool),
+		fnStorage:       make(map[string]funcStorage),
+		stackFuncValues: make(map[*syntax.VarDeclStmt]stackFuncInfo),
 	}
 	if info != nil {
 		g.initBounds()
 	}
+	g.stackFuncDecls, g.stackFuncCalls = analyzeStackFuncDecls(prog)
 	return g.generate(prog)
 }
 
@@ -67,9 +73,13 @@ type generator struct {
 	// Unboxing support — nil when Generate was called without type info.
 	info            *types.Info            // per-expression types from the checker
 	storage         map[string]storageKind // per-variable storage decision (Monk name → kind)
+	arrayUnique     map[string]bool        // typed-array vars proven unshared; false/absent means emit COW barrier
 	fnStorage       map[string]funcStorage // per-Monk-function storage decision (Monk name → params/ret)
 	retStorage      storageKind            // expected return storage of the current function body
 	currentCaptures []string               // capture variable names for the function being emitted (empty = no closure)
+	stackFuncDecls  map[*syntax.VarDeclStmt]bool
+	stackFuncCalls  map[*syntax.CallExpr]*syntax.VarDeclStmt
+	stackFuncValues map[*syntax.VarDeclStmt]stackFuncInfo
 	// Bounds-check elision — populated only when info != nil.
 	constVals map[string]int64    // compile-time constant variable values (e.g. let N = 400)
 	arrayLens map[string]int64    // statically known lengths of typed array variables
@@ -77,10 +87,19 @@ type generator struct {
 	// Module system — populated only when GenerateModules is used.
 	modulePrefix string            // "" for entry module, "m0_"/"m1_" for imports
 	importMap    map[string]string // Monk name -> foreign C variable name (for imported non-function values)
+	// Stack closure capture cleanup — heap values inside stack MonkValue[] arrays
+	// must be freed when the enclosing scope exits, otherwise loops leak per iteration.
+	// Each entry is a (capArrayName, capCount) pair pushed by emitStackFuncValueNamed.
+	pendingCapCleanups []capCleanup
 	// moduleInit is true for non-entry modules: variable declarations are split
 	// into static globals (in g.globals) and assignments (in g.body/init function).
 	moduleInit bool
 	globals    strings.Builder // static global variable declarations (module mode only)
+}
+
+type capCleanup struct {
+	arrayName string
+	count     int
 }
 
 // funcStorage captures the unboxed C signature of a Monk function, so call
@@ -102,22 +121,57 @@ func (g *generator) varStorage(monkName string) storageKind {
 	return storeBoxed
 }
 
-// saveStorage takes a snapshot of g.storage that can be restored later.
+type generatorSnapshot struct {
+	storage        map[string]storageKind
+	arrayUnique    map[string]bool
+	capCleanupMark int // len(pendingCapCleanups) at snapshot time
+}
+
+// saveStorage takes a snapshot of g.storage and flow-sensitive optimization
+// facts that can be restored later.
 // Used around scope boundaries (function bodies, loop bodies, if/else
 // branches) so a `let x = ...` inside a nested scope that shadows an outer
 // `x` doesn't leak its storage decision to the outer scope on exit.
 //
 // The returned value is an opaque snapshot; pass it to restoreStorage.
-func (g *generator) saveStorage() map[string]storageKind {
-	snap := make(map[string]storageKind, len(g.storage))
-	maps.Copy(snap, g.storage)
+func (g *generator) saveStorage() generatorSnapshot {
+	snap := generatorSnapshot{
+		storage:        make(map[string]storageKind, len(g.storage)),
+		arrayUnique:    make(map[string]bool, len(g.arrayUnique)),
+		capCleanupMark: len(g.pendingCapCleanups),
+	}
+	maps.Copy(snap.storage, g.storage)
+	maps.Copy(snap.arrayUnique, g.arrayUnique)
 	return snap
 }
 
 // restoreStorage replaces g.storage with a previously saved snapshot,
 // discarding any storage decisions made since the snapshot was taken.
-func (g *generator) restoreStorage(snap map[string]storageKind) {
-	g.storage = snap
+func (g *generator) restoreStorage(snap generatorSnapshot) {
+	// Emit cleanup for stack closure captures allocated since the snapshot.
+	// Without this, heap values (strings, arrays) inside stack MonkValue[]
+	// capture arrays leak every time the scope re-enters (e.g. loop iterations).
+	// Pass: `while ... { let f=(x){x+name}; f(1) }` frees deep-copied name each iter.
+	// Fail: omitting cleanup leaks one deep-copy per captured heap value per iteration.
+	for i := snap.capCleanupMark; i < len(g.pendingCapCleanups); i++ {
+		c := g.pendingCapCleanups[i]
+		g.emitLine("    for (int _ci = 0; _ci < %d; _ci++) monk_free(%s[_ci]);\n", c.count, c.arrayName)
+	}
+	g.pendingCapCleanups = g.pendingCapCleanups[:snap.capCleanupMark]
+
+	restoredUnique := make(map[string]bool, len(snap.arrayUnique))
+	maps.Copy(restoredUnique, snap.arrayUnique)
+	for name, nowUnique := range g.arrayUnique {
+		thenUnique, existed := snap.arrayUnique[name]
+		if existed && nowUnique != thenUnique {
+			// Restore conservatively for flow-sensitive COW facts.
+			// Pass: shadowed inner `arr` cannot leave stale true on outer `arr`.
+			// Fail: branch assignment from shared array restores old true and skips detach.
+			restoredUnique[name] = false
+		}
+	}
+	g.storage = snap.storage
+	g.arrayUnique = restoredUnique
 }
 
 // newTemp returns a unique C temp variable name.

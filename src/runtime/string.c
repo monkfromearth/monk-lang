@@ -22,6 +22,28 @@ MonkValue monk_string_concat(MonkValue a, MonkValue b) {
     return (MonkValue){.kind = MONK_STRING, .str_val = result};
 }
 
+void monk_string_append_in_place(MonkValue *target, MonkValue suffix) {
+    if (target->kind != MONK_STRING || suffix.kind != MONK_STRING)
+        monk_panic("string append requires two strings (use to_string())");
+    size_t old_len = strlen(target->str_val);
+    size_t suffix_len = strlen(suffix.str_val);
+    /* ORDER DEPENDENCY: self_append MUST be captured before realloc. realloc may
+     * move the buffer, making suffix.str_val a dangling pointer in the self-append
+     * case. After realloc we only read from `result` (the new pointer), never from
+     * suffix.str_val. Swapping these two lines would introduce a use-after-free. */
+    bool self_append = target->str_val == suffix.str_val;
+    char *result = monk_realloc_internal(target->str_val, old_len + suffix_len + 1);
+    /* In-place concat assignment for `s = s + rhs` / `s += rhs`.
+     * Pass: `s += s` appends from the reallocated buffer itself.
+     * Fail: reading suffix.str_val after realloc would use a freed pointer. */
+    if (self_append) {
+        memmove(result + old_len, result, suffix_len + 1);
+    } else {
+        memcpy(result + old_len, suffix.str_val, suffix_len + 1);
+    }
+    target->str_val = result;
+}
+
 MonkValue monk_length(MonkValue v) {
     switch (v.kind) {
     case MONK_STRING:      return monk_int(monk_utf8_strlen(v.str_val));

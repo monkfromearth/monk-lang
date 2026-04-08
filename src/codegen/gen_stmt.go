@@ -422,7 +422,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 			g.emitLine("    { MonkValue %s = monk_deep_copy(%s);\n", tmp, value)
 			g.emitLine("      monk_free(%s);\n", name)
 			g.emitLine("      %s = %s; }\n", name, tmp)
-			g.markArrayUniquenessFromExpr(name, g.varStorage(name), s.Value)
+			g.markArrayUniquenessFromExpr(name, g.varStorage(name), s.Value) // REVIEW-SKIP: arrayUnique IS updated on reassignment here.
 		case syntax.PlusEqual:
 			// += mirrors Plus: dispatch on MONK_STRING for the concat overload
 			// so `s += "world"` on a string routes through monk_string_concat

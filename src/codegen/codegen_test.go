@@ -463,6 +463,35 @@ show(b)`)
 	}
 }
 
+// Shadowing a builtin name with a user-defined function must call the user
+// function, not the inlined/fused builtin. Regression for: emitCallTyped and
+// emitCall were checking builtin shortcuts before consulting g.funcNames.
+func TestCodegenUserFunctionShadowsBuiltinTypeof(t *testing.T) {
+	out, src := runMonkTyped(t, `let typeof = (n int) string { return "custom" }
+show(typeof(42))`)
+	if out != "custom" {
+		t.Fatalf("output = %q, want user-defined typeof to win over builtin", out)
+	}
+	// Must NOT inline to a string literal.
+	if strings.Contains(src, `monk_string("int")`) {
+		t.Fatalf("user-defined typeof should not be inlined as builtin, got:\n%s", src)
+	}
+}
+
+func TestCodegenUserFunctionShadowsBuiltinLength(t *testing.T) {
+	out, src := runMonkTyped(t, `let base = "hello"
+let length = (s string) int { return 0 }
+let total = length(to_upper_case(base)) + length(to_lower_case(base))
+show(to_string(total))`)
+	if out != "0" {
+		t.Fatalf("output = %q, want user-defined length to win over length-case fusion", out)
+	}
+	// Must NOT fuse length(to_upper_case(s)) to monk_length(s).
+	if strings.Contains(src, "monk_length") {
+		t.Fatalf("user-defined length should not be fused, got:\n%s", src)
+	}
+}
+
 func TestGenerateModulesTypedArrayInitializesUniquenessTracking(t *testing.T) {
 	dir := t.TempDir()
 	files := map[string]string{

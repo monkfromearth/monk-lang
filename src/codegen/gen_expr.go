@@ -221,13 +221,12 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 			}
 			return code
 		}
-		if code, store, ok := g.emitLengthCaseFusion(e); ok {
-			if store != storeBoxed {
-				return boxExpr(code, store)
-			}
-			return code
-		}
-		// User-defined function — pad defaults, then decide call form.
+		// User-defined function — check BEFORE builtin optimizations so that
+		// a user who shadows a builtin name gets their function, not the
+		// inlined/fused variant. emitLengthCaseFusion and emitKnownTypeBuiltin
+		// appear after this block for the same reason.
+		// Pass: `let length = (s) int { 0 }; length("x")` → user call.
+		// Fail (before fix): length(to_upper_case(s)) fused even with user override.
 		if cName, ok := g.funcNames[ident.Name]; ok {
 			fullArgs := g.padDefaults(cName, e.Args)
 			// Unboxed-all path: call with raw scalars and box the return.
@@ -247,6 +246,13 @@ func (g *generator) emitCall(e *syntax.CallExpr) string {
 					mn, monkValArray(args, len(args)))
 			}
 			return fmt.Sprintf("%s(%s)", cName, strings.Join(args, ", "))
+		}
+		// Builtin-only optimizations — only reached when ident is NOT in funcNames.
+		if code, store, ok := g.emitLengthCaseFusion(e); ok {
+			if store != storeBoxed {
+				return boxExpr(code, store)
+			}
+			return code
 		}
 		if code, store, ok := g.emitKnownTypeBuiltin(e); ok {
 			if store != storeBoxed {

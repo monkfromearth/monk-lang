@@ -77,12 +77,15 @@ Both paths produce one C source string. The rest of `generateC` pipes it through
 
 | File | What it does |
 |------|-------------|
-| `gen.go` | `generator` struct, `Generate`/`GenerateWithTypes` entry points, `generate` driver loop, `varStorage`/`saveStorage`/`restoreStorage` |
+| `gen.go` | `generator` struct, `Generate`/`GenerateWithTypes` entry points, `generate` driver loop, `varStorage`, typed-array uniqueness map, `saveStorage`/`restoreStorage` |
 | `gen_stmt.go` | Statement emitters: `emitVarDecl` (3 paths: typed array, scalar probe, boxed), `emitAssign` (fast paths for unboxed scalars, typed array elements, record fields), `emitIf`, `emitWhile`, `emitFor` (typed-array fast path), `emitReturn`, `emitGuard` |
 | `gen_expr.go` | **Boxed** expression emission: `emitExpr` returns a C expression of type `MonkValue`. Every arithmetic op goes through `monk_add`/`monk_sub`/etc. |
 | `gen_func.go` | Function hoisting, `deriveFuncStorage`, `emitTrampoline`, `emitFuncValueNamed`, `hoistFunctionWithCaptures`. Closure capture save-back on return. |
 | `gen_helpers.go` | `mangleName` (prefixes `mk_`), `cString` (escapes for C), `compoundToArith`, `builtinMap` (Monk name → C name) |
-| `unbox.go` | **Unboxed** expression emission: `emitExprTyped` returns `(string, storageKind)`. When both sides of `+` are `storeInt`, emits raw `a + b` instead of `monk_add(a, b)`. Also handles typed-array element reads/writes. |
+| `unbox.go` | **Unboxed** expression emission core: `emitExprTyped` returns `(string, storageKind)`. When both sides of `+` are `storeInt`, emits raw `a + b` instead of `monk_add(a, b)`. |
+| `gen_access.go` | Typed-array element access and typed-record field access fast paths. |
+| `gen_optimize.go` | Small optimization detectors: COW uniqueness helpers, string append assignment, pure known-type `typeof`/`is_*` inlining, string length fusion, and fresh-result copy elision. |
+| `gen_escape.go` | Conservative escape analysis for function literals; direct-call-only closures can use stack frames instead of heap `MonkFunction` allocation. |
 | `capture.go` | `freeVars` — free-variable analysis for closure captures. Walks AST, tracks locals, reports references to outer-scope variables. |
 | `gen_bounds.go` | Bounds-check elision: `constVals`, `arrayLens`, `varBounds` tracking. `isBoundedSafe` proves array accesses are in-bounds at compile time so the runtime check can be skipped. |
 
@@ -122,10 +125,10 @@ Not Go. A small C library (~1,200 lines across 8 files) linked into every Monk b
 |------|-------------|
 | `runtime.h` | `MonkValue` tagged union, `MonkFunction` struct, all `monk_*` function signatures |
 | `internal.h` | Shared helpers not used by generated code |
-| `value.c` | Constructors, `monk_deep_copy`/`monk_free`, `monk_show`, typed-array converters |
+| `value.c` | Constructors, `monk_deep_copy`/`monk_free`, array COW share/free, `monk_show`, typed-array converters |
 | `arith.c` | Arithmetic: `monk_add`/`sub`/`mul`/`div`/`mod`, comparison operators |
-| `string.c` | String ops: `concat`, `length`, `substring`, `split`, `trim`, `to_upper_case` |
-| `container.c` | Array/record ops: `get`/`set`, `append`/`pop`/`slice`, `fill`, `range`, record `get`/`set` |
+| `string.c` | String ops: `concat`, in-place append for concat assignment, `length`, `substring`, `split`, `trim`, `to_upper_case` |
+| `container.c` | Array/record ops: `get`/`set`, COW detach helpers, `append`/`pop`/`slice`, `fill`, `range`, record `get`/`set` |
 | `math.c` | `abs`, `floor`/`ceil`/`round`, `sqrt`/`pow`/`log`, trig |
 | `builtins.c` | `typeof`, `is_*` type checks, file I/O, `env_get`, `exit`, `args` |
 | `error.c` | `guard`/`against`/`throw` via `setjmp`/`longjmp` |
@@ -197,6 +200,7 @@ type generator struct {
     constVals map[string]int64       // compile-time constants (bounds elision)
     arrayLens map[string]int64       // known array lengths (bounds elision)
     varBounds map[string][2]int64    // loop-counter ranges (bounds elision)
+    arrayUnique map[string]bool      // typed arrays proven unshared (skip COW barrier)
 
     // Module system fields (zero-valued in single-file path — safe to ignore)
     modulePrefix string            // "" for entry, "m0_", "m1_" for imports
@@ -233,7 +237,7 @@ storeBoolArray  → MONK_BOOL_ARRAY (bool* backing store)
 ```
 
 `emitVarDecl` in `gen_stmt.go` shows all three paths in one function:
-1. **Typed array** → `monk_int_array_from()` conversion, records array length for bounds elision.
+1. **Typed array** → `monk_int_array_from()` conversion, records array length for bounds elision, records whether the backing store is provably unique.
 2. **Scalar probe** → tries `emitExprTyped`. If the RHS produces a raw scalar, promotes the variable to unboxed.
 3. **Boxed fallback** → `MonkValue` with `monk_deep_copy`.
 

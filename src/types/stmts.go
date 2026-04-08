@@ -202,6 +202,10 @@ func (c *checker) checkAssign(s *syntax.AssignStmt) error {
 		if b.IsConst {
 			return newTypeError(s.Pos, "cannot assign to const '%s'", target.Name)
 		}
+		// Record lvalue type info for codegen optimizations that need the
+		// target's static type. Pass: `s += "x"` can use string append.
+		// Fail: leaving this unset makes compound assignment fall back boxed.
+		c.info.Types[target] = b.Type
 		rhsType, err := c.inferExpr(s.Value)
 		if err != nil {
 			return err

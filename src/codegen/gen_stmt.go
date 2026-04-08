@@ -82,6 +82,19 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 		g.funcCount++
 		cFuncName := fmt.Sprintf("_monk_%sfunc_%d", g.modulePrefix, g.funcCount)
 		g.funcNames[s.Name] = cFuncName
+		if !forModule && g.stackFuncDecls[s] {
+			info := g.emitStackFuncValueNamed(cFuncName, fnExpr)
+			g.stackFuncValues[s] = info
+			// Register capture cleanup so restoreStorage frees deep-copied heap
+			// values when the enclosing scope exits (prevents leak in loops).
+			if info.capCount > 0 {
+				g.pendingCapCleanups = append(g.pendingCapCleanups, capCleanup{
+					arrayName: info.capArrayName,
+					count:     info.capCount,
+				})
+			}
+			return
+		}
 		// emitFuncValueNamed uses the pre-allocated cName (doesn't increment funcCount again).
 		funcVal := g.emitFuncValueNamed(cFuncName, fnExpr)
 		name := g.mangledName(s.Name)
@@ -127,6 +140,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 					} else {
 						g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_range_int((%s).int_val)", g.emitExpr(call.Args[0])), forModule)
 					}
+					g.markArrayUniquenessFromExpr(name, store, s.Value)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				}
@@ -151,14 +165,17 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 				switch {
 				case store == storeBoolArray && valStore == storeBool:
 					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_bool(%s, %s)", nCode, valCode), forModule)
+					g.markArrayUniquenessFromExpr(name, store, s.Value)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				case store == storeIntArray && valStore == storeInt:
 					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_int(%s, %s)", nCode, valCode), forModule)
+					g.markArrayUniquenessFromExpr(name, store, s.Value)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				case store == storeFloatArray && valStore == storeFloat:
 					g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("monk_fill_float(%s, %s)", nCode, valCode), forModule)
+					g.markArrayUniquenessFromExpr(name, store, s.Value)
 					g.recordArrayLen(s.Name, s.Value)
 					return
 				}
@@ -167,6 +184,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 		value := g.emitExpr(s.Value)
 		convFn := arrayConvFunc(store)
 		g.emitVarDeclLine(name, "MonkValue", fmt.Sprintf("%s(%s)", convFn, value), forModule)
+		g.markArrayUniquenessFromExpr(name, store, s.Value)
 		g.recordArrayLen(s.Name, s.Value) // bounds-check elision
 		return
 	}
@@ -204,7 +222,14 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 			rhsCode = g.emitExpr(s.Value)
 		}
 		g.storage[name] = storeBoxed
-		g.emitVarDeclLine(name, "MonkValue", "monk_deep_copy("+rhsCode+")", forModule)
+		init := "monk_deep_copy(" + rhsCode + ")"
+		if g.isFreshValueExpr(s.Value) {
+			// Move fresh temporaries into the binding instead of copying them.
+			// Pass: `let s = to_upper_case(base)` avoids a duplicate string.
+			// Fail: `let b = a` still uses deep_copy for value semantics.
+			init = rhsCode
+		}
+		g.emitVarDeclLine(name, "MonkValue", init, forModule)
 		return
 	}
 
@@ -279,6 +304,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 				elemSt := elemStorageFor(objSt)
 				if elemSt != storeBoxed {
 					ptrField := arrayPtrField(objSt)
+					ensureFn := arrayEnsureFunc(objSt)
 					idxCode, idxKind := g.emitExprTyped(indexTarget.Index)
 					idxC := coerce(idxCode, idxKind, storeInt)
 					rhsCode, rhsSt := g.emitExprTyped(s.Value)
@@ -287,11 +313,23 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 					// idxC is a pure arithmetic expression (range analysis proved it),
 					// so inlining it directly lets the compiler hoist and vectorize.
 					if g.constVals != nil && g.isBoundedSafe(identObj, indexTarget.Index) {
-						g.emitLine("    %s.%s->data[%s] = %s;\n", objName, ptrField, idxC, elemCode)
+						// Copy-on-write barrier for typed-array direct writes.
+						// Pass: `let b = a; b[0]=99` detaches b before writing.
+						// Fail: writing b mutates shared a backing storage.
+						if g.arrayUnique[objName] {
+							g.emitLine("    %s.%s->data[%s] = %s;\n", objName, ptrField, idxC, elemCode)
+						} else {
+							g.emitLine("    %s(&%s); %s.%s->data[%s] = %s;\n", ensureFn, objName, objName, ptrField, idxC, elemCode)
+						}
 					} else {
 						tidx := g.newTemp()
-						g.emitLine("    { int64_t %s = %s; if (%s < 0 || %s >= %s.%s->length) monk_panic(\"index out of bounds\"); %s.%s->data[%s] = %s; }\n",
-							tidx, idxC, tidx, tidx, objName, ptrField, objName, ptrField, tidx, elemCode)
+						if g.arrayUnique[objName] {
+							g.emitLine("    { int64_t %s = %s; if (%s < 0 || %s >= %s.%s->length) monk_panic(\"index out of bounds\"); %s.%s->data[%s] = %s; }\n",
+								tidx, idxC, tidx, tidx, objName, ptrField, objName, ptrField, tidx, elemCode)
+						} else {
+							g.emitLine("    { int64_t %s = %s; if (%s < 0 || %s >= %s.%s->length) monk_panic(\"index out of bounds\"); %s(&%s); %s.%s->data[%s] = %s; }\n",
+								tidx, idxC, tidx, tidx, objName, ptrField, ensureFn, objName, objName, ptrField, tidx, elemCode)
+						}
 					}
 					return
 				}
@@ -339,6 +377,30 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 			}
 		}
 	}
+
+	if rhsExpr := g.stringAppendRHS(s); rhsExpr != nil {
+		target := s.Target.(*syntax.IdentExpr)
+		name := g.mangledName(target.Name)
+		rhs := g.emitExpr(rhsExpr)
+		// In-place string concat assignment.
+		// Pass: `s = s + "x"` / `s += "x"` grows s directly.
+		// Fail: numeric `x += 1` must still use arithmetic assignment.
+		if _, isIdent := rhsExpr.(*syntax.IdentExpr); isIdent {
+			// RHS is a variable — not a temporary, don't free it.
+			g.emitLine("    monk_string_append_in_place(&%s, %s);\n", name, rhs)
+		} else {
+			// RHS is a temporary expression (e.g. to_string(n), string literal).
+			// The suffix MonkValue's str_val is heap-allocated and must be freed
+			// after the append copies its bytes into the target's buffer.
+			// Pass: `s += to_string(7)` frees the to_string result.
+			// Fail: without this, the suffix str_val leaks every call.
+			tmp := g.newTemp()
+			g.emitLine("    { MonkValue %s = %s; monk_string_append_in_place(&%s, %s); monk_free(%s); }\n",
+				tmp, rhs, name, tmp, tmp)
+		}
+		return
+	}
+
 	value := g.emitExpr(s.Value)
 
 	switch target := s.Target.(type) {
@@ -360,6 +422,7 @@ func (g *generator) emitAssign(s *syntax.AssignStmt) {
 			g.emitLine("    { MonkValue %s = monk_deep_copy(%s);\n", tmp, value)
 			g.emitLine("      monk_free(%s);\n", name)
 			g.emitLine("      %s = %s; }\n", name, tmp)
+			g.markArrayUniquenessFromExpr(name, g.varStorage(name), s.Value)
 		case syntax.PlusEqual:
 			// += mirrors Plus: dispatch on MONK_STRING for the concat overload
 			// so `s += "world"` on a string routes through monk_string_concat

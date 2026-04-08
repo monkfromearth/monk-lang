@@ -17,7 +17,10 @@ as static C functions, everything else goes into the body of `main()`.
 | `gen_func.go`     | function hoisting, trampolines, closures, capture save-back |
 | `gen_module.go`   | `GenerateModules` — multi-module → single `.c`, init functions, module-prefixed names |
 | `gen_helpers.go`  | `mangledName`, `cString`, `compoundToArith`, `builtinMap`  |
-| `unbox.go`        | scalar and typed-array unboxing (`int64_t`/`double`/`bool`, `storeIntArray` etc.) |
+| `unbox.go`        | scalar unboxing core (`storageKind`, boxing/coercion, typed calls, raw scalar binary/unary emission) |
+| `gen_access.go`   | typed-array element access and typed-record field access fast paths |
+| `gen_optimize.go` | typed optimization helpers: COW uniqueness tracking, string-append assignment detection, known-type builtin inlining, string length fusion, fresh-result copy elision |
+| `gen_escape.go`   | conservative escape analysis for stack-allocated direct-call-only closures |
 | `capture.go`      | `freeVars` — free variable analysis for closure captures   |
 | `gen_bounds.go`   | static bounds analysis for bounds-check elision (`constVals`, `arrayLens`, `varBounds`, `isBoundedSafe`) |
 
@@ -29,10 +32,11 @@ as static C functions, everything else goes into the body of `main()`.
 2. **Unboxed path** (`emitExprTyped` in `unbox.go`) — when the type checker
    proves a variable is a scalar, we emit raw C types and arithmetic. This
    is what delivers C-parity performance on numeric benchmarks.
-3. **Typed-array backing-store path** (`emitIndexTyped` in `unbox.go`) — when
+3. **Typed-array backing-store path** (`emitIndexTyped` in `gen_access.go`) — when
    the array is `int[]`/`float[]`/`bool[]`, the variable holds a `MONK_INT_ARRAY`
    etc. with a raw `int64_t*`/`double*`/`bool*` backing store. Element reads emit
    `arr.int_array_val->data[i]` (no union, no tag, cache-friendly). Writes emit
+   a COW detach barrier only when the array may be shared, then
    `arr.int_array_val->data[i] = rhs`. Declarations call `monk_int_array_from()`
    which converts from generic `MONK_ARRAY` (e.g. `range(N)`) or deep-copies an
    existing typed array. Previous "inline access" path with `.array_val->data[i].int_val`

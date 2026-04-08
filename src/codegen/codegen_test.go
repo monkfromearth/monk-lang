@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/monkfromearth/monk-lang/module"
 	"github.com/monkfromearth/monk-lang/syntax"
 	"github.com/monkfromearth/monk-lang/types"
 )
@@ -137,6 +138,57 @@ func TestCodegenNegation(t *testing.T) {
 
 func TestCodegenStringConcat(t *testing.T) {
 	expectOutput(t, `show("hello" + " " + "world")`, "hello world")
+}
+
+func TestCodegenStringAppendAssignmentUsesInPlaceHelper(t *testing.T) {
+	out, src := runMonkTyped(t, `let s = "ha"
+s = s + "!"
+s += s
+show(s)`)
+	if out != "ha!ha!" {
+		t.Fatalf("output = %q, want ha!ha!", out)
+	}
+	if !strings.Contains(src, "monk_string_append_in_place(&mk_s") {
+		t.Fatalf("expected generated C to append directly, got:\n%s", src)
+	}
+}
+
+func TestCodegenStringAppendAssignmentCoversGeneralForms(t *testing.T) {
+	out, src := runMonkTyped(t, `let suffix = (n int) string { return to_string(n) }
+let sep = ":"
+let s = "id"
+s += sep
+s = s + suffix(7)
+show(s)`)
+	if out != "id:7" {
+		t.Fatalf("output = %q, want id:7", out)
+	}
+	if got := strings.Count(src, "monk_string_append_in_place(&mk_s"); got != 2 {
+		t.Fatalf("expected two direct appends for variable/computed RHS, got %d:\n%s", got, src)
+	}
+}
+
+func TestCodegenStringAppendAssignmentDoesNotOvermatch(t *testing.T) {
+	out, src := runMonkTyped(t, `let a = "x"
+let b = ""
+b = a + "y"
+show(b)`)
+	if out != "xy" {
+		t.Fatalf("output = %q, want xy", out)
+	}
+	if strings.Contains(src, "monk_string_append_in_place") {
+		t.Fatalf("expected non-self concat assignment to keep allocation semantics, got:\n%s", src)
+	}
+
+	out, src = runMonkTyped(t, `let n = 1
+n += 2
+show(to_string(n))`)
+	if out != "3" {
+		t.Fatalf("output = %q, want 3", out)
+	}
+	if strings.Contains(src, "monk_string_append_in_place") {
+		t.Fatalf("expected numeric += to avoid string append helper, got:\n%s", src)
+	}
 }
 
 // === COMPARISON ===
@@ -306,6 +358,166 @@ func TestCodegenLength(t *testing.T) {
 func TestCodegenTypeof(t *testing.T) {
 	expectOutput(t, `show(typeof(42))`, "int")
 	expectOutput(t, `show(typeof("hi"))`, "string")
+}
+
+func TestCodegenKnownTypePredicatesInlinePureKnownTypes(t *testing.T) {
+	out, src := runMonkTyped(t, `let n int = 42
+let s = "hi"
+let arr int[] = [1, 2]
+show(typeof(n))
+show(to_string(is_number(n)))
+show(to_string(is_string(s)))
+show(to_string(is_array(arr)))
+show(to_string(is_none(none)))`)
+	if out != "int\ntrue\ntrue\ntrue\ntrue" {
+		t.Fatalf("output = %q, want known type predicate results", out)
+	}
+	for _, call := range []string{"monk_typeof", "monk_is_number", "monk_is_string", "monk_is_array", "monk_is_none"} {
+		if strings.Contains(src, call) {
+			t.Fatalf("expected %s to be inlined for pure known-type args, got:\n%s", call, src)
+		}
+	}
+	if !strings.Contains(src, "if (true)") && !strings.Contains(src, "monk_bool(true)") {
+		t.Fatalf("expected generated C to contain constant predicate results, got:\n%s", src)
+	}
+}
+
+func TestCodegenKnownTypePredicatesDoNotSkipEffects(t *testing.T) {
+	out, src := runMonkTyped(t, `let touch = () string {
+    show("called")
+    return "x"
+}
+show(typeof(touch()))
+`)
+	if out != "called\nstring" {
+		t.Fatalf("output = %q, want call side effect and string", out)
+	}
+	if !strings.Contains(src, "monk_typeof") {
+		t.Fatalf("expected typeof(call()) to keep runtime evaluation, got:\n%s", src)
+	}
+
+	out, src = runMonkTyped(t, `let arr int[] = [1, 2]
+show(to_string(is_number(arr[10])))`)
+	if out != "false" {
+		t.Fatalf("output = %q, want false from runtime checked indexed read", out)
+	}
+	if !strings.Contains(src, "monk_is_number") {
+		t.Fatalf("expected is_number(arr[i]) to keep runtime evaluation, got:\n%s", src)
+	}
+}
+
+func TestCodegenLengthOfCaseConversionFusesForKnownStrings(t *testing.T) {
+	out, src := runMonkTyped(t, `let base = "the Quick Brown fox"
+let total = length(to_upper_case(base)) + length(to_lower_case(base))
+show(to_string(total))`)
+	if out != "38" {
+		t.Fatalf("output = %q, want fused case-conversion lengths", out)
+	}
+	for _, call := range []string{"monk_to_upper_case", "monk_to_lower_case"} {
+		if strings.Contains(src, call) {
+			t.Fatalf("expected length(case_conversion(string)) to avoid %s allocation, got:\n%s", call, src)
+		}
+	}
+	if got := strings.Count(src, "monk_length"); got != 2 {
+		t.Fatalf("expected two length calls over original string, got %d:\n%s", got, src)
+	}
+}
+
+func TestCodegenLengthCaseFusionPreservesEffects(t *testing.T) {
+	out, src := runMonkTyped(t, `let touch = () string {
+    show("called")
+    return "AbC"
+}
+show(to_string(length(to_upper_case(touch()))))`)
+	if out != "called\n3" {
+		t.Fatalf("output = %q, want call side effect and length", out)
+	}
+	if !strings.Contains(src, "monk_to_upper_case") {
+		t.Fatalf("expected effectful case conversion to stay on runtime path, got:\n%s", src)
+	}
+}
+
+func TestCodegenFreshBuiltinVarDeclAvoidsDeepCopy(t *testing.T) {
+	out, src := runMonkTyped(t, `let base = "AbC"
+let upper = to_upper_case(base)
+show(upper)`)
+	if out != "ABC" {
+		t.Fatalf("output = %q, want upper-case value", out)
+	}
+	if strings.Contains(src, "monk_deep_copy(monk_to_upper_case") {
+		t.Fatalf("expected fresh builtin result to move into let binding without deep copy, got:\n%s", src)
+	}
+}
+
+func TestCodegenIdentifierVarDeclStillCopies(t *testing.T) {
+	out, src := runMonkTyped(t, `let a = "hi"
+let b = a
+b += "!"
+show(a)
+show(b)`)
+	if out != "hi\nhi!" {
+		t.Fatalf("output = %q, want copied string binding", out)
+	}
+	if !strings.Contains(src, "monk_deep_copy(mk_a)") {
+		t.Fatalf("expected identifier binding to keep deep copy for value semantics, got:\n%s", src)
+	}
+}
+
+// Shadowing a builtin name with a user-defined function must call the user
+// function, not the inlined/fused builtin. Regression for: emitCallTyped and
+// emitCall were checking builtin shortcuts before consulting g.funcNames.
+func TestCodegenUserFunctionShadowsBuiltinTypeof(t *testing.T) {
+	out, src := runMonkTyped(t, `let typeof = (n int) string { return "custom" }
+show(typeof(42))`)
+	if out != "custom" {
+		t.Fatalf("output = %q, want user-defined typeof to win over builtin", out)
+	}
+	// Must NOT inline to a string literal.
+	if strings.Contains(src, `monk_string("int")`) {
+		t.Fatalf("user-defined typeof should not be inlined as builtin, got:\n%s", src)
+	}
+}
+
+func TestCodegenUserFunctionShadowsBuiltinLength(t *testing.T) {
+	out, src := runMonkTyped(t, `let base = "hello"
+let length = (s string) int { return 0 }
+let total = length(to_upper_case(base)) + length(to_lower_case(base))
+show(to_string(total))`)
+	if out != "0" {
+		t.Fatalf("output = %q, want user-defined length to win over length-case fusion", out)
+	}
+	// Must NOT fuse length(to_upper_case(s)) to monk_length(s).
+	if strings.Contains(src, "monk_length") {
+		t.Fatalf("user-defined length should not be fused, got:\n%s", src)
+	}
+}
+
+func TestGenerateModulesTypedArrayInitializesUniquenessTracking(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"lib.monk": `let arr int[] = [1, 2, 3]
+export arr`,
+		"main.monk": `use arr from "./lib"
+show(to_string(length(arr)))`,
+	}
+	for name, source := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	graph, err := module.Build(filepath.Join(dir, "main.monk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := types.CheckModules(graph)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := GenerateModules(graph, info)
+	if !strings.Contains(c, "monk_int_array_from") {
+		t.Fatalf("expected module typed-array generation, got:\n%s", c)
+	}
 }
 
 func TestCodegenAppend(t *testing.T) {
@@ -542,12 +754,12 @@ let a = 100
 let b = a / get_divisor(5)
 show(to_string(b))`)
 	// The call must appear exactly once in the generated expression.
-	// Three occurrences expected: definition `static int64_t _monk_func_1(...)`,
-	// the thunk `_monk_func_1(...)`, and the single call `_monk_func_1(5)`.
-	// Four would mean the expression was evaluated twice.
+	// Two occurrences expected after stack-direct function calls: definition
+	// `static int64_t _monk_func_1(...)` and the single call `_monk_func_1(5)`.
+	// Three or more would mean a thunk or duplicated expression came back.
 	callCount := strings.Count(src, "_monk_func_1(")
-	if callCount != 3 {
-		t.Errorf("expected 3 occurrences (1 def + 1 thunk + 1 call), got %d\n%s", callCount, src)
+	if callCount != 2 {
+		t.Errorf("expected 2 occurrences (1 def + 1 call), got %d\n%s", callCount, src)
 	}
 }
 
@@ -870,6 +1082,59 @@ inc()`)
 	}
 }
 
+func TestCodegenNonEscapingClosureUsesStackFrame(t *testing.T) {
+	out, src := runMonkTyped(t, `let total = 0
+let i = 0
+while i < 3 {
+    let adder = (x int) int { return x + i }
+    total += adder(10)
+    i += 1
+}
+show(to_string(total))`)
+	if out != "33" {
+		t.Fatalf("expected '33', got %q", out)
+	}
+	if strings.Contains(src, "mk_adder = monk_make_function") || strings.Contains(src, "MonkValue mk_adder = monk_make_function") {
+		t.Fatalf("expected non-escaping closure to avoid heap function allocation, got:\n%s", src)
+	}
+	if strings.Contains(src, "monk_call(mk_adder") {
+		t.Fatalf("expected direct stack-closure call instead of monk_call, got:\n%s", src)
+	}
+	if !strings.Contains(src, "MonkFunction _closure_self_") {
+		t.Fatalf("expected generated C stack closure frame, got:\n%s", src)
+	}
+}
+
+func TestCodegenEscapingClosureStaysHeapAllocated(t *testing.T) {
+	out, src := runMonkTyped(t, `let callbacks = []
+let i = 7
+let adder = (x int) int { return x + i }
+callbacks = append(callbacks, adder)
+show(to_string(adder(5)))`)
+	if out != "12" {
+		t.Fatalf("expected '12', got %q", out)
+	}
+	if !strings.Contains(src, "monk_make_function") {
+		t.Fatalf("expected escaping closure to stay heap allocated, got:\n%s", src)
+	}
+}
+
+func TestCodegenDirectOnlyBoxedParamFunctionReturnsBoxed(t *testing.T) {
+	out, src := runMonkTyped(t, `let first_or_target = (arr array, target int) int {
+    if length(arr) > 0 { return target }
+    return 0
+}
+let values = [1, 2, 3]
+let idx = first_or_target(values, 9)
+show(to_string(idx))`)
+	if out != "9" {
+		t.Fatalf("expected '9', got %q", out)
+	}
+	if !strings.Contains(src, "int64_t mk_idx = (_monk_func_1(") || !strings.Contains(src, ")).int_val") {
+		t.Fatalf("expected boxed-return function call to be unboxed at the call site, got:\n%s", src)
+	}
+}
+
 func TestCodegenMapBuiltin(t *testing.T) {
 	out := runMonk(t, `let nums = [1, 2, 3]
 let doubled = map(nums, (x int) { return x * 2 })
@@ -1092,6 +1357,53 @@ show(to_string(arr[1]))`)
 	}
 	if strings.Contains(src, "monk_array_set") {
 		t.Errorf("expected no monk_array_set for typed int[], generated:\n%s", src)
+	}
+}
+
+func TestBackingStoreWriteDetachesCopyOnWriteArray(t *testing.T) {
+	out, src := runMonkTyped(t, `let a int[] = [1, 2, 3]
+let b = a
+b[0] = 99
+show(to_string(a[0]) + "," + to_string(b[0]))`)
+	if out != "1,99" {
+		t.Errorf("want '1,99', got %q", out)
+	}
+	// COW write barrier for the typed-array fast path.
+	// Pass: `b[0] = 99` first calls monk_int_array_ensure_unique(&b).
+	// Fail: direct `b.int_array_val->data[0] = 99` mutates shared storage.
+	if !strings.Contains(src, "monk_int_array_ensure_unique(&mk_b)") {
+		t.Errorf("expected COW detach before typed-array write, generated:\n%s", src)
+	}
+}
+
+func TestBackingStoreReassignUpdatesCopyOnWriteUniqueness(t *testing.T) {
+	out, src := runMonkTyped(t, `let source int[] = [1, 2]
+let arr int[] = range(2)
+arr = source
+arr[0] = 9
+show(to_string(source[0]))`)
+	if out != "1" {
+		t.Fatalf("source[0] = %q, want 1", out)
+	}
+	if !strings.Contains(src, "monk_int_array_ensure_unique(&mk_arr)") {
+		t.Fatalf("expected COW barrier after typed-array reassignment, got:\n%s", src)
+	}
+}
+
+func TestBackingStoreScopeRestoreInvalidatesShadowedUniqueness(t *testing.T) {
+	out, src := runMonkTyped(t, `let source int[] = [1, 2]
+let arr int[] = source
+if true {
+    let arr int[] = range(2)
+    arr[0] = 7
+}
+arr[0] = 9
+show(to_string(source[0]))`)
+	if out != "1" {
+		t.Fatalf("source[0] = %q, want 1", out)
+	}
+	if got := strings.Count(src, "monk_int_array_ensure_unique(&mk_arr)"); got < 1 {
+		t.Fatalf("expected COW barrier after scoped shadowing, got %d:\n%s", got, src)
 	}
 }
 

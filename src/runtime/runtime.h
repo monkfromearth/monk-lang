@@ -5,7 +5,7 @@
  * Generated .c files #include this header and call these functions.
  *
  * Design decisions reflected here:
- * - Value semantics: all values are copied on assignment (monk_deep_copy)
+ * - Value semantics: assignment semantically copies (monk_deep_copy; arrays use COW)
  * - Deep const: enforced at codegen level, not in the runtime
  * - Truthiness: false, none, 0 are falsy (monk_is_truthy)
  * - Graceful on reads: out-of-bounds returns none (monk_array_get, monk_string_index)
@@ -76,6 +76,7 @@ struct MonkValue {
 struct MonkArray {
     MonkValue *data;
     int64_t length;
+    int32_t refcount;
 };
 
 /* Typed backing-store array structs.
@@ -83,16 +84,19 @@ struct MonkArray {
 struct MonkIntArray {
     int64_t *data;
     int64_t length;
+    int32_t refcount;
 };
 
 struct MonkFloatArray {
     double *data;
     int64_t length;
+    int32_t refcount;
 };
 
 struct MonkBoolArray {
     bool *data;
     int64_t length;
+    int32_t refcount;
 };
 
 struct MonkRecordField {
@@ -132,11 +136,14 @@ MonkValue monk_call(MonkValue fn, MonkValue *args, int64_t argc);
  * kind (MONK_INT_ARRAY / MONK_FLOAT_ARRAY / MONK_BOOL_ARRAY) and returns a
  * new value of the typed kind.
  * - MONK_ARRAY input: extracts scalar fields from each element, frees input.
- * - Already-typed input: deep-copies the backing store, leaves input intact.
+ * - Already-typed input: shares the backing store copy-on-write.
  * Codegen emits these at int[]/float[]/bool[] variable declarations. */
 MonkValue monk_int_array_from(MonkValue v);
 MonkValue monk_float_array_from(MonkValue v);
 MonkValue monk_bool_array_from(MonkValue v);
+void monk_int_array_detach(MonkValue *v);
+void monk_float_array_detach(MonkValue *v);
+void monk_bool_array_detach(MonkValue *v);
 
 /* Abort with a runtime error message and exit 1. Available to codegen for
  * inline runtime errors (e.g. int division by zero on the unboxed path). */
@@ -160,10 +167,6 @@ static inline MonkValue monk_deep_copy(MonkValue v) {
     case MONK_BOOL:
     case MONK_NONE:
         return v;
-    /* Typed arrays: monk_int_array_from handles same-kind deep copy. */
-    case MONK_INT_ARRAY:   return monk_int_array_from(v);
-    case MONK_FLOAT_ARRAY: return monk_float_array_from(v);
-    case MONK_BOOL_ARRAY:  return monk_bool_array_from(v);
     default:
         return monk_deep_copy_heap(v);
     }
@@ -179,6 +182,25 @@ static inline void monk_free(MonkValue v) {
     default:
         monk_free_heap(v);
     }
+}
+
+static inline void monk_int_array_ensure_unique(MonkValue *v) {
+    /* Hot-path COW barrier for generated `arr[i] = x`.
+     * Pass: refcount==1 writes directly. Fail: refcount>1 calls detach first. */
+    if (v->kind == MONK_INT_ARRAY && v->int_array_val && v->int_array_val->refcount > 1)
+        monk_int_array_detach(v);
+}
+
+static inline void monk_float_array_ensure_unique(MonkValue *v) {
+    /* Same barrier for float[] direct writes. */
+    if (v->kind == MONK_FLOAT_ARRAY && v->float_array_val && v->float_array_val->refcount > 1)
+        monk_float_array_detach(v);
+}
+
+static inline void monk_bool_array_ensure_unique(MonkValue *v) {
+    /* Same barrier for bool[] direct writes. */
+    if (v->kind == MONK_BOOL_ARRAY && v->bool_array_val && v->bool_array_val->refcount > 1)
+        monk_bool_array_detach(v);
 }
 bool monk_is_truthy(MonkValue v);
 const char *monk_type_name(MonkValue v);
@@ -218,6 +240,7 @@ MonkValue monk_trim(MonkValue s);
 MonkValue monk_to_upper_case(MonkValue s);
 MonkValue monk_to_lower_case(MonkValue s);
 MonkValue monk_string_concat(MonkValue a, MonkValue b);
+void monk_string_append_in_place(MonkValue *target, MonkValue suffix);
 
 /* --- Array --- */
 

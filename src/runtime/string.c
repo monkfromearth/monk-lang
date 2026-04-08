@@ -27,6 +27,10 @@ void monk_string_append_in_place(MonkValue *target, MonkValue suffix) {
         monk_panic("string append requires two strings (use to_string())");
     size_t old_len = strlen(target->str_val);
     size_t suffix_len = strlen(suffix.str_val);
+    /* ORDER DEPENDENCY: self_append MUST be captured before realloc. realloc may
+     * move the buffer, making suffix.str_val a dangling pointer in the self-append
+     * case. After realloc we only read from `result` (the new pointer), never from
+     * suffix.str_val. Swapping these two lines would introduce a use-after-free. */
     bool self_append = target->str_val == suffix.str_val;
     char *result = monk_realloc_internal(target->str_val, old_len + suffix_len + 1);
     /* In-place concat assignment for `s = s + rhs` / `s += rhs`.

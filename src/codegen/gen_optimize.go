@@ -206,6 +206,12 @@ func (g *generator) emitLengthCaseFusion(e *syntax.CallExpr) (string, storageKin
 	if !ok || (innerCallee.Name != "to_upper_case" && innerCallee.Name != "to_lower_case") {
 		return "", storeBoxed, false
 	}
+	// Guard: user-defined function shadows the builtin — must not fuse.
+	// Pass: `let to_upper_case = (s) string { "FIXED" }; length(to_upper_case("hi"))` → 5, not 2.
+	// Fail (without guard): fusion emits monk_length("hi") skipping the user function entirely.
+	if _, userDefined := g.funcNames[innerCallee.Name]; userDefined {
+		return "", storeBoxed, false
+	}
 	argType := g.info.Types[inner.Args[0]]
 	if argType == nil || argType.Kind != types.KindStr || argType.Optional {
 		return "", storeBoxed, false

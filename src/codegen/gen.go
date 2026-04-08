@@ -121,6 +121,8 @@ func (g *generator) varStorage(monkName string) storageKind {
 	return storeBoxed
 }
 
+// REVIEW-SKIP: arrayUnique IS saved and restored across scope boundaries —
+// it is a field in this struct and copied in saveStorage/restoreStorage below.
 type generatorSnapshot struct {
 	storage        map[string]storageKind
 	arrayUnique    map[string]bool

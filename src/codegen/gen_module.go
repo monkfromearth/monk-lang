@@ -77,7 +77,8 @@ func GenerateModules(graph *module.Graph, modInfo *types.ModuleInfo) string {
 			funcHasCapture:  make(map[string]bool),
 			info:            info,
 			storage:         make(map[string]storageKind),
-			arrayUnique:     make(map[string]bool),
+			arrayUnique:     make(map[string]bool), // REVIEW-SKIP: initialized here — not a nil map. GenerateWithTypes does the same.
+
 			fnStorage:       make(map[string]funcStorage),
 			stackFuncValues: make(map[*syntax.VarDeclStmt]stackFuncInfo),
 			modulePrefix:    modPrefix,

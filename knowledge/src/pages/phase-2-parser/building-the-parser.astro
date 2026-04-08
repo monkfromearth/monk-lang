@@ -472,6 +472,63 @@ func parseForStmt() ForStmt {
         </ExerciseBox>
     </section>
 
+    <!-- Parse trace: real Monk input -->
+    <section class="mb-14">
+        <h2 class="text-xl font-bold mb-4">Trace: parsing a real Monk program.</h2>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            Reading about parsing functions is one thing. Watching them work on real input is another. Here's what happens when the parser sees this single line:
+        </p>
+
+        <Code code={`let result = fibonacci(10)`} lang="javascript" />
+
+        <div class="bg-white border border-monk-border rounded-xl overflow-hidden mb-6">
+            <div class="divide-y divide-monk-border text-sm">
+                {[
+                    ['1', 'parseStatement()', 'peek() → LET keyword', 'Dispatches to parseVarDecl()'],
+                    ['2', 'parseVarDecl()', 'advance() consumes "let"', 'Reads name: IdentToken("result"). Next token is "=" not an ident → no type annotation.'],
+                    ['3', 'parseVarDecl()', 'advance() consumes "="', 'Calls parseExpression() for the init value.'],
+                    ['4', 'parseExpression()', '→ parseLogicalOr() → … → parsePrimary()', 'Bottoms out at a primary: IdentToken("fibonacci") → IdentExpr("fibonacci").'],
+                    ['5', 'postfix loop', 'peek() is LPAREN', 'It\'s a call — advances past (, enters parseArgs().'],
+                    ['6', 'parseArgs()', 'parsePrimary() for first arg', 'NumberToken(10) → NumberExpr(10). Next is RPAREN, stops.'],
+                    ['7', 'parseExpression()', 'Returns CallExpr', 'CallExpr(callee: IdentExpr("fibonacci"), args: [NumberExpr(10)]).'],
+                    ['8', 'parseVarDecl()', 'Assembles final node', 'VarDeclStmt(name: "result", isConst: false, type: nil, init: CallExpr(…)).'],
+                ].map(([step, fn, token, action]) => (
+                    <div class="flex items-start px-5 py-3 gap-4">
+                        <div class="w-6 h-6 rounded-full bg-monk-accentLight flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span class="text-monk-accent font-bold text-xs">{step}</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1">
+                                <code class="text-xs font-mono text-monk-accent font-semibold">{fn}</code>
+                                <span class="text-monk-muted text-xs">·</span>
+                                <code class="text-xs font-mono text-stone-500">{token}</code>
+                            </div>
+                            <p class="text-monk-muted text-xs">{action}</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+
+        <p class="text-monk-muted leading-relaxed mb-4">
+            The final AST node handed to the type checker and codegen:
+        </p>
+
+        <div class="bg-white border border-monk-border rounded-xl p-6 mb-4">
+            <div class="font-mono text-xs space-y-1 text-monk-muted">
+                <p><span class="text-monk-accent font-semibold">VarDeclStmt</span> (name: "result", isConst: false, type: nil)</p>
+                <p class="ml-4">init: <span class="text-monk-amber font-semibold">CallExpr</span></p>
+                <p class="ml-8">callee: <span class="text-stone-700">IdentExpr ("fibonacci")</span></p>
+                <p class="ml-8">args[0]: <span class="text-monk-green">NumberExpr (10)</span></p>
+            </div>
+        </div>
+
+        <p class="text-monk-muted text-sm">
+            Each step in the trace corresponds to exactly one function in <code class="bg-stone-100 px-1 rounded text-xs">parse_stmt.go</code> or <code class="bg-stone-100 px-1 rounded text-xs">parse_expr.go</code>. One grammar rule, one function — that's recursive descent.
+        </p>
+    </section>
+
     <!-- Key takeaways -->
     <section class="mb-14">
         <h2 class="text-xl font-bold mb-4">Key takeaways</h2>

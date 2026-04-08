@@ -75,7 +75,7 @@ func TestPlaceholder(t *testing.T) {
                 <div class="flex px-5 py-2.5"><span class="w-44 text-monk-muted">go.mod</span><span class="font-sans text-monk-muted text-xs">Module definition</span></div>
                 <div class="flex px-5 py-2.5"><span class="w-44 text-monk-blue">syntax/</span><span class="font-sans text-monk-muted text-xs">Phases 1-2: lexer, parser, AST, tokens</span></div>
                 <div class="flex px-5 py-2.5"><span class="w-44 text-monk-amber">codegen/</span><span class="font-sans text-monk-muted text-xs">Phase 4: AST to C source</span></div>
-                <div class="flex px-5 py-2.5"><span class="w-44 text-stone-500">cmd/monk/</span><span class="font-sans text-monk-muted text-xs">Phase 5: CLI entry point</span></div>
+                <div class="flex px-5 py-2.5"><span class="w-44 text-stone-500">main.go</span><span class="font-sans text-monk-muted text-xs">Phase 5: CLI entry point (monk build/run/check)</span></div>
                 <div class="flex px-5 py-2.5"><span class="w-44 text-monk-green">runtime/</span><span class="font-sans text-monk-muted text-xs">Phase 3: C library linked into every binary</span></div>
             </div>
         </div>
@@ -89,7 +89,7 @@ func TestPlaceholder(t *testing.T) {
         <div class="bg-white border border-monk-border rounded-xl overflow-hidden">
             <div class="divide-y divide-monk-border text-sm">
                 <ChecklistItem>Go 1.22+ installed and on your PATH</ChecklistItem>
-                <ChecklistItem><code class="bg-stone-100 px-1 rounded text-xs">go test ./lexer/</code> passes</ChecklistItem>
+                <ChecklistItem><code class="bg-stone-100 px-1 rounded text-xs">go test ./syntax/</code> passes</ChecklistItem>
                 <ChecklistItem>You understand the project structure</ChecklistItem>
             </div>
         </div>

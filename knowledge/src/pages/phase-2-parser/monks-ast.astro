@@ -86,6 +86,50 @@ if x = 5 {     // PARSE ERROR: expected expression, got assignment
         <h2 class="text-xl font-bold mb-4">Expression nodes: 15 types.</h2>
 
         <p class="text-monk-muted leading-relaxed mb-4">
+            Every expression in Monk maps to one of these AST node types. Here's a real Monk program that touches all 15 — the table below maps each highlighted construct to its node type.
+        </p>
+
+        <Code code={`// Literals: NumberExpr, StringExpr, BoolExpr, NoneExpr
+let count int = 42              // NumberExpr(42)
+let pi = 3.14                   // NumberExpr(3.14)
+let name = "Monk"               // StringExpr
+let greeting = \`Hello \${name}!\`  // StringExpr (template literal)
+let done = false                // BoolExpr
+let nothing = none              // NoneExpr
+
+// Variable reference: IdentExpr
+let doubled = count             // IdentExpr("count")
+
+// Prefix operators: UnaryExpr
+let neg = -count                // UnaryExpr(-, IdentExpr)
+let inv = !done                 // UnaryExpr(!, IdentExpr)
+
+// Arithmetic and comparison: BinaryExpr
+let sum = count + 8             // BinaryExpr(+, IdentExpr, NumberExpr)
+let big = count > 10            // BinaryExpr(>, IdentExpr, NumberExpr)
+
+// Grouping: GroupExpr
+let result = (count + 8) * 2   // GroupExpr wraps the BinaryExpr
+
+// Collection literals: ArrayExpr, RecordExpr
+let scores = [10, 20, 30]      // ArrayExpr([NumberExpr, NumberExpr, NumberExpr])
+let point = {x: 10, y: 20}    // RecordExpr([field: NumberExpr, ...])
+
+// Access: IndexExpr, PropertyExpr
+let first = scores[0]          // IndexExpr(IdentExpr, NumberExpr)
+let px = point.x               // PropertyExpr(IdentExpr, "x")
+
+// Functions and calls: FunctionExpr, CallExpr
+const add = (a int, b int) int { return a + b }  // FunctionExpr
+let total = add(count, 8)                         // CallExpr(IdentExpr, [IdentExpr, NumberExpr])
+
+// Error: ThrowExpr
+const safe_div = (a int, b int) int {
+    if b == 0 { return throw "division by zero" } // ThrowExpr("division by zero")
+    return a / b
+}`} lang="javascript" />
+
+        <p class="text-monk-muted leading-relaxed mt-4 mb-4">
             Every expression in Monk maps to one of these AST node types:
         </p>
 

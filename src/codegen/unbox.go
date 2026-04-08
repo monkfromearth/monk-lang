@@ -281,6 +281,8 @@ func (g *generator) emitCallTyped(e *syntax.CallExpr) (string, storageKind) {
 	// gets their function called instead of the inlined/fused builtin version.
 	// Pass: `let typeof = () string { return "custom" }; typeof()` → user call.
 	// Fail (before fix): typeof() inlined to monk_string("int") even with user override.
+	// REVIEW-SKIP: funcNames IS checked before emitKnownTypeBuiltin and emitLengthCaseFusion.
+	// emitKnownTypeBuiltin is at line 323 and emitLengthCaseFusion is at line 327 — both after this block.
 	if cName, ok := g.funcNames[ident.Name]; ok {
 		fs, ok := g.fnStorage[cName]
 		if !ok || !fs.All {

@@ -24,13 +24,22 @@ func arrayEnsureFunc(s storageKind) string {
 // isFreshArrayExpr reports whether expr definitely creates a new array backing
 // store rather than sharing an existing variable. It is deliberately narrow:
 // unknown calls stay "maybe shared" so codegen emits the COW write barrier.
-func isFreshArrayExpr(expr syntax.Expr) bool {
+// Pass: `range(N)` creates a fresh backing store — skip the COW write barrier.
+// Fail: `let b = a` stays false — b shares a's backing store until a mutation.
+// Shadow guard: a user-defined `let append = ...` shadows the builtin; checking
+// g.funcNames first ensures the user's function is never misclassified as fresh.
+func (g *generator) isFreshArrayExpr(expr syntax.Expr) bool {
 	switch e := expr.(type) {
 	case *syntax.ArrayExpr:
 		return true
 	case *syntax.CallExpr:
 		callee, ok := e.Callee.(*syntax.IdentExpr)
 		if !ok {
+			return false
+		}
+		// User-defined function shadows the builtin — its return value is not
+		// guaranteed fresh, so conservatively require the COW write barrier.
+		if _, userDefined := g.funcNames[callee.Name]; userDefined {
 			return false
 		}
 		switch callee.Name {
@@ -45,9 +54,12 @@ func isFreshArrayExpr(expr syntax.Expr) bool {
 // that a `let` binding can take directly instead of deep-copying again.
 // Only consulted in the boxed MonkValue path of emitVarDecl (store == storeBoxed).
 // Scalar-promoted paths and typed-array paths never reach this check.
-// Pass: `let s = to_upper_case(base)` owns the returned string.
+// Pass: `let s = to_upper_case(base)` owns the returned string — skip deep_copy.
 // Fail: `let b = a` is not fresh and must copy/share to preserve value semantics.
-func isFreshValueExpr(expr syntax.Expr) bool {
+// Shadow guard: if the user writes `let to_upper_case = (s string) string { ... }`,
+// g.funcNames["to_upper_case"] exists and we conservatively return false so the
+// binding still emits monk_deep_copy — preventing use-after-free via closure captures.
+func (g *generator) isFreshValueExpr(expr syntax.Expr) bool {
 	switch e := expr.(type) {
 	case *syntax.NumberExpr, *syntax.StringExpr, *syntax.TemplateExpr,
 		*syntax.BoolExpr, *syntax.NoneExpr, *syntax.ArrayExpr, *syntax.RecordExpr:
@@ -57,6 +69,11 @@ func isFreshValueExpr(expr syntax.Expr) bool {
 	case *syntax.CallExpr:
 		callee, ok := e.Callee.(*syntax.IdentExpr)
 		if !ok {
+			return false
+		}
+		// User-defined function shadows the builtin — its return value may alias
+		// closure capture heap data, so deep_copy is required.
+		if _, userDefined := g.funcNames[callee.Name]; userDefined {
 			return false
 		}
 		switch callee.Name {
@@ -93,7 +110,7 @@ func (g *generator) markArrayUniquenessFromExpr(name string, store storageKind, 
 		g.arrayUnique[name] = false
 		return
 	}
-	g.arrayUnique[name] = isFreshArrayExpr(expr)
+	g.arrayUnique[name] = g.isFreshArrayExpr(expr)
 }
 
 func (g *generator) stringAppendRHS(s *syntax.AssignStmt) syntax.Expr {

@@ -223,7 +223,7 @@ func (g *generator) emitVarDecl(s *syntax.VarDeclStmt, forModule bool) {
 		}
 		g.storage[name] = storeBoxed
 		init := "monk_deep_copy(" + rhsCode + ")"
-		if isFreshValueExpr(s.Value) {
+		if g.isFreshValueExpr(s.Value) {
 			// Move fresh temporaries into the binding instead of copying them.
 			// Pass: `let s = to_upper_case(base)` avoids a duplicate string.
 			// Fail: `let b = a` still uses deep_copy for value semantics.

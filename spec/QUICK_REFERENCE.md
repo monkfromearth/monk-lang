@@ -65,7 +65,7 @@ let greet = (name string) none {
 let apply = (f, x int) int { return f(x) }
 ```
 
-**Arguments are copies** (value semantics). A function cannot modify the caller's data.
+**Plain arguments are values.** To modify caller state, use `ref` in the parameter list and `ref x` at the call site.
 
 ## Closures
 
@@ -83,7 +83,7 @@ show(to_string(counter()))  // 1
 show(to_string(counter()))  // 2
 ```
 
-Closures **capture by copy**. The closure owns its snapshot of `count`.
+Closures capture plain values by default. Shared state must be explicit with `ref`.
 
 ## Control Flow
 
@@ -128,7 +128,7 @@ nums[0]                     // 1 (read — returns none if out of bounds)
 nums[10]                    // none (graceful on reads)
 length(nums)                // 5
 
-// All array functions return NEW arrays (value semantics)
+// Array helper functions return NEW arrays
 let more = append(nums, 6)  // [1, 2, 3, 4, 5, 6]
 // nums is still [1, 2, 3, 4, 5]
 
@@ -139,7 +139,7 @@ let mid = slice(nums, 1, 4) // [2, 3, 4]
 
 **Homogeneous:** all elements must be the same type.
 
-**Typed arrays** (`int[]`, `float[]`, `bool[]`) use a raw C backing store — element reads return `T` directly (not `T?`). Out-of-bounds panics. Untyped arrays (`any[]`) return `T?` on reads (graceful). Typed arrays benchmark at ~2× C vs ~12× C for untyped — prefer typed annotations in hot paths.
+**Typed arrays** (`int[]`, `float[]`, `bool[]`) use a raw C backing store — element reads return `T` directly (not `T?`). Out-of-bounds panics. Untyped arrays (`any[]`) return `T?` on reads (graceful). Typed arrays are the hot-path representation for numeric code; prefer typed annotations in performance-sensitive loops.
 
 ## Records
 
@@ -172,18 +172,25 @@ guard result = divide(10, 0) against error {
 show(to_string(result))      // 0
 ```
 
-## Value Semantics
+## Values and References
 
-**Assignment copies. Function args copy. Closures capture by copy.**
+**Values are the default. Shared mutation uses explicit `ref`.**
 
 ```monk
 let original = [3, 1, 2]
 let copy = original          // independent copy
 copy = append(copy, 4)       // copy is [3, 1, 2, 4]
 // original is still [3, 1, 2]
+
+let increment = (n ref int) none {
+    n = n + 1
+}
+
+let total = 0
+increment(ref total)
 ```
 
-No reference types. No shared mutable state. No garbage collector. The compiler/runtime may use copy-on-write internally, but mutations must still behave as if values were independent copies.
+No garbage collector. Plain code stays value-oriented. References and pointer-like behavior are explicit through `ref`.
 
 ## Type Annotations
 
@@ -333,4 +340,4 @@ guard  against  throw  type  use  export  from  as
 and  or  not  is  true  false  none
 ```
 
-**Reserved for future:** `ref`, `match`, `enum`, `trait`, `impl`, `self`, `pub`, `mut`, `async`, `await`, `yield`, `defer`, `struct`, `interface`
+**Reserved for future:** `match`, `enum`, `trait`, `impl`, `self`, `pub`, `mut`, `async`, `await`, `yield`, `defer`, `struct`, `interface`

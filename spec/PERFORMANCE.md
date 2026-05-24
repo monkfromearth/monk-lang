@@ -6,6 +6,8 @@ How Monk performs, why, and what can make it faster.
 
 ## Current numbers (2026-04-05, Apple M4 Pro, post-scalar-unboxing)
 
+This table is the last fully tabulated benchmark run. Later typed-array work in the changelog narrowed array-heavy workloads further, so treat `matmul` here as the 2026-04-05 baseline rather than the current ceiling.
+
 | Benchmark | Monk | vs C | vs Go | vs Bun | vs Node | vs Python |
 |---|---:|---:|---:|---:|---:|---:|
 | fibonacci (n=35) | 17.3 ms | **1.0×** | **1.3× faster** | **2.4× faster** | **4.9× faster** | **39× faster** |
@@ -14,7 +16,7 @@ How Monk performs, why, and what can make it faster.
 | trial_primes (<200k) | 5.9 ms | **1.0×** | **1.0×** | **2.2× faster** | **7.8× faster** | **92× faster** |
 | matmul (400² int) | 122 ms | 11.8× | 4.6× | 2.3× | 1.2× | 64× faster |
 
-**Pure scalar benchmarks are at C parity.** Matmul lags because arrays are still tagged-union (`MonkValue*` backing storage) — typed-array unboxing is the next performance frontier.
+**Pure scalar benchmarks are at C parity.** Matmul was still the array hot path in this baseline, but later typed-array backing-store and bounds-check-elision work pushed it much closer to C. The remaining big gaps are semantic ones: string-heavy workloads, closure-heavy workloads, and array-heavy numerics that are better served by Phase 8 FFI.
 
 See `bench/` for methodology and `bench/results/` for raw data.
 
@@ -26,11 +28,13 @@ See `bench/` for methodology and `bench/results/` for raw data.
 
 **Why fibonacci / mandelbrot / leibniz hit C parity.** Scalar unboxing (see below) emits raw `int64_t` and `double` everywhere — no MonkValue wrapping, no tag checks, no function calls for arithmetic. The generated C is indistinguishable from a hand-written scalar loop.
 
-**Why matmul is ~12× C.** The inner loop does:
+**Why matmul was ~12× C in the 2026-04-05 baseline.** The inner loop does:
 ```
 C[i*N+j] = C[i*N+j] + aik * B[k*N+j]
 ```
 Each `arr[idx]` access: (1) kind check for `arr`, (2) kind check for `idx`, (3) bounds check, (4) pointer dereference, (5) 16-byte load. That's ~10 instructions per access vs 2 in C. C also auto-vectorizes the inner loop with NEON; Monk's tagged elements can't be vectorized.
+
+Later work replaced the generic tagged path for typed arrays, then added bounds-check elision for provably-safe loops, which is why the changelog now reports matmul much closer to C.
 
 ---
 
@@ -68,19 +72,15 @@ Fix: split into `monk_deep_copy` / `monk_free` (static inline, in `runtime.h`, p
 
 ## What's next (the honest ceiling)
 
-Scalar unboxing is done. Matmul still at 12× C because **arrays are still tagged-union** — each `arr[i]` does bounds-check + tag dispatch + 16-byte memcpy.
+Scalar unboxing is done. In the 2026-04-05 baseline, matmul was still at 12× C because **arrays were still tagged-union** — each `arr[i]` did bounds-check + tag dispatch + 16-byte memcpy.
 
-### Typed array unboxing (next)
+### Typed-array path (already delivered)
 
-When the checker says `int[]`, back the array with `int64_t*` instead of `MonkValue*`. Reads and writes become direct C array access. Enables `cc` auto-vectorization. **Expected: matmul 12× C → 2-3× C.**
-
-Scope: new runtime structs (`MonkIntArray`, `MonkFloatArray`), new codegen path for typed-array literals and index ops, interop for passing typed arrays to functions taking untyped `array`.
+The typed-array backing store work is already in place. `typeof` / `is_*` inlining for known kinds is already in place too. The next big wins are broader semantic optimizations and Phase 8 FFI for array-heavy numerics.
 
 ### Unboxed for-loop variables
 
-`for i in range(N)` currently emits `MonkValue mk_i` — so using `i` in arithmetic requires unboxing on every access. When the iterable is a known-scalar array, unbox the loop var.
-
-**Expected: another 10-20% on loop-heavy code.**
+`for i in range(N)` is already compiled as a raw counter loop when the iterable is statically known, so the loop variable stays unboxed in hot typed-array paths. The remaining loop-heavy wins come from reducing allocation and string work, not from reintroducing scalar boxing.
 
 ### Phase 8+ wins
 
@@ -92,7 +92,7 @@ Scope: new runtime structs (`MonkIntArray`, `MonkFloatArray`), new codegen path 
 
 Some optimizations tempting but poisonous:
 
-- **Mutable references (`ref`/pointers) in the core language.** Breaks value semantics. The whole point of Monk is predictable data ownership.
+- **Hidden aliasing or implicit pointer semantics.** If Monk has references, they should stay explicit in source via `ref`, not appear as invisible optimizer magic.
 - **Garbage collection.** Same reason. No refcount overhead is part of the model.
 - **Cheating per-benchmark.** No fast paths specialized for loops that look like matmul. Generic wins only.
 - **`-ffast-math` or similar unsafe-math flags.** Changes observable float behavior.

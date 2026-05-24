@@ -30,7 +30,7 @@
 
 ## Design Philosophy
 
-Three rules govern every design decision in Monk.
+Five principles govern every design decision in Monk.
 
 ### 1. Explicit Over Implicit
 
@@ -65,30 +65,37 @@ When you **ask for data** that might not be there, Monk degrades gracefully — 
 
 The distinction: **reading is exploration, operating is commitment.**
 
-### 3. Values, Not References
+### 3. Values by Default, References by Intent
 
-Assignment copies. `let b = a` gives you an independent value. Your data is yours. Nobody else can change it through a different variable.
-
-```monk
-let a = [1, 2, 3]
-let b = a           // b is a COPY
-b[0] = 99
-show(a[0])          // 1 (unchanged)
-show(b[0])          // 99
-```
-
-This applies to assignment and function arguments. Functions receive copies of their arguments.
+Monk should make aliasing explicit. Plain variables and plain function parameters behave like values. Shared mutation and pointer-like behavior exist in the language, but they are spelled with `ref`.
 
 ```monk
-let process = (arr int[]) none {
-    arr[0] = 99     // modifies the local copy only
+let increment = (counter ref int) none {
+    counter = counter + 1
 }
-let data = [1, 2, 3]
-process(data)
-show(data[0])       // 1 (unchanged)
+
+let total = 0
+increment(ref total)
+show(total)   // 1
 ```
 
-**No exceptions.** Closures also capture by copy. See [Closures](#closures).
+The rule is: values are the default, references are explicit. This keeps ordinary code easy to reason about, while still allowing pointers where they are genuinely needed.
+
+### 4. Local Reasoning Over Magic
+
+Monk should reward the reader who stays close to the code in front of them. The meaning of a line should come from the line itself, not from hidden state, surprising coercions, or far-away special cases.
+
+- Prefer explicit code paths over implicit behavior.
+- Prefer local readability over cleverness.
+- Keep special cases visible and rare.
+
+### 5. Small Core, Strong Library
+
+Monk should stay small at the syntax level and explicit at the capability level. If a feature can live cleanly in the runtime or builtin library, prefer that over adding more syntax.
+
+- The core language should be easy to learn and easy to scan.
+- Powerful behavior should be exposed through explicit builtins, types, and modules.
+- The language should be honest about cost: if something allocates, copies, or checks at runtime, that should not be hidden from the reader.
 
 ### Additional Principles
 
@@ -160,7 +167,7 @@ let hex_big = 0xFF_FF
 | `array`  | `[1, 2, 3]`, `["a", "b"]`, `[]`     |
 | `record` | `{name: "Alice", age: 30}`, `{}`    |
 
-Primitives (int, float, boolean, none) are always copied on assignment. Collections (arrays, records) are also copied on assignment (value semantics).
+Primitives are copied by value. Arrays, records, and closures follow normal Monk value rules unless they are intentionally shared through `ref`.
 
 ---
 
@@ -415,18 +422,30 @@ greet("Alice", "Hi")    // "Hi, Alice"
 
 ### Function Arguments
 
-Arguments are **copies** (value semantics). A function cannot modify the caller's data:
+Plain arguments are values. A function cannot modify the caller's binding unless the parameter is marked `ref`:
 
 ```monk
 let process = (arr int[]) none {
-    arr[0] = 99     // modifies the LOCAL copy
+    arr[0] = 99     // modifies the LOCAL value
 }
 let data = [1, 2, 3]
 process(data)
 show(data[0])       // 1 (unchanged)
 ```
 
-To "modify" data, return the new value:
+To modify caller state directly, use `ref` on both sides:
+
+```monk
+let increment = (counter ref int) none {
+    counter = counter + 1
+}
+
+let total = 0
+increment(ref total)
+show(total)   // 1
+```
+
+Without `ref`, return the new value:
 
 ```monk
 let process = (arr int[]) int[] {
@@ -481,36 +500,34 @@ let apply = (fn (int, int) -> int, a int, b int) int {
 
 ### Closures
 
-Closures capture by **copy**, consistent with value semantics. At creation time, the closure gets its own snapshot of every variable it references. No sharing, no aliasing.
+Closures capture plain values by default. Shared state must be explicit, following the same `ref` rule as function parameters.
 
 ```monk
 let create_counter = (initial int) () -> int {
-    let count = initial       // closure gets its own copy of count
+    let count = initial       // closure gets its own local count
     return () int {
-        count = count + 1     // mutates the closure's OWN copy
+        count = count + 1
         return count
     }
 }
 
 let c = create_counter(10)
 show(c())  // 11
-show(c())  // 12 (the closure's copy persists between calls)
+show(c())  // 12
 ```
 
-This works because the closure is the sole owner of its `count`. It mutates its own copy freely.
-
-Closures **cannot** modify outer scope variables:
+Closures do not implicitly share outer mutable state:
 
 ```monk
 let x = 0
 let increment = () none {
-    x = x + 1       // modifies the closure's COPY of x
+    x = x + 1       // modifies the closure's local capture
 }
 increment()
 show(x)              // 0 (outer x is unchanged)
 ```
 
-This is the same default behavior as C++ lambdas (`[x]` capture by copy) and Rust (`move` closures). It follows directly from "values, not references."
+To share mutable state across scopes, the shared access must be explicit via `ref`.
 
 ### Recursion
 
@@ -717,7 +734,7 @@ nums[0] = 42       // OK
 
 ### Array Functions
 
-All array functions return **new arrays** (value semantics). Out-of-bounds parameters clamp gracefully:
+Array helper functions like `append`, `prepend`, `take`, `drop`, and `slice` return new arrays. Element assignment still mutates an existing `let` array. Out-of-bounds parameters clamp gracefully:
 
 ```monk
 let fruits = ["apple", "banana", "cherry"]
@@ -823,7 +840,7 @@ let full_config = { debug: config.debug, port: config.port, host: "localhost" }
 let address = {street: "123 Main", city: "SF"}
 let company = {
     name: "TechCorp",
-    address: address,  // copies the record (value semantics)
+    address: address,
 }
 show(company.address.city)  // "SF"
 ```
@@ -1006,6 +1023,32 @@ type Rectangle = { width: int, height: int, position: Point }
 let origin Point = { x: 0, y: 0 }
 ```
 
+### Reference Types
+
+`ref T` means a reference to a mutable location holding `T`. References are explicit in both the parameter list and the call site.
+
+```monk
+let swap = (a ref int, b ref int) none {
+    let temp = a
+    a = b
+    b = temp
+}
+
+let x = 10
+let y = 20
+swap(ref x, ref y)
+show(x)   // 20
+show(y)   // 10
+```
+
+Rules:
+
+- `ref` parameters may only be passed assignable `let` locations
+- temporaries, literals, and `const` values cannot be passed as `ref`
+- plain assignment and plain parameters remain value-based
+- first implementation scope: `ref` is valid in function parameter types and `ref x` call-site arguments
+- first-class stored references outside parameter passing are deferred until the core `ref` model is stable
+
 ### Optional Types
 
 The `?` suffix allows a type to also hold `none`. Nesting is invalid — `int??` is a compile error.
@@ -1093,17 +1136,17 @@ typeof(some_function)   // "function"
 
 ## Memory Management
 
-Monk uses **value semantics everywhere**. No garbage collection. No user-visible references. No shared mutable state.
+Monk uses deterministic memory management. No garbage collection. Plain code stays value-oriented, and explicit `ref` introduces shared access when needed.
 
-- Assignment semantically copies values.
-- Function arguments are copies.
-- Closures capture by copy.
-- `const` is deeply frozen.
-- `let` values are freed when they go out of scope.
+- Primitives are copied by value.
+- Plain assignment and plain function parameters follow value semantics.
+- `ref` parameters and native handles allow explicit pointer/reference behavior.
+- Heap values are managed deterministically by the runtime.
+- `const` freezes the value and cannot be passed as `ref`.
 
-The implementation may use copy-on-write internally to avoid unnecessary eager copies. That optimization is invisible: `let b = a; b[0] = 99` must still leave `a[0]` unchanged.
+The implementation may use reference counting, copy-on-write, or specialized backing stores internally. Those are implementation choices. The language-level rule is simpler: aliasing must be explicit in source.
 
-There is no `ref` keyword in the current spec. The `ref` keyword is reserved for a future revision that may add pass-by-reference parameters. See `spec/MEMORY_MODEL_DISCUSSION.md` for design history.
+See `spec/MEMORY_MODEL_DISCUSSION.md` for design history and tradeoffs.
 
 ---
 
@@ -1141,19 +1184,32 @@ Module-level code executes once, when the module is first imported.
 
 ## C Foreign Function Interface (FFI)
 
-> **Status: PLANNED.** Monk compiles to C, so calling C functions is nearly zero-cost. The FFI syntax is not yet designed — it will be discussed and decided before implementation.
+> **Status: PLANNED.** Monk will grow a C FFI, but the surface syntax is still undecided.
 >
-> **What is decided:**
-> - Monk will have a way to declare and call external C functions
-> - The compiler will emit `#include` directives and linker flags in generated C
-> - Type mapping at the boundary: Monk int → `int64_t`, float → `double`, string → `const char*`, boolean → `bool`
-> - FFI calls will have zero overhead (direct C function calls in generated code)
+> **What is decided so far:**
+> - Monk should be able to declare and call external C functions
+> - the compiler should be able to emit C headers and linker inputs for those bindings
+> - Monk's explicit `ref` / pointer model should be the foundation for C pointer-style parameters
+> - opaque native handles should be representable in Monk
 >
-> **What is NOT decided:**
-> - The syntax for declaring external functions
-> - How library linking is expressed
-> - Whether arrays/records can cross the FFI boundary
-> - Error handling semantics for extern functions
+> **Still open:**
+> - the exact surface syntax for declaring C bindings
+> - how headers and libraries are written in source
+> - which pointer/reference forms are exposed directly versus wrapped
+> - how callbacks and record marshalling should work
+> - how much of the raw C shape should be visible in Monk signatures
+>
+> **Recommended v1 boundary, regardless of syntax:**
+> - direct scalars: `int`, `float`, `boolean`
+> - strings as UTF-8 C strings
+> - opaque native handles
+> - pointer-style parameters expressed with Monk's explicit reference model
+> - no callbacks or record marshalling in v1
+>
+> **Validation targets:**
+> - `libm`
+> - `sqlite3`
+> - `zlib`
 
 ---
 
@@ -1317,10 +1373,11 @@ show(some_function)         // <function>
 | `against`  | Error handling (catch)               |
 | `throw`    | Raise an error                       |
 | `type`     | Type definition                      |
-| `use`      | Import                               |
+| `use`      | Import / native header-library use   |
 | `export`   | Export                               |
 | `from`     | Import source                        |
 | `as`       | Alias                                |
+| `ref`      | Explicit reference / pointer passing |
 | `is`       | Equality (synonym for `==`)          |
 | `not`      | Logical negation                     |
 | `and`      | Logical AND                          |
@@ -1333,7 +1390,6 @@ show(some_function)         // <function>
 
 | Keyword | Planned Purpose         |
 |---------|-------------------------|
-| `ref`   | References / borrowing  |
 | `async` | Asynchronous functions  |
 | `await` | Await async result      |
 

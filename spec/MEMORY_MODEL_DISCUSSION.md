@@ -243,17 +243,17 @@ Safety story: **compiler prevents mutating `const` values. Refcounting prevents 
 
 ## Decisions Made Since Initial Discussion
 
-### Value Semantics (✅ Decided 2026-04-03, updated 2026-04-03)
-- Assignment COPIES arrays and records. `let b = a` gives `b` an independent copy.
-- Function arguments are copies. A function cannot modify the caller's data.
-- Closures capture by COPY (like C++ `[x]` lambdas). No shared state. No exceptions to value semantics.
-- Eager deep copy for v1. Copy-on-write may be added as an invisible optimization later.
+### Values by Default, `ref` for Explicit Sharing (✅ Revised 2026-04-14)
+- Plain assignment and plain function parameters are value-oriented by default.
+- Monk keeps explicit references/pointers in the language via `ref`.
+- Shared mutation must be visible in source: `ref` appears in the declaration and at the call site.
+- The language is not "values only" anymore. The earlier full-value-semantics turn is superseded.
 
-### `ref` Deferred (✅ Decided 2026-04-03)
-- `ref` keyword is reserved but not implemented in the current spec.
-- Without `ref`, functions cannot modify external state. All mutation is return-value based.
-- Plan: add `ref` parameters later (explicit on both sides — declaration and call site) if needed.
-- Memory Management section removed from spec. Will be rewritten when model is finalized.
+### `ref` Is In-Scope (✅ Revised 2026-04-14)
+- `ref` is a core language feature, not a deferred reservation.
+- `ref` means explicit shared access to an existing mutable location.
+- `ref` parameters are the intended bridge for in-language pointer semantics and C FFI pointer parameters.
+- `const` values cannot be passed as `ref`.
 
 ### Deep Const (✅ Decided 2026-04-03)
 - `const` freezes the variable AND its contents. No element/field mutation.
@@ -263,18 +263,16 @@ Safety story: **compiler prevents mutating `const` values. Refcounting prevents 
 - Records have a fixed set of fields from creation. Cannot add new fields.
 - This simplifies memory layout — no dynamic hash map growth.
 
-### Impact of Value Semantics on Memory Model
-With value semantics, the refcounting discussion changes:
-- `let b = a` is a COPY, not a shared reference. No refcount needed for assignment.
-- Function args are copies. No refcount needed for calls.
-- Only closures share state — closure captures are the only place where multiple references exist.
-- This dramatically reduces the surface area for memory management complexity.
-- Copy-on-write optimization is still possible under the hood (the compiler can defer the copy until mutation, but semantics are always value-based).
+### Current Memory Direction
+- Deterministic runtime management remains the goal. No GC.
+- Reference counting is still the leading implementation strategy for heap values and explicit references.
+- Copy-on-write remains an optimization for plain values, not a replacement for explicit `ref`.
+- The key language rule is now: aliasing is explicit, never accidental.
 
 ## Open Questions
 
-1. What is the runtime representation? Copy everything eagerly? Copy-on-write optimization?
-2. How are closure-captured variables managed? (Heap-allocated, refcounted between closure and enclosing scope?)
+1. What is the exact runtime representation for `ref` values and native handles?
+2. How are closure-captured references managed when a closure outlives its defining scope?
 3. Implementation language — affects what strategies are practical.
-4. When/if `ref` parameters are added, what is the full design? Explicit on both sides (`ref` in declaration + `ref` at call site)?
-5. Cycle prevention strategy for closure captures that reference each other.
+4. Cycle prevention strategy for explicit reference graphs and closure captures that reference each other.
+5. Which pointer/reference forms are first-class outside parameters, beyond `ref` call passing?

@@ -11,7 +11,7 @@ The runtime is ~1,000 lines of C11, split across 8 library `.c` files plus the s
 
 **Scalar unboxed fast path (Phase 6).** When the type checker proves a variable is `int`/`float`/`bool`, codegen stores it as a raw `int64_t`/`double`/`bool` and emits raw C arithmetic — skipping the runtime entirely. The runtime is only called at boxing boundaries (`show`, `to_string`, etc.) and for heap types.
 
-**Typed array fast path (Phase 6.5).** `int[]`, `float[]`, `bool[]` variables use `int64_t*`/`double*`/`bool*` backing stores (`MONK_INT_ARRAY`, `MONK_FLOAT_ARRAY`, `MONK_BOOL_ARRAY`). Element access emits direct pointer arithmetic. OOB panics. Typed arrays benchmark at ~2× C; generic arrays at ~12× C.
+**Typed array fast path.** `int[]`, `float[]`, `bool[]` variables use `int64_t*`/`double*`/`bool*` backing stores (`MONK_INT_ARRAY`, `MONK_FLOAT_ARRAY`, `MONK_BOOL_ARRAY`). Element access emits direct pointer arithmetic. OOB panics. Typed arrays are the hot-path representation for numeric workloads; generic arrays remain the fully boxed baseline.
 
 **Design rules enforced here:**
 - Value semantics via `monk_deep_copy()` on every assignment; arrays use copy-on-write internally
@@ -37,7 +37,7 @@ typedef enum {
     MONK_ARRAY,      // MonkArray* — generic tagged-union elements
     MONK_RECORD,     // MonkRecord*
     MONK_FUNCTION,   // MonkFunction*
-    MONK_INT_ARRAY,  // MonkIntArray*  — int64_t* backing store (Phase 6.5)
+    MONK_INT_ARRAY,  // MonkIntArray*  — int64_t* backing store
     MONK_FLOAT_ARRAY,// MonkFloatArray* — double* backing store
     MONK_BOOL_ARRAY  // MonkBoolArray*  — bool* backing store
 } MonkValueKind;
@@ -270,9 +270,9 @@ Codegen calls these at assignment boundaries when the declared type is
 pointer arithmetic (`arr.int_array_val->data[i]`) — no tagged-union
 dispatch. Out-of-bounds panics (strict write model applies to typed arrays).
 
-**Why it matters:** typed arrays hit ~2× C on `matmul` vs ~12× C for
-the generic `MONK_ARRAY`. The entire array index hot path avoids the
-union overhead.
+**Why it matters:** typed arrays are the representation that lets Monk close
+most of the remaining numeric gap. They remove tag dispatch, cut memory
+stride, and let `cc` vectorize provably-safe loops.
 
 ---
 

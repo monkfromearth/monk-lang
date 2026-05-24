@@ -2,25 +2,26 @@
 
 ## Design decisions
 
-**Why these 3 benchmarks.** Fibonacci, Mandelbrot, and Matrix Multiply are classic "language shootout" problems. They cover three different performance profiles:
+**Why these benchmarks.** Fibonacci, Mandelbrot, and Matrix Multiply are classic "language shootout" problems. They cover three different performance profiles:
 
 - **Fibonacci (recursion-heavy)** — stresses call dispatch, stack frames, int arithmetic. No allocation.
 - **Mandelbrot (float-heavy)** — tight inner loop, float math, no allocation.
-- **Matmul (array-index-heavy)** — hot-path random access into flat arrays. Exposes tagged-union dispatch cost per index.
+- **Matmul (array-index-heavy)** — hot-path random access into flat arrays. Still useful for tracking typed-array and bounds-check behavior.
 
 **Why checksum output.** Every benchmark prints a single integer. This sidesteps floating-point format differences between languages (`%.9f` in C ≠ Python's `str(float)` ≠ Monk's `to_string(float)`). The checksum doubles as a correctness gate — the harness diffs against `expected.txt` before running hyperfine.
 
 **Why integer matmul.** Float matmul would add float-formatting noise to the checksum. Using `long`/`int64` keeps checksums exact across languages.
 
 **Deliberately excluded from v1:**
-- **Binary trees** — would be the "honest weakness" showcase for Monk's value-semantics allocation cost. Adding in v2 is important for intellectual honesty.
-- **N-body / spectral-norm** — good benchmarks, but overlap with Mandelbrot for the compute story.
+- **Binary trees** — later added as the "honest weakness" showcase for Monk's value-semantics allocation cost.
+- **N-body / spectral-norm** — later added or deferred depending on the suite revision, because they overlap with Mandelbrot for the compute story.
 
-## Current status (2026-04-05)
+## Current status (2026-04-05 baseline; suite has evolved since)
 
-- 3 benchmarks × 6 languages = 18 implementations
+- The original three shootout benchmarks are still the design baseline
+- The suite has expanded well beyond v1
 - Harness runs end-to-end with correctness gate
-- First numbers captured on Apple M4 Pro
+- First numbers were captured on Apple M4 Pro
 
 ## Known issues surfaced by building this suite
 
@@ -41,7 +42,7 @@
 
 - Each language implementation uses the same algorithm. See each `.monk` / `.c` / `.go` / `.py` / `.js` — if they diverge, that's a bug, not an optimization.
 - No language may use SIMD intrinsics, `numpy`, `Float64Array`, or similar. Plain arrays / lists only.
-- `cc -O2` is the baseline. No `-march=native`, no `-ffast-math`, no PGO.
+- `cc -O3 -flto` is the baseline. No `-march=native`, no `-ffast-math`, no PGO.
 - Correctness gate blocks benchmarking if any output diffs from `expected.txt`.
 
 ## Non-goals

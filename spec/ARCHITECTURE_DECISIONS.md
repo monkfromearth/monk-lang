@@ -36,7 +36,7 @@ Monk v1 was a tree-walking interpreter written in TypeScript, running on Bun.
 **Why:**
 - Monk produces **native binaries**. No runtime, no VM, no interpreter needed on the user's machine.
 - Zero dependencies beyond a C compiler (every system has one).
-- C's value semantics (struct assignment copies) map directly to Monk's value semantics.
+- C's explicit memory and pointer model map well to Monk's deterministic runtime and explicit `ref` semantics.
 - Generated C is inspectable and debuggable.
 - All of `cc`'s decades of optimization work — for free.
 - Zig itself has a C backend at 97% test coverage as their universal fallback.
@@ -84,7 +84,7 @@ The C backend stays as the universal fallback. LLVM becomes the "release mode" o
 ### Eliminated
 
 - **TypeScript/Bun** — GC underneath makes "no GC" impossible. Can't produce native binaries.
-- **Go** — 5-10 MB binaries. Bundled GC contradicts philosophy. Reference semantics fight Monk's value semantics.
+- **Go** — 5-10 MB binaries. Bundled GC contradicts philosophy. The compiler's own semantics should not leak into Monk's.
 - **C++** — Rust's downsides (build speed) without its upsides (safety, ecosystem coherence).
 - **Odin** — Too niche. Zero track record for language implementations.
 - **C** — Proven (Lua, CPython, Ruby) but no memory safety net. No sum types. Verbose AST handling.
@@ -123,7 +123,7 @@ Initial choice was Zig for minimal footprint and explicit memory. Revised after 
 **What we accept:**
 - 5-10 MB compiler binary (Go runtime + GC bundled). Acceptable for a CLI tool.
 - Go's GC manages the *compiler's* memory, not Monk's. The generated C has no GC.
-- Go's reference semantics for slices/maps internally. Doesn't affect Monk's value semantics — those are enforced in the generated C, not in the compiler.
+- Go's reference semantics for slices/maps internally. Doesn't define Monk semantics — those are enforced in the generated C and runtime design, not in the compiler.
 
 **Zig/Rust deferred to:** future backend work — LLVM integration, custom machine code backend, or self-hosted Monk compiler. When the compiler needs to generate optimized native code directly, a systems language makes sense. For the current compile-to-C pipeline, Go is right.
 
@@ -195,7 +195,7 @@ monk format hello.monk      # Code formatting
 The runtime library is a small C library (~2-5 KB) that provides:
 - `MonkValue` tagged union type
 - `monk_show()`, `monk_to_string()`, etc.
-- Array/record/string operations with value semantics
+- Array/record/string operations with deterministic language semantics
 - Error handling infrastructure (guard/against/throw)
 
 This ships with the Monk compiler and gets linked into every compiled program.
@@ -212,7 +212,7 @@ These are real problems other compile-to-C languages have hit. Our mitigations:
 
 ### 2. Closures in C
 **Problem:** C has no closures. Need function pointer + environment struct pairs.
-**Our approach:** Closures capture by copy (like C++ `[x]` lambdas). Generate a struct for each closure's captured variables. The closure owns its environment — no sharing, no refcounting. Freed when the closure goes out of scope.
+**Our approach:** The current implementation snapshots closure captures into an environment struct. As explicit `ref` semantics land in the language, closure capture rules will extend this model rather than replace it.
 
 ### 3. Guard/against/throw
 **Two options considered:**
@@ -234,7 +234,7 @@ The three remaining gaps between Monk and C performance — in order of impact:
 
 #### A. Typed array backing store ✅ SHIPPED (matmul 11× → ~1.6× C)
 
-**Current state:** `int[]` is a `MonkValue` whose `array_val->data` is `MonkValue[]` — a 16-byte struct per element (8 bytes tag + 8 bytes value). A 400×400 matrix uses 2.56 MB. C uses 1.28 MB. Every cache line holds half as many numbers.
+**Historical baseline:** before the fix, `int[]` was a `MonkValue` whose `array_val->data` was `MonkValue[]` — a 16-byte struct per element (8 bytes tag + 8 bytes value). A 400×400 matrix used 2.56 MB. C used 1.28 MB. Every cache line held half as many numbers.
 
 **The fix:** New C runtime struct `MonkIntArray { int64_t* data; int64_t length; }` (and Float/Bool variants). `int[]` variables are backed by `int64_t*` instead of `MonkValue*`. Element access is `arr->data[i]` — no union, no tag, cache-friendly.
 
@@ -266,7 +266,7 @@ The three remaining gaps between Monk and C performance — in order of impact:
 
 #### C. Bounds-check elision for typed arrays ✅ SHIPPED (matmul ~2× → ~1.6× C)
 
-**Current state:** Every typed-array element access emits an OOB guard: `if (i < 0 || i >= arr.array_val->length) monk_panic(...)`. In a hot inner loop (e.g., matmul), this is 2 branches per access — branch predictor handles it, but it's noise.
+**Historical baseline:** every typed-array element access emitted an OOB guard: `if (i < 0 || i >= arr.array_val->length) monk_panic(...)`. In a hot inner loop (e.g., matmul), this was 2 branches per access — branch predictor handled it, but it was still noise.
 
 **The fix:** Elide the bounds check when the type checker can prove safety. Specifically:
 - `for i in range(0, arr.length)` — `i` is in `[0, length)` by construction; accesses `arr[i]` in the loop body don't need a check
@@ -287,7 +287,7 @@ The three remaining gaps between Monk and C performance — in order of impact:
 
 ### 7. Optimization ceiling vs LLVM
 **Problem:** C as an intermediate layer obscures language semantics from the optimizer.
-**Our mitigation:** Accept it for now. Monk's value semantics actually help — C's alias analysis works better when values are copies, not pointers. For maximum performance later, add LLVM as an optional backend.
+**Our mitigation:** Accept it for now. Monk's value-oriented defaults still help C alias analysis, while explicit `ref` keeps the aliasing surface visible in source. For maximum performance later, add LLVM as an optional backend.
 
 ---
 
@@ -338,7 +338,7 @@ entry.monk ─┬─→ module.Build()     DFS resolve, cycle detect, topo-sort
 |----------|---------|--------------|---------|
 | Backend | Compile to C | LLVM or Cranelift | When optimization matters more than build simplicity |
 | Impl language | Go | Zig/Rust (for native backend) or self-hosted | When adding LLVM or custom codegen |
-| Memory model | Value semantics + COW | Add `ref` parameters | When return-value-only style proves too limiting |
+| Memory model | Value defaults + explicit `ref` | Broaden first-class reference forms beyond parameters | When native interop and shared-state patterns need it |
 | String encoding | UTF-8 + O(n) indexing | Cached offsets or rope data structure | When string-heavy workloads show up |
 | Module output | Single `.c` file | Multiple `.o` files | When compile times become a bottleneck for large programs |
 | Module paths | Relative only (`./`, `../`) | Package registry, absolute imports | When ecosystem needs sharing |
@@ -354,4 +354,4 @@ The stack:
 Go (compiler) → C (generated code + runtime) → cc → native binary
 ```
 
-Go handles the translation (trees, strings, text processing). C handles the output (value semantics, explicit memory, no GC in the generated programs). Each language is used where it's strongest.
+Go handles the translation (trees, strings, text processing). C handles the output (explicit memory, native interop, no GC in the generated programs). Each language is used where it's strongest.

@@ -9,7 +9,7 @@
 A minimalist, readable, and performant programming language for the modern age.
 
 [![Build](https://img.shields.io/badge/build-passing-brightgreen?style=flat)](#status)
-[![Tests](https://img.shields.io/badge/tests-676_passing-brightgreen?style=flat)](#status)
+[![Tests](https://img.shields.io/badge/tests-691_passing-brightgreen?style=flat)](#status)
 [![Phase](https://img.shields.io/badge/phase-7_of_11-blue?style=flat)](#status)
 [![Go](https://img.shields.io/badge/Go-1.26.1+-00ADD8?style=flat&logo=go&logoColor=white)](#install)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat)](#license)
@@ -197,17 +197,17 @@ The [`examples/`](examples/) directory has 24 working programs:
 | [`arrays.monk`](examples/arrays.monk) | Array operations, iteration, `append` |
 | [`error_handling.monk`](examples/error_handling.monk) | `guard`/`against`/`throw` |
 | [`newton_sqrt.monk`](examples/newton_sqrt.monk) | Float arithmetic, recursion, error boundaries |
-| [`todo_list.monk`](examples/todo_list.monk) | Records, value semantics, data modeling |
+| [`todo_list.monk`](examples/todo_list.monk) | Records, mutation, data modeling |
 | [`collatz.monk`](examples/collatz.monk) | `while` loops, arrays, the Collatz conjecture |
-| [`sort.monk`](examples/sort.monk) | Bubble sort, value semantics proof |
+| [`sort.monk`](examples/sort.monk) | Bubble sort, arrays, mutation |
 | [`types.monk`](examples/types.monk) | Type annotations, inference, typed arrays, optionals |
 | [`records.monk`](examples/records.monk) | Nested records with structural typing |
 | [`optionals.monk`](examples/optionals.monk) | `T?` semantics, `is_none`, graceful reads |
 | [`guards.monk`](examples/guards.monk) | `guard`/`against`/`throw` scoping |
-| [`closures.monk`](examples/closures.monk) | First-class functions, capture-by-copy |
+| [`closures.monk`](examples/closures.monk) | First-class functions, closures |
 | [`higher_order.monk`](examples/higher_order.monk) | `map`, `filter`, `reduce` with typed arrays |
 | [`default_params.monk`](examples/default_params.monk) | Default parameter values |
-| [`value_semantics.monk`](examples/value_semantics.monk) | Assignment copies, function args copy |
+| [`value_semantics.monk`](examples/value_semantics.monk) | Value-style defaults and data flow |
 | [`strings.monk`](examples/strings.monk) | String operations |
 | [`math.monk`](examples/math.monk) | Math builtins |
 | [`binary_search.monk`](examples/binary_search.monk) | Binary search with typed arrays |
@@ -264,7 +264,7 @@ source.monk  -->  [Go compiler]  -->  generated.c  -->  [cc -O3 -flto]  -->  nat
 
 - `MonkValue` tagged union for boxed types
 - `int64_t*`/`double*`/`bool*` backing for typed arrays
-- Deep copy for value semantics
+- Deterministic heap management for runtime values
 - 40+ builtin functions
 - Error handling via `setjmp`/`longjmp`
 
@@ -278,7 +278,7 @@ source.monk  -->  [Go compiler]  -->  generated.c  -->  [cc -O3 -flto]  -->  nat
 |----------|-----------|
 | **Output** | `show` |
 | **Conversion** | `to_string` `to_int` `to_float` |
-| **Type check** | `typeof` `is_array` `is_record` `is_string` `is_int` `is_float` |
+| **Type check** | `typeof` `is_number` `is_string` `is_boolean` `is_array` `is_record` `is_function` `is_none` |
 | **String** | `length` `substring` `split` `join` `trim` `to_upper_case` `to_lower_case` `starts_with` `ends_with` `contains` `replace` `index_of` `char_at` |
 | **Array** | `append` `pop` `slice` `range` `length` |
 | **Math** | `sqrt` `pow` `abs` `floor` `ceil` `round` `sin` `cos` `tan` `log` `min` `max` |
@@ -324,7 +324,7 @@ Benchmarks on Apple M4 Pro (`cc -O3 -flto`, hyperfine, lower is better). 21 benc
 | binary_trees | 199 ms | **24.9×** | Value-semantics deep copy on every tree node assignment |
 | string_ops | 88.4 ms | **52.0×** | `to_upper_case` allocates a new string per call |
 
-The typed array benchmarks (matmul, sieve, nbody) use `int[]`/`float[]` with `int64_t*`/`double*` backing stores and bounds-check elision. The remaining typed-array gap is two pointer hops (`MonkValue → TypedArray → data`) and, for sieve, the 8× memory stride difference versus C's `char` array. Structural gaps require COW arrays, string views, or closure escape analysis — none are small changes.
+The typed array benchmarks (matmul, sieve, nbody) use `int[]`/`float[]` with `int64_t*`/`double*` backing stores and bounds-check elision. The remaining typed-array gap is two pointer hops (`MonkValue → TypedArray → data`) and, for sieve, the 8× memory stride difference versus C's `char` array. The bigger structural gaps now are strings, closures, and allocation-heavy iteration patterns; the array-copy and known-type fast paths are already in place.
 
 See [`bench/`](bench/) for the harness and [`spec/PERFORMANCE.md`](spec/PERFORMANCE.md) for methodology.
 
@@ -334,11 +334,11 @@ Three rules resolve every edge case:
 
 1. **Explicit over implicit.** No hidden coercion, no hidden errors, no hidden mutation. One exception: truthiness (`false`, `none`, `0` are falsy).
 2. **Graceful on reads, strict on operations.** Reading missing data = `none` or `[]`. Operating on invalid data = error.
-3. **Values, not references.** Assignment copies. Function args copy. Closures copy. No exceptions.
+3. **Values by default, references by intent.** Plain code stays value-oriented; shared mutation uses explicit `ref`.
 
 ## Status
 
-**0.0.1 — Buniyaad** (2026-04-04). 676 tests passing (510 Go + 166 C runtime). 21 benchmarks, 24 examples.
+**0.0.1 — Buniyaad** (2026-04-04). 691 tests passing (517 Go + 174 C runtime). 21 benchmarks, 24 examples.
 
 | Phase | Status |
 |-------|--------|
@@ -358,14 +358,13 @@ Three rules resolve every edge case:
 
 ```
 src/                Go compiler (module root)
-  main.go             CLI entry point (53 tests)
+  main.go             CLI entry point
   embed.go            Embedded runtime (self-contained binary)
-  syntax/             Lexer + Parser + AST (195 tests)
-  types/              Static type checker (112 tests)
-  codegen/            AST → C code generator + unboxing (67 tests)
-  module/             Module resolver, dependency graph (13 tests)
-    unbox.go            Scalar/typed-array unboxing, storage kind inference
-  runtime/            C runtime library (8 .c files, 163 C tests)
+  syntax/             Lexer + Parser + AST
+  types/              Static type checker
+  codegen/            AST → C code generator + unboxing
+  module/             Module resolver, dependency graph
+  runtime/            C runtime library (8 .c files)
     runtime.h           Public API (MonkValue + function declarations)
     internal.h          Shared helpers
     value.c, arith.c, string.c, container.c, math.c, builtins.c, error.c, higher_order.c

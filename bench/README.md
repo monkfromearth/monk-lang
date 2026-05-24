@@ -36,7 +36,9 @@ Monk compiles to C, which is then compiled with `cc -O3 -flto` — so Monk inher
 
 ## Interpreting the numbers
 
-**Monk's design tradeoff:** pure value semantics (deep-copy on assignment, every read/write through tagged-union dispatch). Phase 6's scalar unboxing codegen uses type-checker output to skip this dispatch entirely when a variable is statically scalar (`int`/`float`/`bool`). Arrays still use the tagged model.
+**Monk's design tradeoff:** pure value semantics (deep-copy on assignment, every read/write through tagged-union dispatch). Phase 6's scalar unboxing codegen uses type-checker output to skip this dispatch entirely when a variable is statically scalar (`int`/`float`/`bool`). Most arrays still use the tagged model; typed arrays have their own backing stores.
+
+**Note:** the table below is the 2026-04-05 baseline. Later typed-array backing-store and bounds-check-elision work narrowed array-heavy workloads further, so treat `matmul` here as historical comparison rather than the current ceiling.
 
 **Current standings** (post-scalar-unboxing):
 
@@ -44,13 +46,13 @@ Monk compiles to C, which is then compiled with `cc -O3 -flto` — so Monk inher
 - **mandelbrot — 1.0× C.** Tight float loop, no arrays. Unboxed end-to-end.
 - **leibniz — 1.0× C.** π approximation via float arithmetic.
 - **trial_primes — 1.0× C.** Nested int loops with `break`, counts primes.
-- **matmul — ~12× C.** Hot array indexing. Arrays are still tagged `MonkValue*`. Typed-array unboxing is the next performance frontier.
+- **matmul — baseline ~12× C in the 2026-04-05 run.** Hot array indexing was the bottleneck in that snapshot; later typed-array work improved this substantially.
 - **sieve — array-heavy.** Allocates 1M-element array, writes in nested loops. Measures tagged-array index-write overhead.
 - **ackermann — deep recursion.** A(3,11) = 16381 via millions of recursive calls. Pure function-call overhead.
 - **collatz — while-loop branching.** Longest Collatz chain for n ≤ 1M. Int arithmetic + conditionals in a tight loop.
 - **binary_trees — allocation stress.** Pool-based binary tree build + walk at depth 14. Array alloc, index write/read, iteration.
 
-**The honest story:** Monk matches C on every benchmark that doesn't use arrays. For array-heavy numerics today, write it in C and FFI-call it (Phase 8), or wait for typed-array unboxing.
+**The honest story:** Monk matches C on every benchmark that doesn't use arrays, and the typed-array work has already narrowed the array-heavy gap a lot. For the widest numerics workloads, Phase 8 FFI is still the escape hatch.
 
 ## Known limitations
 

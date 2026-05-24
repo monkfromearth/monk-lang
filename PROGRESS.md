@@ -24,7 +24,7 @@ What's been built, what pivots happened, what's next.
 
 **Phase 5 — CLI.** `monk build`, `monk run`, `monk check`, `monk version`. ~280 lines, no framework. `-o` flag controls output: `.c` extension = emit C source, anything else = compile to binary. Runtime embedded in Go binary via `go:embed` — the `monk` binary is self-contained and works from any directory. Extracts runtime to `~/.cache/monk/runtime/` on first use if needed. Uses system `cc`. 28 CLI tests.
 
-**Phase 6 — Type System + scalar unboxing codegen.** Static checker in `src/types/` runs after parse, before codegen — wired into all three commands. 110 checker tests. Catches: first-assignment inference mismatches, reassignment type drift, array element violations (both literals and index assignment), typed-record shape (missing/extra/wrong-type fields), cross-type equality (5 == "5" errors), loop variable const violations, missing returns on non-none functions, function call arity/type mismatches, function-type parameters like `(f (int) -> int, x int)`. Strict on equality (no deep-compare on arrays/records/functions), permissive on truthiness. The checker's type Info is threaded into codegen (`src/codegen/unbox.go`), which emits raw C scalars (`int64_t`, `double`, `bool`) for statically-typed scalar variables and raw C arithmetic between them. Scalar benchmarks now hit C parity: fib 1.0× C, mandelbrot 1.0× C, leibniz 1.0× C. Arrays are still tagged-union (matmul stays at ~12× C) — typed-array unboxing is the next performance frontier.
+**Phase 6 — Type System + scalar unboxing codegen.** Static checker in `src/types/` runs after parse, before codegen — wired into all three commands. 110 checker tests. Catches: first-assignment inference mismatches, reassignment type drift, array element violations (both literals and index assignment), typed-record shape (missing/extra/wrong-type fields), cross-type equality (5 == "5" errors), loop variable const violations, missing returns on non-none functions, function call arity/type mismatches, function-type parameters like `(f (int) -> int, x int)`. Strict on equality (no deep-compare on arrays/records/functions), permissive on truthiness. The checker's type Info is threaded into codegen (`src/codegen/unbox.go`), which emits raw C scalars (`int64_t`, `double`, `bool`) for statically-typed scalar variables and raw C arithmetic between them. Scalar benchmarks now hit C parity: fib 1.0× C, mandelbrot 1.0× C, leibniz 1.0× C. Typed arrays, record-field unboxing, copy-on-write arrays, and runtime `typeof`/`is_*` inlines are already in place; the next major performance lever is Phase 8 FFI for array-heavy numerics.
 
 ### Restructure (2026-04-04)
 
@@ -147,7 +147,6 @@ New `src/types/` package, ~650 lines. Runs between parse and codegen.
 
 **Scope boundaries (intentional):**
 - Any flows through unknowns — builtins are typed as Any in slots where we can't express union types today (e.g. `length` of array-or-string)
-- Codegen is NOT touched. AST still flows through to codegen unchanged, still emits tagged-union MonkValue. Unboxing = Phase 6.5.
 
 Two paper cuts fixed en route:
 - Parser bug: `(to_float(y) / 2.0)` misread as function literal. Fixed by scanning to matching `)` and checking for `->`.
@@ -188,7 +187,7 @@ The type checker was sitting on rich information that codegen was ignoring — w
 | trial_primes (<200k, NEW) | 5.9 ms | **1.0× C** | — |
 | matmul (400²) | 122 ms | 11.8× C | 13.9× C |
 
-Matmul didn't move much — arrays are still tagged. Trial_primes initially wrote the inner loop's "early exit" as `d = n` (assignment to break the loop condition) rather than Monk's real `break` keyword; once switched to `break`, Monk hit C parity. Lesson documented for future benchmarks.
+Matmul didn't move much at that point — arrays were still tagged then. Trial_primes initially wrote the inner loop's "early exit" as `d = n` (assignment to break the loop condition) rather than Monk's real `break` keyword; once switched to `break`, Monk hit C parity. Lesson documented for future benchmarks.
 
 **New benchmark programs:**
 - `bench/benchmarks/leibniz/` — π via Leibniz series, pure float compute

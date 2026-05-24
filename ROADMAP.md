@@ -22,7 +22,7 @@ Tokenize source code into a stream of tokens.
 - [x] Line and column tracking
 - [x] EOF and illegal token handling
 
-**Status:** 112 tests passing. `src/syntax/scanner.go`
+**Status:** Done. `src/syntax/scanner.go`
 
 ---
 
@@ -37,7 +37,7 @@ Transform token stream into an Abstract Syntax Tree (AST).
 - [x] Type annotations on variables
 - [x] Error messages with line/column
 
-**Status:** 77 tests passing. `src/syntax/parser.go`, `src/syntax/ast.go`
+**Status:** Done. `src/syntax/parser.go`, `src/syntax/ast.go`
 
 ---
 
@@ -94,7 +94,7 @@ The compiler core. Walk the AST, emit C source code.
 
 ### Functions
 - [x] Function expressions → C function definitions + closure struct
-- [x] Closure capture by copy → snapshot environment into struct
+- [x] Current closure environment snapshotting → capture locals into struct
 - [x] Self-reference for recursion
 - [x] Default parameter values
 
@@ -104,7 +104,7 @@ The compiler core. Walk the AST, emit C source code.
 - [x] Generate `main()` that runs top-level statements
 - [x] `#line` directives mapping back to `.monk` source
 
-**Status:** 49 tests passing. `src/codegen/codegen.go`
+**Status:** Done. `src/codegen/codegen.go`
 
 ---
 
@@ -116,7 +116,7 @@ The compiler core. Walk the AST, emit C source code.
 - [x] `monk check <file>` — parse and validate without compiling
 - [x] Error reporting with source file, line, column
 
-**Status:** 39 tests passing. `src/main.go`
+**Status:** Done. `src/main.go`
 
 ---
 
@@ -141,7 +141,7 @@ Static analysis pass over the AST, before code generation.
 - [x] Loop variable is const
 - [x] All-paths-return analysis
 
-**Status:** 112 checker tests + 18 unboxing codegen tests. `src/types/` + `src/codegen/unbox.go`. Wired into `monk build/run/check`.
+**Status:** Done. `src/types/` + `src/codegen/unbox.go`. Wired into `monk build/run/check`.
 
 **Unboxing already delivered in Phase 6:**
 - [x] Scalar variables (`int`/`float`/`bool`) stored as raw C types
@@ -152,9 +152,9 @@ Static analysis pass over the AST, before code generation.
 
 **Deferred (follow-up work, not a separate phase):**
 - [x] Typed array inline access — `int[]`/`float[]`/`bool[]` element reads/writes emit direct `.int_val` struct-field access instead of `monk_array_get`/`monk_array_set`. Matmul: 11× C → 3× C. `storeIntArray` etc. in `unbox.go`.
-- [x] Typed array backing store — back `int[]` with `int64_t*` instead of `MonkValue*`. New `MONK_INT_ARRAY` kind + `MonkIntArray { int64_t* data; int64_t length }` struct in runtime. `monk_int_array_from()` converts/copies. Matmul: 3× C → ~2× C. See `spec/ARCHITECTURE_DECISIONS.md §4A`.
+- [x] Typed array backing store — back `int[]` with `int64_t*` instead of `MonkValue*`. New `MONK_INT_ARRAY` kind + `MonkIntArray { int64_t* data; int64_t length }` struct in runtime. `monk_int_array_from()` converts/copies. See `spec/ARCHITECTURE_DECISIONS.md §4A`.
 - [x] Copy-on-write for arrays — share backing storage on assign, copy only on mutation. Makes `let b = a` O(1) instead of O(n). `refcount` on generic + typed arrays; typed-array direct writes use COW barriers only when codegen cannot prove uniqueness. See `spec/ARCHITECTURE_DECISIONS.md §4B`.
-- [x] Bounds-check elision for typed arrays in provably-safe loops (`while i < N` where arr has length N). Compile-time constants + array lengths + loop variable bounds → `isBoundedSafe()` skips the runtime check. Matmul: ~2× C → ~1× C. See `spec/ARCHITECTURE_DECISIONS.md §4C`.
+- [x] Bounds-check elision for typed arrays in provably-safe loops (`while i < N` where arr has length N). Compile-time constants + array lengths + loop variable bounds → `isBoundedSafe()` skips the runtime check. See `spec/ARCHITECTURE_DECISIONS.md §4C`.
 - [x] Unboxed for-loop variables over typed iterables — raw `int64_t`/`double`/`bool` loop variable, no boxing per element.
 - [x] Typed array index returns T not T? — strict OOB semantics, removes `+ 0` workaround.
 - [x] Record field unboxing — `rec.field` reads/writes emit `obj.record_val->fields[N].value` (index-based, no strcmp). Scalar fields extract `.int_val`/`.float_val`/`.bool_val` directly. record_access: 25× C → ~1× C.
@@ -181,18 +181,19 @@ Static analysis pass over the AST, before code generation.
 - [x] Circular import detection (compile error)
 - [x] Compile multi-file programs to a single .c file
 
-**Status:** 25 module tests (13 unit + 12 integration). `src/module/`, `src/types/checker.go`, `src/codegen/gen_module.go`
+**Status:** Done. `src/module/`, `src/types/checker.go`, `src/codegen/gen_module.go`
 
 ---
 
 ## Phase 8: C FFI
 
-> Syntax TBD — to be designed before implementation.
+> Syntax still TBD. `ref` / pointer semantics should be settled first so the FFI can build on them cleanly.
+> Suggested validation targets: `libm`, then `sqlite3`, then `zlib`.
 
-- [ ] Design FFI syntax
+- [ ] Design FFI syntax and handle model
 - [ ] Declare external C functions from Monk
-- [ ] Type mapping at FFI boundary
-- [ ] Emit `#include` and linker flags
+- [ ] Type mapping and `ref` parameters at the FFI boundary
+- [ ] Emit C headers and linker flags from FFI declarations
 
 ---
 
